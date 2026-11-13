@@ -3,6 +3,7 @@ import { config } from './config.js';
 import { pool, tx } from './db/pool.js';
 import { expireReservations } from './lib/stock.js';
 import { fiscalTick } from './modules/fiscal.js';
+import { marketplaceTick } from './modules/marketplaces.js';
 import { expireOrders } from './modules/orders.js';
 
 const app = await buildApp({
@@ -25,6 +26,10 @@ const expiry = setInterval(() => {
   fiscalTick(app.fiscal)
     .then((r) => (r.synced || r.emitted) && app.log.info(`fiscal: ${r.synced} nota(s) consultada(s), ${r.emitted} emitida(s)`))
     .catch((err) => app.log.error(err, 'falha na rotina fiscal'));
+  // Marketplaces: renova tokens, consulta vendas avisadas (ou paradas) e envia saldos alterados.
+  marketplaceTick(app.marketplaces)
+    .then((r) => (r.refreshed || Object.keys(r.sales).length || r.stock.pushed || r.stock.failed) && app.log.info({ marketplaces: r }, 'rotina de marketplaces'))
+    .catch((err) => app.log.error(err, 'falha na rotina de marketplaces'));
 }, 60_000);
 expiry.unref();
 

@@ -5,6 +5,7 @@ import pg from 'pg';
 import { buildApp } from '../src/app.js';
 import { encrypt } from '../src/lib/crypto.js';
 import type { FiscalProvider } from '../src/lib/fiscal.js';
+import type { Marketplaces } from '../src/lib/marketplaces.js';
 import type { PaymentProvider } from '../src/lib/payments.js';
 import { hashPassword } from '../src/modules/auth.js';
 
@@ -37,8 +38,12 @@ export const uid = () => randomBytes(5).toString('hex');
 export const randomIp = () => `10.${randomInt(255)}.${randomInt(255)}.${randomInt(255)}`;
 
 export const sentResets: { email: string; token: string }[] = [];
-export const makeApp = (routes?: { method: string; url: string }[], payments: PaymentProvider | null = null, fiscal: FiscalProvider | null = null) =>
-  buildApp({ notifier: async (email, token) => void sentResets.push({ email, token }), routes, payments, fiscal });
+export const makeApp = (
+  routes?: { method: string; url: string }[],
+  payments: PaymentProvider | null = null,
+  fiscal: FiscalProvider | null = null,
+  marketplaces: Marketplaces = { mercadolivre: null, shopee: null },
+) => buildApp({ notifier: async (email, token) => void sentResets.push({ email, token }), routes, payments, fiscal, marketplaces });
 
 export async function createUser(role: string, opts: { mfa?: boolean } = {}) {
   const email = `${role}-${uid()}@teste.local`;
@@ -101,7 +106,7 @@ export async function resetCatalog() {
   // Tabelas fiscais recusam TRUNCATE (guarda das notas); so no banco de teste o dono desliga a trava para limpar.
   await owner.query('ALTER TABLE fiscal_documents DISABLE TRIGGER fiscal_documents_no_truncate; ALTER TABLE fiscal_files DISABLE TRIGGER fiscal_files_no_truncate');
   await owner.query(
-    'TRUNCATE quote_events, quote_items, quotes, purchase_invoices, fiscal_files, fiscal_document_events, fiscal_documents, fiscal_inutilizations, fiscal_webhook_notifications, fiscal_certificates, fiscal_rules_history, fiscal_rules, shipments, payment_notifications, payments, order_events, order_items, orders, cart_items, carts, customer_addresses, customer_sessions, customers, shipping_options, price_tiers, inventory_count_items, inventory_counts, purchase_receipt_items, purchase_receipts, purchase_order_items, purchase_orders, supplier_products, supplier_contacts, suppliers, stock_reservations, stock_movements, stock_balances',
+    'TRUNCATE marketplace_notifications, marketplace_orders, marketplace_listings, marketplace_oauth_states, marketplace_accounts, quote_events, quote_items, quotes, purchase_invoices, fiscal_files, fiscal_document_events, fiscal_documents, fiscal_inutilizations, fiscal_webhook_notifications, fiscal_certificates, fiscal_rules_history, fiscal_rules, shipments, payment_notifications, payments, order_events, order_items, orders, cart_items, carts, customer_addresses, customer_sessions, customers, shipping_options, price_tiers, inventory_count_items, inventory_counts, purchase_receipt_items, purchase_receipts, purchase_order_items, purchase_orders, supplier_products, supplier_contacts, suppliers, stock_reservations, stock_movements, stock_balances',
   );
   await owner.query('ALTER TABLE fiscal_documents ENABLE TRIGGER fiscal_documents_no_truncate; ALTER TABLE fiscal_files ENABLE TRIGGER fiscal_files_no_truncate');
   await owner.query('DELETE FROM product_images; DELETE FROM packagings; DELETE FROM product_variants; DELETE FROM products; DELETE FROM categories');

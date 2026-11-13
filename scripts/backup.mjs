@@ -23,7 +23,7 @@ const DB = { host: env.DB_HOST ?? '127.0.0.1', port: env.DB_PORT ?? '54330', nam
 const storageDir = path.resolve(root, 'apps/api', env.STORAGE_DIR ?? '../../storage');
 
 // Tabelas conferidas depois da restauracao (as que nao podem se perder).
-const CHECK_TABLES = ['users', 'products', 'packagings', 'stock_movements', 'orders', 'order_items', 'payments', 'quotes', 'quote_items', 'purchase_orders', 'purchase_invoices', 'fiscal_documents', 'fiscal_files', 'audit_logs'];
+const CHECK_TABLES = ['users', 'products', 'packagings', 'stock_movements', 'orders', 'order_items', 'payments', 'quotes', 'quote_items', 'marketplace_accounts', 'marketplace_orders', 'purchase_orders', 'purchase_invoices', 'fiscal_documents', 'fiscal_files', 'audit_logs'];
 
 function findBin(exe) {
   const name = process.platform === 'win32' ? `${exe}.exe` : exe;

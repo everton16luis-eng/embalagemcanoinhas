@@ -122,6 +122,13 @@ function init() {
       'FOCUS_TOKEN_PRODUCAO=',
       `FISCAL_WEBHOOK_SECRET=${randomBytes(24).toString('hex')}`,
       'FISCAL_FAKE=true',
+      '# Marketplaces: credenciais do aplicativo cadastrado no Mercado Livre e na Shopee. Vazio = desligado.',
+      '# MARKETPLACE_FAKE=true simula os dois (so desenvolvimento). Ver docs/07-marketplaces.md.',
+      'ML_CLIENT_ID=',
+      'ML_CLIENT_SECRET=',
+      'SHOPEE_PARTNER_ID=',
+      'SHOPEE_PARTNER_KEY=',
+      'MARKETPLACE_FAKE=true',
       '',
     ].join('\n');
     writeFileSync(envFile, env, { mode: 0o600 });

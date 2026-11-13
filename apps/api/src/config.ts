@@ -38,9 +38,24 @@ const schema = z.object({
   FISCAL_WEBHOOK_SECRET: blankAsMissing(z.string().min(24).optional()),
   // Somente desenvolvimento: provedor fiscal simulado.
   FISCAL_FAKE: blankAsMissing(z.enum(['true', 'false']).optional()).transform((v) => v === 'true'),
+  // Marketplaces (docs/07-marketplaces.md). Credenciais do aplicativo cadastrado em cada plataforma; vazias = desligado.
+  ML_CLIENT_ID: blankAsMissing(z.string().regex(/^\d{1,30}$/).optional()),
+  ML_CLIENT_SECRET: blankAsMissing(z.string().min(16).optional()),
+  // URL de retorno cadastrada no aplicativo. Padrao: pagina do painel em APP_ORIGIN.
+  ML_REDIRECT_URI: blankAsMissing(z.url().optional()),
+  SHOPEE_PARTNER_ID: blankAsMissing(z.string().regex(/^\d{1,20}$/).optional()),
+  SHOPEE_PARTNER_KEY: blankAsMissing(z.string().min(16).optional()),
+  SHOPEE_REDIRECT_URI: blankAsMissing(z.url().optional()),
+  SHOPEE_API_HOST: z.url().default('https://partner.shopeemobile.com'),
+  SHOPEE_AUTH_HOST: z.url().default('https://open.shopee.com.br'),
+  // URL exata cadastrada para o push da Shopee (entra na assinatura). Padrao: PUBLIC_API_URL + /api/v1/webhooks/marketplaces/shopee.
+  SHOPEE_PUSH_URL: blankAsMissing(z.url().optional()),
+  // Somente desenvolvimento: marketplaces simulados.
+  MARKETPLACE_FAKE: blankAsMissing(z.enum(['true', 'false']).optional()).transform((v) => v === 'true'),
 });
 
 export const config = schema.parse(process.env);
 export const isProduction = config.NODE_ENV === 'production';
 if (isProduction && config.PAYMENT_FAKE) throw new Error('PAYMENT_FAKE nao pode ser usado em producao');
 if (isProduction && config.FISCAL_FAKE) throw new Error('FISCAL_FAKE nao pode ser usado em producao');
+if (isProduction && config.MARKETPLACE_FAKE) throw new Error('MARKETPLACE_FAKE nao pode ser usado em producao');

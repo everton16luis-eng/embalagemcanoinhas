@@ -83,11 +83,11 @@ async function orderByToken(db: Db | typeof pool, token: string) {
   return row.id;
 }
 
-async function addEvent(db: Db, orderId: string, status: string, note: string | null, actorId: string | null = null) {
+export async function addEvent(db: Db, orderId: string, status: string, note: string | null, actorId: string | null = null) {
   await db.query('INSERT INTO order_events (order_id, status, note, actor_id) VALUES ($1, $2, $3, $4)', [orderId, status, note, actorId]);
 }
 
-async function releaseOrderReservations(db: Db, actorId: string | null, orderId: string) {
+export async function releaseOrderReservations(db: Db, actorId: string | null, orderId: string) {
   const { rows } = await db.query<{ id: string }>(`SELECT id FROM stock_reservations WHERE source_type = 'order' AND source_id = $1 AND status = 'active'`, [orderId]);
   for (const r of rows) await releaseReservation(db, actorId, r.id);
   return rows.length;
@@ -200,11 +200,13 @@ export type OrderLine = Pick<CartLine, 'variantId' | 'packagingId' | 'sku' | 'pr
 export type NewOrder = {
   requestKey: string;
   customerId: string | null;
-  channel: 'store' | 'sales_desk';
+  channel: 'store' | 'sales_desk' | 'mercadolivre' | 'shopee';
   buyer: Record<string, unknown>;
   shipTo: Record<string, unknown> | null;
-  shipping: { id: string } & Record<string, unknown>;
-  paymentMethod: 'pix' | 'card';
+  shipping: { id: string | null } & Record<string, unknown>;
+  paymentMethod: 'pix' | 'card' | 'marketplace';
+  /** Venda ja paga fora da loja (marketplace): o pedido nasce pago. */
+  paid?: boolean;
   subtotalCents: number;
   discountCents: number;
   freightCents: number;
@@ -218,8 +220,9 @@ export async function insertOrder(db: Db, o: NewOrder, lines: OrderLine[]) {
   const total = o.subtotalCents - o.discountCents + o.freightCents;
   const { rows } = await db.query<{ id: string; number: number }>(
     `INSERT INTO orders (public_token_hash, request_key, customer_id, channel, buyer, ship_to, shipping_option_id, shipping_snapshot, payment_method,
-                         subtotal_cents, discount_cents, freight_cents, total_cents, notes, has_backorder, payment_due_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, false, now() + make_interval(mins => $15)) RETURNING id, number`,
+                         subtotal_cents, discount_cents, freight_cents, total_cents, notes, has_backorder, payment_due_at, status, paid_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, false, now() + make_interval(mins => $15),
+             CASE WHEN $16 THEN 'paid' ELSE 'pending_payment' END, CASE WHEN $16 THEN now() END) RETURNING id, number`,
     [
       sha256(publicToken(o.requestKey)),
       o.requestKey,
@@ -236,6 +239,7 @@ export async function insertOrder(db: Db, o: NewOrder, lines: OrderLine[]) {
       total,
       o.notes,
       o.dueMinutes,
+      Boolean(o.paid),
     ],
   );
   const order = rows[0]!;
@@ -259,7 +263,7 @@ export async function insertOrder(db: Db, o: NewOrder, lines: OrderLine[]) {
     backorder ||= r.backorder;
   }
   if (backorder) await db.query('UPDATE orders SET has_backorder = true WHERE id = $1', [order.id]);
-  await addEvent(db, order.id, 'pending_payment', o.eventNote);
+  await addEvent(db, order.id, o.paid ? 'paid' : 'pending_payment', o.eventNote);
   return order;
 }
 

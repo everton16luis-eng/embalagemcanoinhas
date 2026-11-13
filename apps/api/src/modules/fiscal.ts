@@ -356,7 +356,7 @@ export async function fiscalTick(provider: FiscalProvider | null, limit = 20) {
   if (policy === 'on_paid') {
     const due = (
       await pool.query<{ id: string }>(
-        `SELECT o.id FROM orders o WHERE o.status IN ('paid', 'preparing', 'ready') AND o.invoice_status = 'pending' AND o.paid_at > now() - interval '30 days'
+        `SELECT o.id FROM orders o WHERE o.status IN ('paid', 'preparing', 'ready') AND o.invoice_status = 'pending' AND o.channel IN ('store', 'sales_desk') AND o.paid_at > now() - interval '30 days'
          ORDER BY o.paid_at LIMIT 10`,
       )
     ).rows;

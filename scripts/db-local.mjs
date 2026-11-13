@@ -3,7 +3,7 @@
 // Usa os binarios ja instalados, mas nunca toca no servico PostgreSQL da maquina
 // nem nos bancos de outros sistemas.
 // Uso: node scripts/db-local.mjs init|start|stop|status
-//      node scripts/db-local.mjs init --production https://loja.dominio.com.br   (servidor: so o banco loja_prod)
+//      node scripts/db-local.mjs init --production https://embalagemcanoinhas.com.br   (servidor: so o banco loja_prod)
 import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -165,7 +165,7 @@ if (cmd === 'init') {
   const prod = process.argv[3] === '--production';
   const origin = process.argv[4];
   if (prod && !/^https:\/\/[a-z0-9.-]+$/.test(origin ?? '')) {
-    console.error('Informe o endereco publico: node scripts/db-local.mjs init --production https://loja.dominio.com.br');
+    console.error('Informe o endereco publico: node scripts/db-local.mjs init --production https://embalagemcanoinhas.com.br');
     process.exit(1);
   }
   init(prod ? origin : undefined);

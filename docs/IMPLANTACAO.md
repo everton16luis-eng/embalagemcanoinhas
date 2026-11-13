@@ -4,7 +4,7 @@ Roteiro para subir a V1 num servidor Ubuntu sem interface. Os arquivos de apoio 
 Nada aqui foi executado num servidor real ainda: os itens de conferência estão em
 [TESTES-PENDENTES.md](TESTES-PENDENTES.md).
 
-Arquitetura: nginx (HTTPS) → Next.js `127.0.0.1:3010` (loja e painel; repassa `/api` para a API) → API
+Arquitetura: nginx (HTTPS) → Next.js `127.0.0.1:3020` (loja e painel; repassa `/api` para a API) → API
 `127.0.0.1:4010` → PostgreSQL próprio da loja `127.0.0.1:54330`. Nenhuma porta da aplicação fica aberta para fora;
 o banco não é compartilhado com outros sistemas do servidor.
 
@@ -43,7 +43,7 @@ cd /srv/loja-embalagens && npm ci
 ## 3. Banco e `.env` de produção
 
 ```bash
-node scripts/db-local.mjs init --production https://loja.dominio.com.br
+node scripts/db-local.mjs init --production https://embalagemcanoinhas.com.br
 ```
 
 Cria o cluster em `.local/pgdata` (porta 54330, só 127.0.0.1), os papéis `loja_owner` e `loja_app`, o banco
@@ -105,8 +105,44 @@ journalctl -u loja-api -n 100 --no-pager
 
 ## 6. nginx e HTTPS
 
-Use [`deploy/nginx/loja.conf`](../deploy/nginx/loja.conf) como modelo (troque o domínio e os caminhos do
-certificado). Pontos que não podem faltar:
+Domínio: `embalagemcanoinhas.com.br` (o `www` redireciona para ele). O DNS precisa ter registro A dos dois nomes
+para o IP do servidor antes do certificado. O servidor usa CloudPanel e tem outros sites: a loja ganha arquivos
+nginx próprios e o certificado sai por **webroot** (nunca `certbot --nginx`, que já quebrou o `default.conf` do
+CloudPanel). A loja escuta na porta 3020 porque a 3010 já é usada por outro sistema nesse servidor.
+
+Primeiro só a porta 80, para validar o domínio:
+
+```bash
+sudo mkdir -p /var/www/letsencrypt
+```
+
+```bash
+sudo cp /srv/loja-embalagens/deploy/nginx/loja-http.conf /etc/nginx/sites-available/embalagemcanoinhas.com.br.conf
+```
+
+```bash
+sudo ln -s /etc/nginx/sites-available/embalagemcanoinhas.com.br.conf /etc/nginx/sites-enabled/
+```
+
+```bash
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+```bash
+sudo certbot certonly --webroot -w /var/www/letsencrypt -d embalagemcanoinhas.com.br -d www.embalagemcanoinhas.com.br
+```
+
+Com o certificado emitido, o site completo:
+
+```bash
+sudo cp /srv/loja-embalagens/deploy/nginx/loja.conf /etc/nginx/sites-available/embalagemcanoinhas.com.br.conf
+```
+
+```bash
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+Pontos de [`deploy/nginx/loja.conf`](../deploy/nginx/loja.conf) que não podem faltar:
 
 - HTTP redireciona para HTTPS (os cookies de sessão são `Secure` em produção e não funcionam em HTTP).
 - `proxy_set_header X-Forwarded-For $remote_addr;` (sobrescreve): é o que permite à API saber o IP real do cliente
@@ -119,7 +155,7 @@ certificado). Pontos que não podem faltar:
 curl -s http://127.0.0.1:4010/ready
 ```
 
-1. Abrir `https://loja.dominio.com.br/painel`: entrar, ativar o MFA, abrir **Configuração inicial**. O grupo
+1. Abrir `https://embalagemcanoinhas.com.br/painel`: entrar, ativar o MFA, abrir **Configuração inicial**. O grupo
    "Antes de vender" mostra o que falta para o lançamento (simuladores nunca contam como prontos).
 2. No navegador, conferir que o cookie de sessão está com `Secure` e `HttpOnly`.
 3. Errar a senha uma vez e conferir em **Auditoria** que o IP registrado é o seu, não `127.0.0.1`.

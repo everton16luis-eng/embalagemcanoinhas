@@ -21,6 +21,7 @@ import { fiscalRoutes, fiscalWebhookRoutes } from './modules/fiscal.js';
 import { productImageRoutes, publicImageRoutes } from './modules/images.js';
 import { productRoutes } from './modules/products.js';
 import { inventoryRoutes } from './modules/inventory.js';
+import { purchaseInvoiceRoutes } from './modules/purchase-invoices.js';
 import { purchaseRoutes } from './modules/purchases.js';
 import { setupRoutes } from './modules/setup.js';
 import { stockReportRoutes } from './modules/stock-reports.js';
@@ -125,6 +126,7 @@ export async function buildApp(opts: {
   await app.register(inventoryRoutes, { prefix: '/api/v1/admin/inventory-counts' });
   await app.register(supplierRoutes, { prefix: '/api/v1/admin/suppliers' });
   await app.register(purchaseRoutes, { prefix: '/api/v1/admin/purchase-orders' });
+  await app.register(purchaseInvoiceRoutes, { prefix: '/api/v1/admin/purchase-invoices' });
   await app.register(publicImageRoutes, { prefix: '/api/v1/public' });
   await app.register(catalogRoutes, { prefix: '/api/v1/public/catalog' });
   await app.register(cartRoutes, { prefix: '/api/v1/public/cart' });

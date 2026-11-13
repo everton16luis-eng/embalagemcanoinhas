@@ -161,3 +161,53 @@ A linha de "ocasiões" da B ficou de fora: depende de curadoria real de produtos
 - Endereço público (https) da API para o Mercado Pago chamar o webhook.
 - Nome e logotipo da loja, fotos, dados da empresa no rodapé, textos de trocas/privacidade (Painel > Marca da loja).
 - Formas de entrega reais (retirada? quais CEPs? valores?).
+
+## Fase 5 — NF-e modelo 55 — entregue para validação (13/11/2026)
+
+Decisões e comparação de provedores: `docs/05-fiscal-nfe.md`.
+
+### Pronto
+
+- **Provedor**: Focus NFe, atrás da interface `FiscalProvider` (trocável). Contrato conferido na documentação
+  oficial: emissão assíncrona por `ref`, consulta, cancelamento, CC-e, inutilização, gatilho (webhook).
+  Autorizador de SC: SVRS (via provedor).
+- **Conferência antes de emitir**, mostrada no pedido: credencial do ambiente, dados da empresa, regime, endereço e
+  documento do comprador, regra fiscal validada para a operação, produtos com cadastro fiscal validado.
+- **Regras fiscais por operação** (dentro/fora do estado × PF/empresa contribuinte/não contribuinte): natureza,
+  CFOP, CST/CSOSN, PIS, COFINS, consumidor final, presença e campos extras do provedor (IBS/CBS). Informada →
+  validada pelo contador; alterou, a validação cai; histórico imutável.
+- **Emissão idempotente**: uma nota ativa por pedido (índice único), documento criado antes de chamar o provedor,
+  falha de rede deixa pendente e a rotina reenvia **com a mesma ref** só se o provedor não a recebeu.
+  Rejeição fica no histórico e a nova tentativa usa outra ref.
+- **Aviso do provedor**: header de autorização próprio; a situação vem sempre da consulta à API, nunca do corpo.
+- **Arquivos**: XML, DANFE, XML de cancelamento e de CC-e guardados com SHA-256 (conferido a cada download).
+  Cliente baixa DANFE e XML no link do pedido e na conta.
+- **Guarda**: nota não pode ser apagada; o que foi enviado não muda; autorizada só vira cancelada (gatilhos no banco).
+- **Cancelamento e CC-e** no detalhe da nota; pedido com nota autorizada só é cancelado depois da nota.
+- **Inutilização** de faixa (recusa faixa que contém nota da loja).
+- **Certificado A1**: fica no provedor; a loja registra a validade e avisa com 30, 15 e 7 dias.
+- **Trava de produção**: liberação só com credenciamento concluído, nota autorizada em homologação, credencial de
+  produção e nome do contador (permissão `fiscal.validate` com MFA).
+- **Política de emissão**: manual (botão no pedido) ou automática ao confirmar o pagamento.
+- **Painel**: Nota fiscal (visão geral, notas, regras, certificado e numeração), detalhe da nota, cartão no pedido.
+
+### Testes
+
+- API: 92 testes passando (17 novos em `fiscal.test.ts`): JSON da NF-e, adaptador Focus com `fetch` simulado
+  (Basic, ref, reconsulta, rejeição, 5xx, download só do provedor, header do aviso), conferência, emissão com
+  arquivos e DANFE do cliente, clique duplo simultâneo, aviso sem header, corpo do aviso ignorado, falha de rede e
+  resposta perdida, rejeição e nova tentativa, CC-e e cancelamento, imutabilidade, arquivo adulterado, inutilização,
+  regras e permissões, liberação de produção, emissão automática, avisos do certificado.
+- Navegador (provedor simulado): página Nota fiscal nas 4 abas e cartão do pedido com a lista do que falta;
+  sem erros e sem transbordar a 375 px.
+
+### Não verificado / pendente com você
+
+- **Nenhuma chamada real à Focus foi feita**: falta conta e token de homologação. O adaptador segue a documentação e
+  foi testado com respostas simuladas.
+- A tela do detalhe de nota autorizada e o bloco "Nota fiscal" da loja não foram vistos no navegador: o banco local
+  não tem dados da empresa (não preenchi dados inventados). Estão cobertos pelos testes da API.
+- Com o contador: regras por operação, validação fiscal dos produtos, códigos de pagamento (`17` Pix, `03` cartão),
+  IBS/CBS, política de emissão, rateio de frete por item, pedido de retirada sem endereço.
+- Com a empresa: contrato com o provedor, certificado A1 enviado a ele, credenciamento na SEF-SC.
+- **Importação de XML de compra** (prevista no plano da fase) ainda não foi feita.

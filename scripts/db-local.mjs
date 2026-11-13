@@ -115,6 +115,13 @@ function init() {
       'MP_WEBHOOK_SECRET=',
       'PUBLIC_API_URL=',
       'PAYMENT_FAKE=true',
+      '# NF-e: tokens da Focus NFe por ambiente (painel da Focus). Vazio = emissao desligada naquele ambiente.',
+      '# FISCAL_WEBHOOK_SECRET: valor cadastrado no gatilho da Focus (header X-Fiscal-Webhook-Token).',
+      '# FISCAL_FAKE=true simula o provedor fiscal (so desenvolvimento).',
+      'FOCUS_TOKEN_HOMOLOGACAO=',
+      'FOCUS_TOKEN_PRODUCAO=',
+      `FISCAL_WEBHOOK_SECRET=${randomBytes(24).toString('hex')}`,
+      'FISCAL_FAKE=true',
       '',
     ].join('\n');
     writeFileSync(envFile, env, { mode: 0o600 });

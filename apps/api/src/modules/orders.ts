@@ -12,6 +12,7 @@ import type { PaymentProvider, ProviderPayment } from '../lib/payments.js';
 import { consumeReservation, releaseReservation, reserve } from '../lib/stock.js';
 import { requirePermission } from './auth.js';
 import { addressSchema, documentFor, personSchema, requireCustomer } from './customers.js';
+import type { CartLine } from '../lib/pricing.js';
 import { CART_COOKIE, cartLines, quoteShipping, summarize } from './storefront.js';
 
 declare module 'fastify' {
@@ -34,7 +35,7 @@ export function mulQty(baseQty: string, packs: number) {
  * Link de acompanhamento: derivado da chave do pedido com a chave secreta do servidor.
  * Repetir o mesmo envio devolve o mesmo link sem guardar o token em texto no banco.
  */
-const publicToken = (requestKey: string) => keyedHash(`order-link:${requestKey}`);
+export const publicToken = (requestKey: string) => keyedHash(`order-link:${requestKey}`);
 
 const paymentUnavailable = () => new AppError(503, 'PAYMENT_UNAVAILABLE', 'Pagamento online indisponível no momento. Fale com a loja pelo WhatsApp para concluir a compra.');
 
@@ -192,6 +193,76 @@ export async function expireOrders(provider: PaymentProvider | null, limit = 50)
   return canceled;
 }
 
+// ---------------- criacao do pedido (checkout e orcamento) ----------------
+
+export type OrderLine = Pick<CartLine, 'variantId' | 'packagingId' | 'sku' | 'productName' | 'label' | 'baseQty' | 'packs' | 'listPriceCents' | 'unitPriceCents' | 'totalCents' | 'madeToOrder' | 'leadTimeDays'>;
+
+export type NewOrder = {
+  requestKey: string;
+  customerId: string | null;
+  channel: 'store' | 'sales_desk';
+  buyer: Record<string, unknown>;
+  shipTo: Record<string, unknown> | null;
+  shipping: { id: string } & Record<string, unknown>;
+  paymentMethod: 'pix' | 'card';
+  subtotalCents: number;
+  discountCents: number;
+  freightCents: number;
+  notes: string | null;
+  dueMinutes: number;
+  eventNote: string;
+};
+
+/** Grava pedido, itens e reservas de estoque na transacao de quem chama. O token publico vem da chave do pedido. */
+export async function insertOrder(db: Db, o: NewOrder, lines: OrderLine[]) {
+  const total = o.subtotalCents - o.discountCents + o.freightCents;
+  const { rows } = await db.query<{ id: string; number: number }>(
+    `INSERT INTO orders (public_token_hash, request_key, customer_id, channel, buyer, ship_to, shipping_option_id, shipping_snapshot, payment_method,
+                         subtotal_cents, discount_cents, freight_cents, total_cents, notes, has_backorder, payment_due_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, false, now() + make_interval(mins => $15)) RETURNING id, number`,
+    [
+      sha256(publicToken(o.requestKey)),
+      o.requestKey,
+      o.customerId,
+      o.channel,
+      JSON.stringify(o.buyer),
+      o.shipTo ? JSON.stringify(o.shipTo) : null,
+      o.shipping.id,
+      JSON.stringify(o.shipping),
+      o.paymentMethod,
+      o.subtotalCents,
+      o.discountCents,
+      o.freightCents,
+      total,
+      o.notes,
+      o.dueMinutes,
+    ],
+  );
+  const order = rows[0]!;
+  for (const l of lines) {
+    await db.query(
+      `INSERT INTO order_items (order_id, variant_id, packaging_id, sku, product_name, packaging_label, base_qty_per_pack, packs, list_price_cents, unit_price_cents, total_cents, made_to_order, lead_time_days)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+      [order.id, l.variantId, l.packagingId, l.sku, l.productName, l.label, l.baseQty, l.packs, l.listPriceCents, l.unitPriceCents, l.totalCents, l.madeToOrder, l.leadTimeDays],
+    );
+  }
+  // Reserva por variacao (duas embalagens da mesma variacao somam numa reserva so).
+  const perVariant = new Map<string, bigint>();
+  for (const l of lines) {
+    const [i, f = ''] = mulQty(l.baseQty, l.packs).split('.');
+    perVariant.set(l.variantId, (perVariant.get(l.variantId) ?? 0n) + BigInt(i!) * 1000n + BigInt(f.padEnd(3, '0')));
+  }
+  let backorder = false;
+  for (const [variantId, milli] of perVariant) {
+    const qty = `${milli / 1000n}.${(milli % 1000n).toString().padStart(3, '0')}`;
+    const r = await reserve(db, null, { variantId, qty, sourceType: 'order', sourceId: order.id });
+    backorder ||= r.backorder;
+  }
+  if (backorder) await db.query('UPDATE orders SET has_backorder = true WHERE id = $1', [order.id]);
+  await addEvent(db, order.id, 'pending_payment', o.eventNote);
+  return order;
+}
+
 // ---------------- checkout (publico) ----------------
 
 const checkoutSchema = z.strictObject({
@@ -252,49 +323,25 @@ export async function checkoutRoutes(app: FastifyInstance) {
 
       const minutes = b.paymentMethod === 'pix' ? config.PIX_EXPIRATION_MINUTES : config.CARD_PAYMENT_WINDOW_MINUTES;
       const buyer = { ...b.buyer, document, stateRegistration: b.buyer.stateRegistration || null };
-      const { rows } = await db.query<{ id: string; number: number }>(
-        `INSERT INTO orders (public_token_hash, request_key, customer_id, buyer, ship_to, shipping_option_id, shipping_snapshot, payment_method,
-                             subtotal_cents, freight_cents, total_cents, notes, has_backorder, payment_due_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, now() + make_interval(mins => $14)) RETURNING id, number`,
-        [
-          sha256(token),
-          b.requestKey,
-          req.customer?.id ?? null,
-          JSON.stringify(buyer),
-          ship.kind === 'delivery' ? JSON.stringify(b.address) : null,
-          ship.id,
-          JSON.stringify(ship),
-          b.paymentMethod,
-          sum.subtotalCents,
-          ship.priceCents,
-          total,
-          b.notes || null,
-          false,
-          minutes,
-        ],
+      const order = await insertOrder(
+        db,
+        {
+          requestKey: b.requestKey,
+          customerId: req.customer?.id ?? null,
+          channel: 'store',
+          buyer,
+          shipTo: ship.kind === 'delivery' ? (b.address ?? null) : null,
+          shipping: ship,
+          paymentMethod: b.paymentMethod,
+          subtotalCents: sum.subtotalCents,
+          discountCents: 0,
+          freightCents: ship.priceCents,
+          notes: b.notes || null,
+          dueMinutes: minutes,
+          eventNote: b.paymentMethod === 'pix' ? 'Pedido criado, aguardando Pix' : 'Pedido criado, aguardando cartão',
+        },
+        lines,
       );
-      const order = rows[0]!;
-      let backorder = false;
-      for (const l of lines) {
-        await db.query(
-          `INSERT INTO order_items (order_id, variant_id, packaging_id, sku, product_name, packaging_label, base_qty_per_pack, packs, list_price_cents, unit_price_cents, total_cents, made_to_order, lead_time_days)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
-          [order.id, l.variantId, l.packagingId, l.sku, l.productName, l.label, l.baseQty, l.packs, l.listPriceCents, l.unitPriceCents, l.totalCents, l.madeToOrder, l.leadTimeDays],
-        );
-      }
-      // Reserva por variacao (duas embalagens da mesma variacao somam numa reserva so).
-      const perVariant = new Map<string, bigint>();
-      for (const l of lines) {
-        const [i, f = ''] = mulQty(l.baseQty, l.packs).split('.');
-        perVariant.set(l.variantId, (perVariant.get(l.variantId) ?? 0n) + BigInt(i!) * 1000n + BigInt(f.padEnd(3, '0')));
-      }
-      for (const [variantId, milli] of perVariant) {
-        const qty = `${milli / 1000n}.${(milli % 1000n).toString().padStart(3, '0')}`;
-        const r = await reserve(db, null, { variantId, qty, sourceType: 'order', sourceId: order.id });
-        backorder ||= r.backorder;
-      }
-      if (backorder) await db.query('UPDATE orders SET has_backorder = true WHERE id = $1', [order.id]);
-      await addEvent(db, order.id, 'pending_payment', b.paymentMethod === 'pix' ? 'Pedido criado, aguardando Pix' : 'Pedido criado, aguardando cartão');
       await db.query(`UPDATE carts SET status = 'converted', customer_id = coalesce(customer_id, $2), updated_at = now() WHERE id = $1`, [cart.id, req.customer?.id ?? null]);
       return { id: order.id, number: order.number, replay: false };
     });

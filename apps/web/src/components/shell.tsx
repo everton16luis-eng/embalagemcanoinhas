@@ -1,6 +1,6 @@
 'use client';
 
-import { BarChart3, Boxes, Building2, ClipboardCheck, ClipboardList, FolderTree, History, LogOut, Menu, RefreshCw, Settings, ShoppingCart, Store, Truck, UserRound, Users, Warehouse, X } from 'lucide-react';
+import { BarChart3, Boxes, MapPinned, Package, Building2, ClipboardCheck, ClipboardList, FolderTree, History, LogOut, Menu, RefreshCw, Settings, ShoppingCart, Store, Truck, UserRound, Users, Warehouse, X } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
@@ -19,6 +19,7 @@ export function useMe() {
 // Itens das fases seguintes nao aparecem: o menu mostra so o que ja funciona.
 const NAV = [
   { href: '/painel', label: 'Configuração inicial', icon: ClipboardCheck, perm: null },
+  { href: '/painel/pedidos', label: 'Pedidos', icon: Package, perm: 'orders.view' },
   { href: '/painel/produtos', label: 'Produtos', icon: Boxes, perm: 'catalog.view' },
   { href: '/painel/categorias', label: 'Categorias', icon: FolderTree, perm: 'catalog.view' },
   { href: '/painel/estoque', label: 'Estoque', icon: Warehouse, perm: 'stock.view' },
@@ -26,6 +27,7 @@ const NAV = [
   { href: '/painel/compras', label: 'Compras', icon: ShoppingCart, perm: 'purchases.view' },
   { href: '/painel/reposicao', label: 'Reposição', icon: RefreshCw, perm: 'purchases.view' },
   { href: '/painel/fornecedores', label: 'Fornecedores', icon: Truck, perm: 'purchases.view' },
+  { href: '/painel/entregas', label: 'Formas de entrega', icon: MapPinned, perm: 'orders.view' },
   { href: '/painel/relatorios', label: 'Relatórios', icon: BarChart3, perm: 'reports.view' },
   { href: '/painel/empresa', label: 'Empresa e fiscal', icon: Building2, perm: 'company.view' },
   { href: '/painel/loja', label: 'Marca da loja', icon: Store, perm: 'settings.manage' },

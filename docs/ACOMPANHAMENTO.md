@@ -190,16 +190,21 @@ Decisões e comparação de provedores: `docs/05-fiscal-nfe.md`.
   produção e nome do contador (permissão `fiscal.validate` com MFA).
 - **Política de emissão**: manual (botão no pedido) ou automática ao confirmar o pagamento.
 - **Painel**: Nota fiscal (visão geral, notas, regras, certificado e numeração), detalhe da nota, cartão no pedido.
+- **XML de compra**: Compras › Notas de compra importa o XML do fornecedor (uma vez por chave, sem DOCTYPE, chave
+  conferida), confere fornecedor e itens pelo código do fornecedor ou de barras e, vinculada ao pedido de compra,
+  aponta diferenças de quantidade e preço. Não mexe no estoque; o link para receber já leva o número da NF.
 
 ### Testes
 
-- API: 92 testes passando (17 novos em `fiscal.test.ts`): JSON da NF-e, adaptador Focus com `fetch` simulado
+- API: 96 testes passando (17 em `fiscal.test.ts`, 4 em `purchase-invoices.test.ts`): JSON da NF-e, adaptador Focus com `fetch` simulado
   (Basic, ref, reconsulta, rejeição, 5xx, download só do provedor, header do aviso), conferência, emissão com
   arquivos e DANFE do cliente, clique duplo simultâneo, aviso sem header, corpo do aviso ignorado, falha de rede e
   resposta perdida, rejeição e nova tentativa, CC-e e cancelamento, imutabilidade, arquivo adulterado, inutilização,
   regras e permissões, liberação de produção, emissão automática, avisos do certificado.
 - Navegador (provedor simulado): página Nota fiscal nas 4 abas e cartão do pedido com a lista do que falta;
   sem erros e sem transbordar a 375 px.
+- Navegador: Notas de compra (lista e detalhe da conferência) com XML fictício no banco de desenvolvimento; sem erros
+  no console e sem transbordar a 375 px.
 
 ### Não verificado / pendente com você
 
@@ -210,4 +215,4 @@ Decisões e comparação de provedores: `docs/05-fiscal-nfe.md`.
 - Com o contador: regras por operação, validação fiscal dos produtos, códigos de pagamento (`17` Pix, `03` cartão),
   IBS/CBS, política de emissão, rateio de frete por item, pedido de retirada sem endereço.
 - Com a empresa: contrato com o provedor, certificado A1 enviado a ele, credenciamento na SEF-SC.
-- **Importação de XML de compra** (prevista no plano da fase) ainda não foi feita.
+- Importação de XML de compra: testada só com XML montado nos testes; vale conferir com um XML real de fornecedor.

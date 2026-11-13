@@ -194,7 +194,9 @@ function OrderForm({ order, onSaved }: { order: Order | null; onSaved: (o: Order
 function ReceiveForm({ order, onDone }: { order: Order; onDone: (o: Order) => void }) {
   const pending = (i: Item) => Math.max(0, Number(i.packs) - Number(i.received_packs));
   const [packs, setPacks] = useState<Record<string, string>>(() => Object.fromEntries(order.items.map((i) => [i.id, pending(i) ? qtyToInput(String(pending(i))) : ''])));
-  const [invoiceRef, setInvoiceRef] = useState('');
+  // Vindo da conferencia da nota de compra (?nf=numero), o numero da NF ja vem preenchido.
+  const nf = useSearchParams().get('nf') ?? '';
+  const [invoiceRef, setInvoiceRef] = useState(nf.slice(0, 60));
   const [key, setKey] = useState(newKey);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');

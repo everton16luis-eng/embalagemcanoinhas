@@ -29,6 +29,11 @@ function PurchaseList() {
         actions={
           <>
             {can('purchases.view') && (
+              <Link href="/painel/compras/notas">
+                <Button>Notas de compra (XML)</Button>
+              </Link>
+            )}
+            {can('purchases.view') && (
               <Link href="/painel/reposicao">
                 <Button>Sugestão de reposição</Button>
               </Link>

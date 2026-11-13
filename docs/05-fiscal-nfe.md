@@ -112,4 +112,22 @@ configurado e nome do contador que validou. Quem liberou e quando fica gravado.
 - Regras fiscais por operação e validação do cadastro fiscal dos produtos.
 - IBS/CBS: quais campos e códigos (cClassTrib) usar em 2026/2027.
 - Política de emissão (manual ou ao pagar) e de pedido sob encomenda.
-- Importação de XML de compra: próxima etapa desta fase.
+
+## 10. Importação do XML de NF-e de compra
+
+- **O que faz**: lê o XML da NF-e do fornecedor (modelo 55, layout 4.00) e mostra a conferência. **Não movimenta
+  estoque**: a entrada continua sendo o recebimento do pedido de compra, feito por uma pessoa.
+- **Segurança do arquivo**: até 2 MB; XML com DOCTYPE/ENTITY é recusado (sem expansão de entidades); a chave de acesso
+  precisa ter 44 dígitos e dígito verificador válido (módulo 11); só modelo 55. Leitor `fast-xml-parser` 5.11.2 (versão
+  exata; a 5.12.1 tinha saído no dia e foi evitada).
+- **Uma vez só**: chave de acesso única; reenviar a mesma nota devolve a importação existente.
+- **Guarda**: o XML original fica no armazenamento com sha256 conferido na leitura; a nota importada não pode ser
+  apagada e só o vínculo (fornecedor e pedido de compra) pode mudar, com auditoria.
+- **Conferência**: fornecedor pelo CNPJ do emitente; item pelo código do fornecedor (oferta) e, sem ele, pelo código
+  de barras da embalagem; com pedido vinculado (só do mesmo CNPJ), compara quantidade pendente e preço item a item e
+  lista o que o pedido tem e a nota não. Avisa quando o destinatário não é o CNPJ da empresa e quando o XML não traz o
+  protocolo de autorização (cStat 100).
+- **Limite conhecido**: a quantidade da nota é comparada direto com a do pedido (em embalagens de compra). Se o
+  fornecedor fatura em outra unidade, a divergência aparece e a pessoa decide no recebimento. Não consultamos a SEFAZ
+  para confirmar a situação atual da nota (exigiria certificado e serviço próprio).
+

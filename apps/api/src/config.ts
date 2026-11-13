@@ -31,8 +31,16 @@ const schema = z.object({
   CARD_PAYMENT_WINDOW_MINUTES: z.coerce.number().int().min(10).max(1440).default(30),
   // Somente desenvolvimento: provedor simulado para testar a loja sem conta no Mercado Pago.
   PAYMENT_FAKE: blankAsMissing(z.enum(['true', 'false']).optional()).transform((v) => v === 'true'),
+  // Provedor fiscal (docs/05-fiscal-nfe.md). Um token por ambiente; vazio = emissao desligada naquele ambiente.
+  FOCUS_TOKEN_HOMOLOGACAO: blankAsMissing(z.string().min(16).optional()),
+  FOCUS_TOKEN_PRODUCAO: blankAsMissing(z.string().min(16).optional()),
+  // Valor que o provedor envia no header do aviso (cadastrado em authorization do gatilho).
+  FISCAL_WEBHOOK_SECRET: blankAsMissing(z.string().min(24).optional()),
+  // Somente desenvolvimento: provedor fiscal simulado.
+  FISCAL_FAKE: blankAsMissing(z.enum(['true', 'false']).optional()).transform((v) => v === 'true'),
 });
 
 export const config = schema.parse(process.env);
 export const isProduction = config.NODE_ENV === 'production';
 if (isProduction && config.PAYMENT_FAKE) throw new Error('PAYMENT_FAKE nao pode ser usado em producao');
+if (isProduction && config.FISCAL_FAKE) throw new Error('FISCAL_FAKE nao pode ser usado em producao');

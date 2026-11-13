@@ -7,6 +7,7 @@ import { ZodError } from 'zod';
 import { config, isProduction } from './config.js';
 import { pool } from './db/pool.js';
 import { AppError } from './lib/errors.js';
+import { fiscalProviderFromConfig, type FiscalProvider } from './lib/fiscal.js';
 import { FakeProvider, providerFromConfig, type PaymentProvider } from './lib/payments.js';
 import { PostgresRateLimitStore } from './lib/rate-limit-store.js';
 import { auditRoutes } from './modules/audit.js';
@@ -16,6 +17,7 @@ import { CUSTOMER_COOKIE, customerRoutes, loadCustomer } from './modules/custome
 import { adminOrderRoutes, checkoutRoutes, customerOrderRoutes, fakePaymentRoutes, publicOrderRoutes, shippingOptionRoutes, webhookRoutes } from './modules/orders.js';
 import { CART_COOKIE, cartRoutes, catalogRoutes, shippingQuoteRoutes } from './modules/storefront.js';
 import { companyRoutes, fiscalSettingsRoutes, storeSettingsRoutes } from './modules/company.js';
+import { fiscalRoutes, fiscalWebhookRoutes } from './modules/fiscal.js';
 import { productImageRoutes, publicImageRoutes } from './modules/images.js';
 import { productRoutes } from './modules/products.js';
 import { inventoryRoutes } from './modules/inventory.js';
@@ -41,6 +43,7 @@ export async function buildApp(opts: {
   routes?: { method: string; url: string }[];
   rateLimitStore?: 'memory' | 'postgres';
   payments?: PaymentProvider | null;
+  fiscal?: FiscalProvider | null;
 }) {
   const app = Fastify({
     logger: config.NODE_ENV === 'test' ? false : { redact: ['req.headers.cookie', 'req.headers.authorization', 'res.headers["set-cookie"]'] },
@@ -65,12 +68,13 @@ export async function buildApp(opts: {
   app.decorateRequest('auth', null);
   app.decorateRequest('customer', null);
   app.decorate('payments', opts.payments === undefined ? defaultPaymentProvider() : opts.payments);
+  app.decorate('fiscal', opts.fiscal === undefined ? fiscalProviderFromConfig() : opts.fiscal);
 
   app.addHook('onRequest', async (req, reply) => {
     reply.header('Cache-Control', 'no-store');
     if (SAFE_METHODS.has(req.method)) return;
     // CSRF: complementa o SameSite. Requisicao que altera dados precisa vir da origem da aplicacao.
-    // O aviso do provedor de pagamento vem de fora e e conferido pela assinatura.
+    // Avisos dos provedores (pagamento e fiscal) vem de fora e sao conferidos por assinatura ou header proprio.
     if (req.url.startsWith('/api/v1/webhooks/')) return;
     const origin = req.headers.origin;
     const hasSession = Boolean(req.cookies[COOKIE] || req.cookies[CUSTOMER_COOKIE] || req.cookies[CART_COOKIE]);
@@ -114,6 +118,7 @@ export async function buildApp(opts: {
   await app.register(productImageRoutes, { prefix: '/api/v1/admin/products' });
   await app.register(companyRoutes, { prefix: '/api/v1/admin/company' });
   await app.register(fiscalSettingsRoutes, { prefix: '/api/v1/admin/fiscal/settings' });
+  await app.register(fiscalRoutes, { prefix: '/api/v1/admin/fiscal' });
   await app.register(storeSettingsRoutes, { prefix: '/api/v1/admin/store-settings' });
   await app.register(stockRoutes, { prefix: '/api/v1/admin/stock' });
   await app.register(stockReportRoutes, { prefix: '/api/v1/admin/stock-reports' });
@@ -130,6 +135,7 @@ export async function buildApp(opts: {
   await app.register(customerRoutes, { prefix: '/api/v1/customer' });
   await app.register(customerOrderRoutes, { prefix: '/api/v1/customer/orders' });
   await app.register(webhookRoutes, { prefix: '/api/v1/webhooks' });
+  await app.register(fiscalWebhookRoutes, { prefix: '/api/v1/webhooks/fiscal' });
   await app.register(adminOrderRoutes, { prefix: '/api/v1/admin/orders' });
   await app.register(shippingOptionRoutes, { prefix: '/api/v1/admin/shipping-options' });
   return app;

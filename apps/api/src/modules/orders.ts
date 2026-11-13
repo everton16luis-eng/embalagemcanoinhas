@@ -6,6 +6,7 @@ import { pool, tx, type Db } from '../db/pool.js';
 import { audit } from '../lib/audit.js';
 import { keyedHash, sha256 } from '../lib/crypto.js';
 import { AppError, notFound } from '../lib/errors.js';
+import { invoiceSummary, sendOrderInvoice } from '../lib/fiscal-files.js';
 import { idParams, likePattern, pageQuery } from '../lib/http.js';
 import type { PaymentProvider, ProviderPayment } from '../lib/payments.js';
 import { consumeReservation, releaseReservation, reserve } from '../lib/stock.js';
@@ -71,7 +72,7 @@ export async function orderView(db: Db | typeof pool, orderId: string, opts: { s
     )
   ).rows;
   const shipment = (await db.query('SELECT carrier, tracking_code, tracking_url, volumes, weight_g, shipped_at, delivered_at FROM shipments WHERE order_id = $1', [orderId])).rows[0] ?? null;
-  return { ...o, items, payments, events, shipment };
+  return { ...o, items, payments, events, shipment, invoice: await invoiceSummary(db, orderId) };
 }
 
 async function orderByToken(db: Db | typeof pool, token: string) {
@@ -334,6 +335,13 @@ async function lockPayable(db: Db, orderId: string, method: 'pix' | 'card') {
 export function orderPaymentRoutes(app: FastifyInstance, resolve: (req: FastifyRequest) => Promise<string>, opts: { staff?: boolean } = {}) {
   const limit = { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } };
 
+  // DANFE (PDF) e XML da nota autorizada do pedido.
+  app.get('/invoice/:which', limit, async (req, reply) => {
+    const id = await resolve(req);
+    const { which } = z.object({ which: z.enum(['danfe', 'xml']) }).parse(req.params);
+    return sendOrderInvoice(pool, reply, id, which);
+  });
+
   app.get('/', async (req) => {
     const id = await resolve(req);
     // Pix pendente: confere com o provedor, no maximo a cada 15 segundos, para a tela atualizar mesmo sem aviso.
@@ -590,10 +598,14 @@ export async function adminOrderRoutes(app: FastifyInstance) {
     const { id } = idParams.parse(req.params);
     const b = z.strictObject({ reason: z.string().trim().min(3).max(300), version: z.number().int() }).parse(req.body);
     return tx(auth.userId, async (db) => {
-      const o = (await db.query<{ status: string; version: number }>('SELECT status, version FROM orders WHERE id = $1 FOR UPDATE', [id])).rows[0];
+      const o = (await db.query<{ status: string; version: number; invoice_status: string }>('SELECT status, version, invoice_status FROM orders WHERE id = $1 FOR UPDATE', [id])).rows[0];
       if (!o) throw notFound();
       if (o.version !== b.version) throw new AppError(409, 'VERSION_CONFLICT', 'O pedido foi alterado por outra pessoa. Recarregue a página.');
       if (!['pending_payment', 'paid', 'preparing', 'ready'].includes(o.status)) throw new AppError(409, 'INVALID_TRANSITION', 'Pedido já despachado ou cancelado.');
+      // Nota emitida (ou em emissao) precisa ser cancelada antes, no modulo fiscal.
+      if (o.invoice_status === 'authorized' || o.invoice_status === 'processing') {
+        throw new AppError(409, 'INVOICE_ACTIVE', 'O pedido tem NF-e autorizada ou em processamento. Cancele a nota antes de cancelar o pedido.');
+      }
       const wasPaid = o.status !== 'pending_payment';
       await db.query(`UPDATE orders SET status = 'canceled', canceled_at = now(), cancel_reason = $2, updated_at = now(), version = version + 1 WHERE id = $1`, [id, b.reason]);
       await db.query(`UPDATE payments SET status = 'canceled', updated_at = now() WHERE order_id = $1 AND status IN ('created', 'pending')`, [id]);

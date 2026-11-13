@@ -109,6 +109,8 @@ export async function fiscalSettingsRoutes(app: FastifyInstance) {
         nfeNextNumber: z.number().int().min(1).max(999_999_999).nullable().optional(),
         accreditationStatus: z.enum(['not_started', 'in_progress', 'accredited']).optional(),
         accreditationNotes: z.string().trim().max(1000).nullable().optional(),
+        // Emissao manual (botao no pedido) ou automatica ao confirmar o pagamento: decisao do contador.
+        emissionPolicy: z.enum(['manual', 'on_paid']).optional(),
       })
       .parse(req.body);
     return tx(auth.userId, async (db) => {
@@ -118,7 +120,8 @@ export async function fiscalSettingsRoutes(app: FastifyInstance) {
         throw new AppError(409, 'PRODUCTION_LOCKED', 'A emissão em produção só é liberada depois da homologação com o provedor fiscal e da validação do contador.');
       }
       const { rows } = await db.query(
-        `UPDATE fiscal_settings SET environment = $1, nfe_series = $2, nfe_next_number = $3, accreditation_status = $4, accreditation_notes = $5, updated_by = $6, updated_at = now() RETURNING *`,
+        `UPDATE fiscal_settings SET environment = $1, nfe_series = $2, nfe_next_number = $3, accreditation_status = $4, accreditation_notes = $5, updated_by = $6, updated_at = now(),
+           emission_policy = $7 RETURNING *`,
         [
           b.environment ?? before.environment,
           b.nfeSeries === undefined ? before.nfe_series : b.nfeSeries,
@@ -126,6 +129,7 @@ export async function fiscalSettingsRoutes(app: FastifyInstance) {
           b.accreditationStatus ?? before.accreditation_status,
           b.accreditationNotes === undefined ? before.accreditation_notes : b.accreditationNotes,
           auth.userId,
+          b.emissionPolicy ?? before.emission_policy,
         ],
       );
       await audit(db, { actorId: auth.userId, action: 'fiscal.settings_updated', entity: 'fiscal_settings', before, after: rows[0], ip: req.ip });

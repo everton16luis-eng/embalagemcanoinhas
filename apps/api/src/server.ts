@@ -2,6 +2,7 @@ import { buildApp } from './app.js';
 import { config } from './config.js';
 import { pool, tx } from './db/pool.js';
 import { expireReservations } from './lib/stock.js';
+import { fiscalTick } from './modules/fiscal.js';
 import { expireOrders } from './modules/orders.js';
 
 const app = await buildApp({
@@ -20,6 +21,10 @@ const expiry = setInterval(() => {
   expireOrders(app.payments)
     .then((n) => n && app.log.info(`${n} pedido(s) sem pagamento cancelado(s)`))
     .catch((err) => app.log.error(err, 'falha ao cancelar pedidos vencidos'));
+  // NF-e em processamento: consulta o provedor; com politica "ao pagar", emite as notas devidas.
+  fiscalTick(app.fiscal)
+    .then((r) => (r.synced || r.emitted) && app.log.info(`fiscal: ${r.synced} nota(s) consultada(s), ${r.emitted} emitida(s)`))
+    .catch((err) => app.log.error(err, 'falha na rotina fiscal'));
 }, 60_000);
 expiry.unref();
 

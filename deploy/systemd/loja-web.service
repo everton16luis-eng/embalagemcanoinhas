@@ -1,0 +1,22 @@
+# Loja e painel (Next.js). Escuta so em 127.0.0.1:3010; o nginx fica na frente com HTTPS.
+[Unit]
+Description=Loja de embalagens - loja e painel (Next.js)
+After=network-online.target loja-api.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=loja
+WorkingDirectory=/srv/loja-embalagens/apps/web
+Environment=NODE_ENV=production
+ExecStart=/srv/loja-embalagens/node_modules/.bin/next start -p 3010 -H 127.0.0.1
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/srv/loja-embalagens/apps/web/.next
+
+[Install]
+WantedBy=multi-user.target

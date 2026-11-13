@@ -1,5 +1,5 @@
 import { buildApp } from './app.js';
-import { config } from './config.js';
+import { config, isProduction, productionWarnings } from './config.js';
 import { pool, tx } from './db/pool.js';
 import { expireReservations } from './lib/stock.js';
 import { fiscalTick } from './modules/fiscal.js';
@@ -13,6 +13,9 @@ const app = await buildApp({
     app.log.warn('Recuperacao de senha solicitada, mas nenhum provedor de e-mail esta configurado');
   },
 });
+
+if (isProduction) for (const w of productionWarnings(config)) app.log.warn(w);
+app.log.warn('Nenhum provedor de e-mail configurado: recuperacao de senha por e-mail fica indisponivel');
 
 // Reservas vencidas (carrinho abandonado, pedido sem pagamento) voltam ao disponivel.
 const expiry = setInterval(() => {

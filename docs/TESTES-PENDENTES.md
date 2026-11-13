@@ -107,5 +107,14 @@ feito só com os simulados.
 
 ## Lançamento
 
+- [ ] **Servidor** Seguir [IMPLANTACAO.md](IMPLANTACAO.md) num servidor Ubuntu: unidades do systemd sobem e
+      voltam depois de reiniciar a máquina (o `loja-db` com `Type=oneshot` foi escrito, não testado).
+- [ ] **HTTPS** IP real do cliente na Auditoria (nginx sobrescrevendo `X-Forwarded-For` + `TRUST_PROXY=1`).
+- [ ] **Servidor** `loja-backup.timer` gera a cópia diária; cópia para fora do servidor definida por você.
+- [ ] **Servidor** Envio de foto de 8 MB pelo painel passando por nginx e Next.
+- [ ] **Você** Provedor de e-mail (transacional): sem ele a recuperação de senha por e-mail fica desligada e quem
+      esquecer a senha do painel depende de alguém com "Gerenciar usuários" gerar uma nova (tela Usuários). Clientes
+      da loja ainda não têm recuperação de senha: precisa do provedor de e-mail. Decidir o provedor antes do lançamento.
+
 - [ ] **Você** Nome, logotipo, fotos, textos de trocas e privacidade, formas de entrega reais.
 - [ ] **Você** + **Contador** Liberar produção fiscal no painel só depois de tudo acima.

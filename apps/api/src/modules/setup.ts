@@ -45,6 +45,19 @@ export async function setupRoutes(app: FastifyInstance) {
          FROM products p LEFT JOIN product_fiscal f ON f.product_id = p.id WHERE p.status <> 'inactive'`,
       )
     ).rows[0]!;
+    const launch = (
+      await pool.query<{ rules: number; validated_rules: number; cert_until: Date | null; homolog_ok: number; homolog_canceled: number; shipping: number }>(
+        `SELECT (SELECT count(*)::int FROM fiscal_rules) AS rules,
+                (SELECT count(*)::int FROM fiscal_rules WHERE status = 'validated') AS validated_rules,
+                (SELECT valid_until FROM fiscal_certificates WHERE active) AS cert_until,
+                (SELECT count(*)::int FROM fiscal_documents WHERE environment = 'homologacao' AND provider <> 'fake' AND status IN ('authorized', 'canceled')) AS homolog_ok,
+                (SELECT count(*)::int FROM fiscal_documents WHERE environment = 'homologacao' AND provider <> 'fake' AND status = 'canceled') AS homolog_canceled,
+                (SELECT count(*)::int FROM shipping_options WHERE active) AS shipping`,
+      )
+    ).rows[0]!;
+    const certDays = launch.cert_until ? Math.floor((launch.cert_until.getTime() - Date.now()) / 86_400_000) : null;
+    const fiscalReal = app.fiscal && app.fiscal.name !== 'fake' ? app.fiscal : null;
+    const paymentsReal = app.payments && app.payments.name !== 'fake';
     const has = (col: string) => Boolean(company && company[col] !== null && company[col] !== '');
     const groups: Group[] = [
       {
@@ -70,7 +83,14 @@ export async function setupRoutes(app: FastifyInstance) {
             owner: 'contador',
             required: true,
           },
-          { key: 'tax_rules', label: 'Regras de ICMS, PIS, COFINS, CFOP e CST/CSOSN por operação', hint: 'Configuração na Fase 5, a partir da orientação do contador.', status: 'later', owner: 'contador', required: true },
+          {
+            key: 'tax_rules',
+            label: 'Regras de ICMS, PIS, COFINS, CFOP e CST/CSOSN por operação',
+            hint: launch.rules ? `${launch.validated_rules} de ${launch.rules} regra(s) validadas pelo contador.` : 'Cadastradas em Nota fiscal, a partir da orientação do contador.',
+            status: launch.rules > 0 && launch.validated_rules === launch.rules ? 'done' : 'missing',
+            owner: 'contador',
+            required: true,
+          },
         ],
       },
       {
@@ -85,10 +105,28 @@ export async function setupRoutes(app: FastifyInstance) {
             owner: 'contador',
             required: true,
           },
-          { key: 'certificate', label: 'Certificado digital A1 do CNPJ', hint: 'Arquivo .pfx e senha. Envio protegido na Fase 5.', status: 'later', owner: 'empresa', required: true },
+          {
+            key: 'certificate',
+            label: 'Certificado digital A1 do CNPJ',
+            hint:
+              certDays === null
+                ? 'Enviado ao provedor fiscal; aqui ficam titular e validade.'
+                : certDays < 0
+                  ? 'Vencido: a emissão para.'
+                  : `Vence em ${certDays} dia(s).${certDays <= 30 ? ' Renove já.' : ''}`,
+            status: certDays !== null && certDays > 0 ? 'done' : 'missing',
+            owner: 'empresa',
+            required: true,
+          },
           { key: 'series', label: 'Série e próximo número da NF-e', hint: 'Se já emitiu notas em outro sistema, informe a série e o último número usado.', status: fiscal.nfe_series !== null && fiscal.nfe_next_number ? 'done' : 'missing', owner: 'contador', required: true },
-          { key: 'provider', label: 'Provedor fiscal contratado e homologado', hint: 'Escolha e homologação na Fase 5.', status: fiscal.provider ? 'done' : 'later', owner: 'sistema', required: true },
-          { key: 'environment', label: 'Ambiente de emissão', hint: fiscal.environment === 'producao' ? 'Produção.' : 'Homologação (testes, sem valor fiscal).', status: fiscal.environment === 'producao' ? 'done' : 'later', owner: 'sistema', required: true },
+          {
+            key: 'provider',
+            label: 'Provedor fiscal com token de homologação no servidor',
+            hint: fiscalReal ? undefined : app.fiscal ? 'Só o simulado de desenvolvimento.' : 'Token do provedor no .env do servidor.',
+            status: fiscalReal?.configured('homologacao') ? 'done' : 'missing',
+            owner: 'sistema',
+            required: true,
+          },
         ],
       },
       {
@@ -106,7 +144,49 @@ export async function setupRoutes(app: FastifyInstance) {
       {
         key: 'payments',
         title: 'Pagamentos',
-        items: [{ key: 'gateway', label: 'Conta e credenciais do provedor de pagamento', hint: 'Configuração na Fase 4.', status: 'later', owner: 'empresa', required: true }],
+        items: [
+          {
+            key: 'gateway',
+            label: 'Conta e credenciais do provedor de pagamento',
+            hint: paymentsReal ? undefined : app.payments ? 'Só o simulado de desenvolvimento.' : 'Credenciais do Mercado Pago no .env do servidor.',
+            status: paymentsReal ? 'done' : 'missing',
+            owner: 'empresa',
+            required: true,
+          },
+        ],
+      },
+      {
+        key: 'launch',
+        title: 'Antes de vender',
+        items: [
+          {
+            key: 'shipping',
+            label: 'Formas de entrega reais',
+            hint: launch.shipping ? `${launch.shipping} forma(s) ativa(s): confira valores e faixas de CEP.` : 'Nenhuma forma de entrega ativa.',
+            status: launch.shipping > 0 ? 'done' : 'missing',
+            owner: 'empresa',
+            required: true,
+          },
+          { key: 'privacy', label: 'Política de privacidade (LGPD)', status: store.pages?.privacy ? 'done' : 'missing', owner: 'empresa', required: true },
+          { key: 'terms', label: 'Termos de uso e condições de venda', status: store.pages?.terms ? 'done' : 'missing', owner: 'empresa', required: true },
+          {
+            key: 'homologation',
+            label: 'NF-e de teste autorizada e cancelada em homologação',
+            hint: `${launch.homolog_ok} autorizada(s), ${launch.homolog_canceled} cancelada(s) no provedor real.`,
+            status: launch.homolog_ok > 0 && launch.homolog_canceled > 0 ? 'done' : 'missing',
+            owner: 'sistema',
+            required: true,
+          },
+          {
+            key: 'production',
+            label: 'Produção fiscal liberada com a validação do contador',
+            hint: fiscal.environment === 'producao' ? `Liberada; validação de ${fiscal.production_validator_name ?? '—'}.` : 'Liberação em Nota fiscal, depois dos itens acima.',
+            status: fiscal.environment === 'producao' ? 'done' : 'missing',
+            owner: 'contador',
+            required: true,
+          },
+          { key: 'backup', label: 'Backup diário e teste de restauração no servidor', hint: 'Conferido fora do sistema: ver docs/IMPLANTACAO.md e docs/BACKUP.md.', status: 'later', owner: 'sistema', required: true },
+        ],
       },
     ];
     const all = groups.flatMap((g) => g.items).filter((i) => i.required);

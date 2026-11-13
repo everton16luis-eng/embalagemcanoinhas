@@ -14,7 +14,7 @@ const LINKS: Record<string, string> = { company: '/painel/empresa', accountant: 
 
 function StatusIcon({ status }: { status: Item['status'] }) {
   if (status === 'done') return <Check size={16} className="text-good" aria-label="Informado" />;
-  if (status === 'later') return <Clock size={16} className="text-ink-faint" aria-label="Fase seguinte" />;
+  if (status === 'later') return <Clock size={16} className="text-ink-faint" aria-label="Conferido fora do sistema" />;
   return <Circle size={16} className="text-bad" aria-label="Pendente" />;
 }
 
@@ -29,7 +29,7 @@ export default function SetupPage() {
     <>
       <PageHeader
         title="Configuração inicial"
-        description="O que a loja precisa para vender e emitir NF-e. Nenhum dado é preenchido automaticamente: cada item é informado pela empresa ou pelo contador."
+        description="O que a loja precisa para vender e emitir NF-e, até o lançamento. Nenhum dado é preenchido automaticamente: cada item é informado pela empresa ou pelo contador."
       />
       {error && <Notice tone="bad">{error}</Notice>}
       {data && (
@@ -40,7 +40,9 @@ export default function SetupPage() {
               <span className="text-lg text-ink-faint">/{data.summary.required}</span>
             </p>
             <p className="max-w-lg text-sm text-ink-soft">
-              itens obrigatórios informados. {data.summary.later} dependem das próximas fases (certificado, provedor fiscal, regras de tributação e pagamentos).
+              itens obrigatórios prontos.{' '}
+              {data.summary.later > 0 && `${data.summary.later} ${data.summary.later === 1 ? 'item é conferido' : 'itens são conferidos'} fora do sistema (backup no servidor). `}
+              Simulados de desenvolvimento não contam: só credenciais reais.
             </p>
           </div>
           <div className="grid gap-4 lg:grid-cols-2">

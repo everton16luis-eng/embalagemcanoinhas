@@ -68,8 +68,31 @@ const schema = z.object({
   MARKETPLACE_FAKE: blankAsMissing(z.enum(['true', 'false']).optional()).transform((v) => v === 'true'),
 });
 
+export type Config = z.infer<typeof schema>;
 export const config = schema.parse(process.env);
 export const isProduction = config.NODE_ENV === 'production';
+
+/** O que impede subir em producao: enderecos publicos sem HTTPS (cookies Secure e webhooks exigem). */
+export function productionErrors(c: Pick<Config, 'APP_ORIGIN' | 'PUBLIC_API_URL' | 'ML_REDIRECT_URI' | 'SHOPEE_REDIRECT_URI' | 'SHOPEE_PUSH_URL'>): string[] {
+  const urls: [string, string | undefined][] = [
+    ['APP_ORIGIN', c.APP_ORIGIN],
+    ['PUBLIC_API_URL', c.PUBLIC_API_URL],
+    ['ML_REDIRECT_URI', c.ML_REDIRECT_URI],
+    ['SHOPEE_REDIRECT_URI', c.SHOPEE_REDIRECT_URI],
+    ['SHOPEE_PUSH_URL', c.SHOPEE_PUSH_URL],
+  ];
+  return urls.filter(([, v]) => v !== undefined && !v.startsWith('https://')).map(([k]) => `${k} precisa ser https:// em producao`);
+}
+
+/** Avisos de producao que nao impedem a subida. */
+export function productionWarnings(c: Pick<Config, 'TRUST_PROXY'>): string[] {
+  return c.TRUST_PROXY === 0 ? ['TRUST_PROXY=0: atras do nginx os limites de tentativas valeriam para todos os clientes juntos (use 1)'] : [];
+}
+
+if (isProduction) {
+  const errors = productionErrors(config);
+  if (errors.length) throw new Error(errors.join('; '));
+}
 if (isProduction && config.PAYMENT_FAKE) throw new Error('PAYMENT_FAKE nao pode ser usado em producao');
 if (isProduction && config.FISCAL_FAKE) throw new Error('FISCAL_FAKE nao pode ser usado em producao');
 if (isProduction && config.MARKETPLACE_FAKE) throw new Error('MARKETPLACE_FAKE nao pode ser usado em producao');

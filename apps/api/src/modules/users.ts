@@ -52,6 +52,31 @@ export async function userRoutes(app: FastifyInstance) {
     }
   });
 
+  /**
+   * Nova senha temporaria para quem esqueceu (sem provedor de e-mail a recuperacao por link nao existe).
+   * Opcionalmente desliga o MFA de quem perdeu o celular. Sessoes abertas caem na hora.
+   */
+  app.post('/:id/password-reset', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req) => {
+    const auth = requirePermission(req, 'users.manage');
+    const { id } = idParams.parse(req.params);
+    const body = z.strictObject({ resetMfa: z.boolean().default(false) }).parse(req.body ?? {});
+    if (id === auth.userId) throw new AppError(409, 'SELF_CHANGE', 'Para a sua própria senha, use Minha conta.');
+    const password = temporaryPassword();
+    const hash = await hashPassword(password);
+    await tx(auth.userId, async (db) => {
+      const target = (await db.query('SELECT id, role, is_active FROM users WHERE id = $1 FOR UPDATE', [id])).rows[0];
+      if (!target) throw notFound();
+      if (target.role === 'owner' && auth.role !== 'owner') throw forbidden();
+      if (!target.is_active) throw new AppError(409, 'USER_INACTIVE', 'Reative o usuário antes de gerar uma nova senha.');
+      // So grava: o papel da API nao le password_hash nem totp_secret_enc.
+      await db.query('UPDATE users SET password_hash = $2, updated_at = now() WHERE id = $1', [id, hash]);
+      if (body.resetMfa) await db.query('UPDATE users SET totp_enabled = false, totp_secret_enc = NULL, totp_last_step = NULL WHERE id = $1', [id]);
+      await db.query('UPDATE sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL', [id]);
+      await audit(db, { actorId: auth.userId, action: 'users.password_reset', entity: 'user', entityId: id, metadata: { resetMfa: body.resetMfa }, ip: req.ip });
+    });
+    return { temporaryPassword: password };
+  });
+
   app.patch('/:id', async (req) => {
     const auth = requirePermission(req, 'users.manage');
     const { id } = idParams.parse(req.params);

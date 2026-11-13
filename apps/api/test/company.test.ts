@@ -77,8 +77,14 @@ describe('assistente de configuração', () => {
     expect(company.items.find((i: { key: string }) => i.key === 'cnpj').status).toBe('done');
     expect(company.items.find((i: { key: string }) => i.key === 'state_registration').status).toBe('missing');
     const fiscal = groups.find((g: { key: string }) => g.key === 'fiscal');
-    expect(fiscal.items.find((i: { key: string }) => i.key === 'certificate').status).toBe('later');
+    expect(fiscal.items.find((i: { key: string }) => i.key === 'certificate').status).toBe('missing');
     expect(summary.done).toBeLessThan(summary.required);
+    // Simulados de desenvolvimento nunca contam como prontos para o lancamento.
+    const pay = groups.find((g: { key: string }) => g.key === 'payments');
+    expect(pay.items[0].status).toBe('missing');
+    const launch = groups.find((g: { key: string }) => g.key === 'launch');
+    expect(launch.items.map((i: { key: string }) => i.key)).toEqual(['shipping', 'privacy', 'terms', 'homologation', 'production', 'backup']);
+    expect(launch.items.find((i: { key: string }) => i.key === 'production').status).toBe('missing');
   });
 });
 

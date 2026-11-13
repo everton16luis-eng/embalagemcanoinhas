@@ -387,3 +387,26 @@ Contratos conferidos na documentação oficial e decisões em
 - A cópia `backups/20261113-125357` do banco local ficou com um arquivo alterado de propósito (teste do `verify`);
   pode ser apagada.
 
+### Checklist de lançamento e implantação (13/11/2026)
+
+- **Configuração inicial virou o checklist do lançamento**: os itens que antes diziam "próxima fase" agora conferem o
+  estado real (regras fiscais validadas, certificado e dias até vencer, token de homologação do provedor fiscal,
+  credenciais de pagamento). Novo grupo **Antes de vender**: formas de entrega, política de privacidade (LGPD),
+  termos de uso, NF-e de teste autorizada e cancelada em homologação no provedor real, produção liberada com a
+  validação do contador e backup no servidor. Simulados de desenvolvimento nunca contam como prontos.
+- **Travas de produção na API**: não sobe com `APP_ORIGIN`, `PUBLIC_API_URL` ou URLs de retorno dos marketplaces sem
+  `https://` (além dos simuladores, que já eram recusados); avisa no log se `TRUST_PROXY=0` e que não há provedor de
+  e-mail.
+- **Nova senha temporária** em Usuários (permissão "Gerenciar usuários" com MFA): gera senha mostrada uma vez, derruba
+  as sessões e pode desligar o MFA de quem perdeu o celular. Ninguém usa para si mesmo; proprietário só por outro
+  proprietário; fica na auditoria. Sem provedor de e-mail, era o único jeito de recuperar o acesso.
+- **Kit de implantação** para Ubuntu: [IMPLANTACAO.md](IMPLANTACAO.md), unidades do systemd (`deploy/systemd`: banco
+  próprio, API, loja/painel, backup diário com timer) e modelo do nginx (`deploy/nginx/loja.conf`).
+  `node scripts/db-local.mjs init --production https://dominio` cria só o banco `loja_prod` e um `.env` de produção
+  sem simuladores.
+- Testes: API com 140 testes passando (nova senha temporária e travas de produção). O build da API subiu em modo
+  produção na máquina local: endereço sem HTTPS recusado, `/ready` respondendo, HSTS e `nosniff` presentes. Navegador:
+  checklist com os itens reais; "Nova senha" num usuário de teste (depois desativado), com a permissão e o MFA do
+  usuário de desenvolvimento ligados só no banco e retirados logo depois.
+- Não verificado: nada foi instalado num servidor de verdade (itens em TESTES-PENDENTES, seção Lançamento).
+

@@ -1,0 +1,17 @@
+# Cluster PostgreSQL proprio da loja (.local/pgdata, porta 54330, so 127.0.0.1).
+# Troque /srv/loja-embalagens e o usuario "loja" se instalar em outro lugar.
+[Unit]
+Description=Loja de embalagens - PostgreSQL proprio
+After=network.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=loja
+WorkingDirectory=/srv/loja-embalagens
+ExecStart=/usr/bin/node scripts/db-local.mjs start
+ExecStop=/usr/bin/node scripts/db-local.mjs stop
+TimeoutStartSec=60
+
+[Install]
+WantedBy=multi-user.target

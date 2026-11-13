@@ -6,6 +6,7 @@ sistemas desta pasta.
 
 - Diagnóstico e plano: [docs/00-diagnostico-e-plano.md](docs/00-diagnostico-e-plano.md)
 - Situação das fases: [docs/ACOMPANHAMENTO.md](docs/ACOMPANHAMENTO.md)
+- Implantação no servidor (Ubuntu): [docs/IMPLANTACAO.md](docs/IMPLANTACAO.md)
 
 ## Requisitos
 

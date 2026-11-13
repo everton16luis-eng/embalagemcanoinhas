@@ -3,6 +3,7 @@
 // Usa os binarios ja instalados, mas nunca toca no servico PostgreSQL da maquina
 // nem nos bancos de outros sistemas.
 // Uso: node scripts/db-local.mjs init|start|stop|status
+//      node scripts/db-local.mjs init --production https://loja.dominio.com.br   (servidor: so o banco loja_prod)
 import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -61,7 +62,7 @@ function psql(sql, password) {
   });
 }
 
-function init() {
+function init(prodOrigin) {
   mkdirSync(localDir, { recursive: true });
   if (!existsSync(dataDir)) {
     const creds = { superuser: secret(), owner: secret(), app: secret() };
@@ -85,7 +86,7 @@ function init() {
     END $$`,
     c.superuser,
   );
-  for (const db of ['loja_dev', 'loja_test']) {
+  for (const db of prodOrigin ? ['loja_prod'] : ['loja_dev', 'loja_test']) {
     const exists = run('psql', ['-h', '127.0.0.1', '-p', String(PORT), '-U', 'postgres', '-d', 'postgres', '-tAc', `SELECT 1 FROM pg_database WHERE datname = '${db}'`], {
       env: { PGPASSWORD: c.superuser },
     }).stdout.trim();
@@ -93,7 +94,7 @@ function init() {
     psql(`REVOKE ALL ON DATABASE ${db} FROM PUBLIC; GRANT CONNECT ON DATABASE ${db} TO loja_app`, c.superuser);
   }
   if (!existsSync(envFile)) {
-    const env = [
+    let env = [
       'NODE_ENV=development',
       'DB_HOST=127.0.0.1',
       `DB_PORT=${PORT}`,
@@ -143,14 +144,32 @@ function init() {
       'SHIP_FROM_CEP=',
       'CARRIER_FAKE=true',
       '',
-    ].join('\n');
-    writeFileSync(envFile, env, { mode: 0o600 });
+    ];
+    if (prodOrigin) {
+      // Producao: sem banco de teste e sem simulados; enderecos publicos com https.
+      const prod = { NODE_ENV: 'production', DB_NAME: 'loja_prod', APP_ORIGIN: prodOrigin, PUBLIC_API_URL: prodOrigin, TRUST_PROXY: '1' };
+      env = env
+        .filter((l) => !l.startsWith('DB_NAME_TEST=') && !/^[A-Z_]+_FAKE=/.test(l))
+        .map((l) => {
+          const k = l.split('=')[0];
+          return k in prod && !l.startsWith('#') ? `${k}=${prod[k]}` : l;
+        });
+    }
+    writeFileSync(envFile, env.join('\n'), { mode: 0o600 });
     console.log('.env criado com segredos aleatorios');
   }
 }
 
 const cmd = process.argv[2];
-if (cmd === 'init') init();
+if (cmd === 'init') {
+  const prod = process.argv[3] === '--production';
+  const origin = process.argv[4];
+  if (prod && !/^https:\/\/[a-z0-9.-]+$/.test(origin ?? '')) {
+    console.error('Informe o endereco publico: node scripts/db-local.mjs init --production https://loja.dominio.com.br');
+    process.exit(1);
+  }
+  init(prod ? origin : undefined);
+}
 else if (cmd === 'start') start();
 else if (cmd === 'stop') stop();
 else if (cmd === 'status') console.log(isRunning() ? `rodando na porta ${PORT}` : 'parado');

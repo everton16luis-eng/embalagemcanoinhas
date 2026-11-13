@@ -95,6 +95,28 @@ describe('usuários', () => {
     expect(login.statusCode).toBe(200);
   });
 
+  it('nova senha temporária: derruba a sessão, a antiga deixa de valer e o MFA pode ser desligado', async () => {
+    const boss = await loggedAs(app, 'owner', { mfa: true });
+    const sales = await loggedAs(app, 'sales', { mfa: true });
+    expect((await sales.get('/api/v1/auth/me')).statusCode).toBe(200);
+    const res = await boss.post(`/api/v1/admin/users/${sales.user.id}/password-reset`, { resetMfa: true });
+    expect(res.statusCode).toBe(200);
+    const { temporaryPassword } = res.json();
+    expect((await sales.get('/api/v1/auth/me')).statusCode).toBe(401);
+    // Senha antiga recusada; a nova entra sem o codigo do MFA, que foi desligado.
+    await expect(client(app).login({ email: sales.user.email, secret: null })).rejects.toThrow();
+    expect((await client(app).post('/api/v1/auth/login', { email: sales.user.email, password: temporaryPassword })).statusCode).toBe(200);
+    const row = (await pool.query('SELECT totp_enabled FROM users WHERE id = $1', [sales.user.id])).rows[0];
+    expect(row.totp_enabled).toBe(false);
+    const log = (await pool.query(`SELECT metadata FROM audit_logs WHERE action = 'users.password_reset' AND entity_id = $1`, [sales.user.id])).rows[0];
+    expect(log.metadata).toEqual({ resetMfa: true });
+    // Propria senha: Minha conta. Proprietario: so outro proprietario. Sem MFA de quem pede: recusado.
+    expect((await boss.post(`/api/v1/admin/users/${boss.user.id}/password-reset`, {})).json().error.code).toBe('SELF_CHANGE');
+    const admin = await loggedAs(app, 'manager', { mfa: true });
+    await boss.patch(`/api/v1/admin/users/${admin.user.id}`, { overrides: { 'users.manage': true } });
+    expect((await admin.post(`/api/v1/admin/users/${boss.user.id}/password-reset`, {})).statusCode).toBe(403);
+  });
+
   it('gerente não cria proprietário; ninguém altera o próprio papel', async () => {
     const manager = await loggedAs(app, 'manager', { mfa: true });
     // gerente nao tem users.manage por padrao
@@ -114,5 +136,18 @@ describe('usuários', () => {
     expect(me.permissions).not.toContain('sales_desk.use');
     await boss.patch(`/api/v1/admin/users/${sales.user.id}`, { isActive: false });
     expect((await sales.get('/api/v1/auth/me')).statusCode).toBe(401);
+  });
+});
+
+describe('travas de producao', () => {
+  it('enderecos publicos sem https impedem a subida; TRUST_PROXY=0 so avisa', async () => {
+    const { productionErrors, productionWarnings } = await import('../src/config.js');
+    expect(productionErrors({ APP_ORIGIN: 'https://loja.exemplo.com.br', PUBLIC_API_URL: 'https://loja.exemplo.com.br' } as never)).toEqual([]);
+    expect(productionErrors({ APP_ORIGIN: 'http://loja.exemplo.com.br', SHOPEE_PUSH_URL: 'http://x.exemplo.com' } as never)).toEqual([
+      'APP_ORIGIN precisa ser https:// em producao',
+      'SHOPEE_PUSH_URL precisa ser https:// em producao',
+    ]);
+    expect(productionWarnings({ TRUST_PROXY: 0 })).toHaveLength(1);
+    expect(productionWarnings({ TRUST_PROXY: 1 })).toEqual([]);
   });
 });

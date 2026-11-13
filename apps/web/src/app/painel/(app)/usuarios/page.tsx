@@ -54,7 +54,8 @@ function Users() {
   const [users, setUsers] = useState<User[]>([]);
   const [roles, setRoles] = useState<string[]>([]);
   const [form, setForm] = useState({ email: '', name: '', role: 'sales' });
-  const [created, setCreated] = useState<{ email: string; password: string } | null>(null);
+  const [created, setCreated] = useState<{ email: string; password: string; reset?: boolean } | null>(null);
+  const [resetting, setResetting] = useState<{ id: string; resetMfa: boolean } | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [error, setError] = useState('');
   const manage = can('users.manage') && me.user.mfaEnabled;
@@ -83,6 +84,20 @@ function Users() {
     }
   };
 
+  const resetPassword = async () => {
+    if (!resetting) return;
+    setError('');
+    try {
+      const r = await api(`/admin/users/${resetting.id}/password-reset`, { method: 'POST', body: { resetMfa: resetting.resetMfa } });
+      const u = users.find((x) => x.id === resetting.id);
+      setCreated({ email: u?.email ?? '', password: r.temporaryPassword, reset: true });
+      setResetting(null);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha.');
+    }
+  };
+
   return (
     <>
       <PageHeader title="Usuários" description="Cada pessoa tem o próprio acesso. O papel define as permissões padrão." />
@@ -90,7 +105,7 @@ function Users() {
       {created && (
         <div className="mb-4">
           <Notice tone="act">
-            Acesso criado para <strong>{created.email}</strong>. Senha inicial: <code className="rounded bg-card px-1.5 py-0.5 font-mono">{created.password}</code>. Ela aparece só agora: entregue à pessoa por um canal seguro e peça para trocar no primeiro acesso.
+            {created.reset ? 'Nova senha para' : 'Acesso criado para'} <strong>{created.email}</strong>. {created.reset ? 'Senha temporária:' : 'Senha inicial:'} <code className="rounded bg-card px-1.5 py-0.5 font-mono">{created.password}</code>. Ela aparece só agora: entregue à pessoa por um canal seguro e peça para trocar no primeiro acesso.
           </Notice>
         </div>
       )}
@@ -121,6 +136,9 @@ function Users() {
                       {manage && u.id !== me.user.id && (
                         <>
                           {u.role !== 'owner' && <Button variant="ghost" onClick={() => setEditing(u.id)}>Permissões</Button>}
+                          {u.is_active && (u.role !== 'owner' || me.user.role === 'owner') && (
+                            <Button variant="ghost" onClick={() => setResetting({ id: u.id, resetMfa: false })}>Nova senha</Button>
+                          )}
                           <Button variant="ghost" onClick={() => void patch(u.id, { isActive: !u.is_active })}>{u.is_active ? 'Desativar' : 'Reativar'}</Button>
                         </>
                       )}
@@ -130,6 +148,21 @@ function Users() {
               </tbody>
             </table>
           </div>
+          {resetting && (
+            <Panel title={`Nova senha para ${users.find((x) => x.id === resetting.id)?.name ?? ''}`}>
+              <p className="text-sm text-ink-soft">
+                Gera uma senha temporária, mostrada uma única vez, e encerra as sessões abertas dessa pessoa. A senha atual deixa de valer.
+              </p>
+              <label className="mt-3 flex items-start gap-2 text-sm">
+                <input type="checkbox" className="mt-1" checked={resetting.resetMfa} onChange={(e) => setResetting({ ...resetting, resetMfa: e.target.checked })} />
+                Desligar também a verificação em duas etapas (a pessoa perdeu o celular). Ela precisará ativar de novo.
+              </label>
+              <div className="mt-3 flex gap-2">
+                <Button variant="primary" onClick={() => void resetPassword()}>Gerar nova senha</Button>
+                <Button variant="ghost" onClick={() => setResetting(null)}>Cancelar</Button>
+              </div>
+            </Panel>
+          )}
           {editing && <Permissions id={editing} onDone={() => { setEditing(null); void load(); }} />}
         </div>
         {manage && (

@@ -1,0 +1,11 @@
+# Backup do banco e da pasta storage/ (docs/BACKUP.md). Disparado pelo loja-backup.timer.
+[Unit]
+Description=Loja de embalagens - backup diario
+Requires=loja-db.service
+After=loja-db.service
+
+[Service]
+Type=oneshot
+User=loja
+WorkingDirectory=/srv/loja-embalagens
+ExecStart=/usr/bin/node scripts/backup.mjs backup

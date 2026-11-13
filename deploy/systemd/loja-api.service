@@ -1,0 +1,25 @@
+# API (Fastify) e rotinas de 60 s (reservas, fiscal, marketplaces, WhatsApp). Escuta so em 127.0.0.1:4010.
+[Unit]
+Description=Loja de embalagens - API
+After=network-online.target loja-db.service
+Wants=network-online.target
+Requires=loja-db.service
+
+[Service]
+Type=simple
+User=loja
+WorkingDirectory=/srv/loja-embalagens/apps/api
+ExecStart=/usr/bin/node --env-file=/srv/loja-embalagens/.env dist/server.js
+Restart=on-failure
+RestartSec=5
+# Encerramento limpo: a API termina as requisicoes em andamento (ate 15 s).
+KillSignal=SIGTERM
+TimeoutStopSec=20
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/srv/loja-embalagens/storage
+
+[Install]
+WantedBy=multi-user.target

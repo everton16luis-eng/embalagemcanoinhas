@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { INVOICE_STATUS, METHOD_LABEL, ORDER_STATUS } from '@/components/orders';
+import { CHANNEL_LABEL, INVOICE_STATUS, METHOD_LABEL, ORDER_STATUS } from '@/components/orders';
 import { Guard } from '@/components/shell';
 import { Badge, Empty, Input, Notice, PageHeader, Select } from '@/components/ui';
 import { api } from '@/lib/api';
@@ -13,6 +13,7 @@ type Row = {
   number: number;
   status: string;
   buyer_name: string;
+  channel: string;
   payment_method: string;
   total_cents: string;
   invoice_status: string;
@@ -84,6 +85,7 @@ function OrderList() {
                         </span>
                         <span className="block text-xs text-ink-faint">
                           {when(o.created_at)} · {METHOD_LABEL[o.payment_method]}
+                          {o.channel && o.channel !== 'store' && ` · ${CHANNEL_LABEL[o.channel] ?? o.channel}`}
                         </span>
                       </Link>
                     </td>

@@ -30,4 +30,5 @@ export const INVOICE_STATUS: Record<string, { label: string; tone: Tone }> = {
   not_required: { label: 'Sem NF-e', tone: 'neutral' },
 };
 
-export const METHOD_LABEL: Record<string, string> = { pix: 'Pix', card: 'Cartão' };
+export const METHOD_LABEL: Record<string, string> = { pix: 'Pix', card: 'Cartão', marketplace: 'Pago no marketplace' };
+export const CHANNEL_LABEL: Record<string, string> = { store: 'Loja', sales_desk: 'Balcão', mercadolivre: 'Mercado Livre', shopee: 'Shopee' };

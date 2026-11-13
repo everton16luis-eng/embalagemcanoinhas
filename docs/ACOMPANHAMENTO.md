@@ -271,6 +271,55 @@ Critério do plano: **orçamento → pedido sem redigitar**. Testes externos des
 - Pagamento "na loja" (dinheiro, maquininha) para pedidos do balcão não existe: hoje o pedido do balcão é pago por
   Pix ou cartão online. Se quiser receber no balcão, é uma decisão sua (e do contador, para a nota).
 
+## Fase 7 — Mercado Livre e Shopee — entregue para validação (13/11/2026)
+
+Critério do plano: **pedidos importados sem duplicidade e estoque sincronizado**. Decisões e contratos das APIs
+(conferidos na documentação oficial) em [07-marketplaces.md](07-marketplaces.md); testes reais em
+[TESTES-PENDENTES.md](TESTES-PENDENTES.md) (precisam de app cadastrado, HTTPS e conta de vendedor).
+
+### Pronto
+
+- **Conexão das contas** pelo painel (Marketplaces, permissão `marketplaces.manage` com MFA): OAuth com `state` de
+  uso único e PKCE no Mercado Livre; tokens cifrados; renovação automática antes de vencer, com trava por conta
+  (refresh de uso único). Recusa da plataforma deixa a conta em "Autorizar de novo".
+- **Vínculo de anúncios**: cada anúncio (ou modelo da Shopee) aponta para uma embalagem de venda, com busca de
+  embalagens na própria tela.
+- **Saldo**: disponível em embalagens (descontadas as reservas) enviado ao anúncio quando muda; botão "Enviar saldos
+  agora". Sob encomenda não envia; anúncio do ML com variação fica manual.
+- **Vendas**: avisos (ML sem assinatura, Shopee com HMAC conferido) só disparam a consulta. Venda paga vira pedido
+  pago no canal do marketplace, com reserva de estoque. Anúncio sem vínculo ou falta de estoque deixam a venda em
+  "Precisa de ação" com o motivo; vincular o anúncio reprocessa. Venda cancelada lá cancela o pedido e devolve a
+  reserva. "Buscar venda" pelo número cobre aviso perdido.
+- Pedidos mostram o canal (Mercado Livre/Shopee) e "Pago no marketplace"; ficam fora da emissão automática de NF-e.
+- O backup confere também contas e vendas de marketplace.
+
+### Testes
+
+- API: 125 testes passando (21 novos em `marketplaces.test.ts`, com os dois marketplaces simulados e respostas
+  gravadas para os adaptadores reais): state de uso único e de outra pessoa, tokens cifrados, permissão e MFA,
+  renovação e reautorização, importação sem duplicar com aviso repetido, reserva e saldo enviado (17 = (1000 − 150) / 50),
+  sem vínculo → vincula → importa, sem estoque, aguardando pagamento → paga → cancelada, erro de rede e nova
+  consulta, aviso de outra conta/tópico, push da Shopee sem assinatura recusado, ML com variação sem envio,
+  assinatura das chamadas da Shopee e PKCE conferidos pela fórmula da documentação.
+- Navegador (desenvolvimento, simulado): conectar o Mercado Livre até a página de retorno, vincular anúncio a uma
+  embalagem, enviar saldo (4 pacotes), buscar venda inexistente (fica em "Precisa de ação" com o motivo). Tela a
+  375 px sem transbordar. Para essa verificação, o MFA do usuário de desenvolvimento foi ligado só no banco e
+  desligado logo depois.
+
+### Decisões registradas
+
+- O aviso nunca é a verdade: a situação vem sempre da consulta à API.
+- Venda importada usa o preço pago no marketplace; frete 0 no pedido (o envio é do marketplace).
+- Sem estoque, a venda não é importada (não há reserva além do saldo); fica com o motivo até a entrada de estoque ou
+  o cancelamento no marketplace.
+- Dados pessoais do comprador não são copiados; a NF-e desses pedidos é manual até decidir com o contador.
+
+### Não verificado / pendente com você
+
+- Nada foi chamado nas APIs reais: aplicativos, URLs com HTTPS e contas de teste estão em TESTES-PENDENTES.
+- Códigos de erro específicos da Shopee não são interpretados (só HTTP 401/403 pedem nova autorização); confirmar
+  com respostas reais.
+
 ---
 
 ## Preparação do lançamento (V1)

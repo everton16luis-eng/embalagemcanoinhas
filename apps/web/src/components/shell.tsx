@@ -1,6 +1,6 @@
 'use client';
 
-import { BarChart3, Boxes, Building2, ClipboardCheck, ClipboardList, FileText, FolderTree, History, LogOut, MapPinned, Menu, Package, ReceiptText, RefreshCw, Search, Settings, ShoppingCart, Store, Truck, UserRound, Users, Warehouse, X } from 'lucide-react';
+import { BarChart3, Blocks, Boxes, Building2, ClipboardCheck, ClipboardList, FileText, FolderTree, History, LogOut, MapPinned, Menu, Package, ReceiptText, RefreshCw, Search, Settings, ShoppingCart, Store, Truck, UserRound, Users, Warehouse, X } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
@@ -22,6 +22,7 @@ const NAV = [
   { href: '/painel/balcao', label: 'Balcão', icon: Search, perm: 'sales_desk.use' },
   { href: '/painel/orcamentos', label: 'Orçamentos', icon: ReceiptText, perm: 'sales_desk.use' },
   { href: '/painel/pedidos', label: 'Pedidos', icon: Package, perm: 'orders.view' },
+  { href: '/painel/marketplaces', label: 'Marketplaces', icon: Blocks, perm: 'marketplaces.manage' },
   { href: '/painel/produtos', label: 'Produtos', icon: Boxes, perm: 'catalog.view' },
   { href: '/painel/categorias', label: 'Categorias', icon: FolderTree, perm: 'catalog.view' },
   { href: '/painel/estoque', label: 'Estoque', icon: Warehouse, perm: 'stock.view' },

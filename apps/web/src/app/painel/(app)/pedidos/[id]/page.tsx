@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { DOC_STATUS } from '@/components/fiscal';
-import { INVOICE_STATUS, METHOD_LABEL, ORDER_STATUS, PAYMENT_STATUS } from '@/components/orders';
+import { CHANNEL_LABEL, INVOICE_STATUS, METHOD_LABEL, ORDER_STATUS, PAYMENT_STATUS } from '@/components/orders';
 import { Guard, useMe } from '@/components/shell';
 import { Badge, Button, Field, Input, Notice, PageHeader, Panel, Textarea } from '@/components/ui';
 import { api } from '@/lib/api';
@@ -404,7 +404,7 @@ function Detail() {
               {o.paid_at && <span className="text-ink-soft"> · pago {when(o.paid_at)}</span>}
             </p>
             <ul className="mt-2 space-y-1.5">
-              {o.payments.length === 0 && <li className="text-sm text-ink-faint">Nenhuma tentativa ainda.</li>}
+              {o.payments.length === 0 && <li className="text-sm text-ink-faint">{o.payment_method === 'marketplace' ? `Recebido pelo ${CHANNEL_LABEL[o.channel] ?? 'marketplace'}; repasse conforme o contrato da plataforma.` : 'Nenhuma tentativa ainda.'}</li>}
               {o.payments.map((p) => (
                 <li key={p.id} className="flex flex-wrap items-center gap-1.5 text-sm">
                   <Badge tone={PAYMENT_STATUS[p.status]!.tone}>{PAYMENT_STATUS[p.status]!.label}</Badge>

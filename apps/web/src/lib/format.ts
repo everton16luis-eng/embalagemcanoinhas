@@ -55,6 +55,7 @@ export const PERMISSION_LABELS: Record<string, string> = {
   'orders.manage': 'Gerenciar pedidos',
   'shipping.manage': 'Expedição',
   'sales_desk.use': 'Central comercial',
+  'marketplaces.manage': 'Marketplaces (Mercado Livre, Shopee)',
   'finance.view': 'Ver financeiro',
   'reports.view': 'Ver relatórios',
 };

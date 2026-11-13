@@ -3,7 +3,7 @@
 import { Check, Copy } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
-import { qtyText, reais } from './price';
+import { reais } from './price';
 
 type Payment = { id: string; method: string; status: string; status_detail: string | null; amount_cents: string; pix_qr_code: string | null; pix_qr_base64: string | null; pix_expires_at: string | null; card_last_four: string | null; card_brand: string | null; installments: number | null };
 export type Order = {
@@ -173,7 +173,7 @@ export function OrderView({ base, devToken }: { base: string; devToken?: string 
               <span className="min-w-0">
                 <span className="block font-semibold [overflow-wrap:anywhere]">{i.product_name}</span>
                 <span className="block text-xs text-g-soft">
-                  {i.packs} × {i.packaging_label} ({qtyText(i.base_qty_per_pack)}) · {reais(i.unit_price_cents)} cada
+                  {i.packs} × {i.packaging_label} · {reais(i.unit_price_cents)} cada
                   {i.made_to_order && ` · sob encomenda${i.lead_time_days ? `, ${i.lead_time_days} dias` : ''}`}
                 </span>
               </span>

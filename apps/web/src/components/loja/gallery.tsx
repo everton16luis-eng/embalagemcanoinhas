@@ -8,7 +8,8 @@ type Image = { file_key: string; alt: string | null };
 
 export function Gallery({ images, alt }: { images: Image[]; alt: string }) {
   const [i, setI] = useState(0);
-  if (!images.length) return <Photo imageKey={null} alt={alt} size={800} />;
+  // Sem foto, no celular o espaco reservado fica baixo para o preco aparecer sem rolar.
+  if (!images.length) return <Photo imageKey={null} alt={alt} size={800} className="max-sm:aspect-[16/7]" />;
   const cur = images[Math.min(i, images.length - 1)]!;
   return (
     <div className="grid gap-2.5 sm:grid-cols-[72px_1fr]">

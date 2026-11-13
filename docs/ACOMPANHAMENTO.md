@@ -107,18 +107,57 @@ Ver [00-diagnostico-e-plano.md](00-diagnostico-e-plano.md).
 
 - Inspeção por captura de tela: o painel do navegador seguia oculto; a verificação foi por texto e medidas.
 
-## Fase 4 — Loja, carrinho, checkout e pedidos — em andamento
+## Fase 4 — Loja, carrinho, checkout e pedidos — entregue para validação (13/11/2026)
 
-### Direção visual — aguardando aprovação (13/11/2026)
+### Direção visual
 
 Proposta em [design/direcoes-visuais.html](design/direcoes-visuais.html): A · Gôndola (recomendada), B · Ateliê,
-C · Catálogo técnico, cada uma com página inicial (computador e celular), categoria e produto, paleta, tipografia,
-hierarquia e riscos. Marca, fotos, preços e CNPJ nas telas são provisórios.
+C · Catálogo técnico. Sem resposta no prazo, a loja foi construída na **A · Gôndola**, como combinado: dá para trocar,
+os tokens da loja ficam separados (`--color-g-*` em `globals.css`). Da C veio o pedido rápido por código (SKU).
+A linha de "ocasiões" da B ficou de fora: depende de curadoria real de produtos.
 
-Pesquisa de referências: padrões de atacado (preço por faixa de quantidade, comparação de tamanhos de embalagem,
-pedido rápido por código) e lojas de confeitaria guiadas pela embalagem. Nada copiado.
+### Pronto
 
-Informações ainda necessárias: nome e logotipo, fotos dos produtos, se haverá retirada no balcão.
+- **Faixas de preço por quantidade** por embalagem de venda (até 6). Alterar exige permissão de preços + MFA,
+  como o preço. Editor no cadastro de produto.
+- **Vitrine** (`/`, `/c/[departamento]`, `/busca`, `/p/[produto]`): etiqueta amarela com preço da embalagem e preço
+  por unidade, escada de preço por quantidade, pronta entrega × sob encomenda com prazo, filtros e ordenação que
+  funcionam sem JavaScript. Foto ausente aparece como "Foto em breve" (nunca imagem inventada).
+- **Carrinho** por cookie, recalculado no servidor a cada mudança; aviso de falta de estoque e de "leve mais N".
+- **Frete** por regras do painel (Formas de entrega): retirada, ou entrega por faixa de CEP, valor fixo + por kg,
+  grátis acima de um valor, peso máximo.
+- **Checkout** sem obrigar conta, idempotente (duplo clique devolve o mesmo pedido), preço recalculado no servidor,
+  bloqueio se o preço mudou ou faltou estoque. Estoque reservado na hora; item sob encomenda entra como encomenda.
+- **Pagamento Mercado Pago** (Checkout Transparente): Pix com QR e copia e cola, cartão pelo Card Payment Brick
+  (a loja recebe só o token). Aviso (webhook) com assinatura `x-signature` conferida, avisos repetidos ignorados,
+  valor divergente nunca aprova. A tela do pedido também consulta o Mercado Pago enquanto o Pix está pendente.
+- **Vencimento**: pedido sem pagamento no prazo é cancelado e o estoque volta; antes, a rotina pergunta ao
+  Mercado Pago (Pix pago no último minuto não é cancelado).
+- **Conta do cliente**: cadastro, entrada, endereços, meus pedidos. Sessão separada da equipe.
+- **Painel**: Pedidos (separação → pronto → despacho, cancelamento com devolução de estoque), Formas de entrega.
+  **Despacho só com NF-e autorizada** (a emissão é a Fase 5; até lá fica bloqueado de propósito).
 
-Antes da vitrine: 3 direções visuais com mockups para aprovação. Em paralelo, sem depender da aprovação: clientes,
-carrinho e pedido na API, integração do Mercado Pago (documentação oficial), frete e expedição.
+### Testes
+
+- API: 75 testes passando (24 novos em `store.test.ts`): faixas, vitrine sem custo/saldo, CSRF do carrinho, frete,
+  checkout idempotente, bloqueios, encomenda, Pix/cartão/aviso, assinatura oficial do Mercado Pago, vencimento,
+  despacho bloqueado sem NF-e e baixa no despacho, permissões, conta do cliente, papel do banco.
+- Navegador (provedor simulado): produto → carrinho → frete por CEP → pedido → Pix → pago → painel (separação,
+  pronto, despacho bloqueado). Nenhuma página transborda a 375 px.
+
+### Decisões registradas
+
+- Link de acompanhamento do pedido derivado da chave do pedido com a chave secreta do servidor (só o hash no banco).
+- Pedido pago guarda a reserva até o despacho; o despacho consome a reserva (baixa de estoque).
+- Cancelar pedido pago não devolve o dinheiro sozinho: o painel avisa para devolver no Mercado Pago. Devolução
+  pela API fica para quando as credenciais forem homologadas.
+- `PAYMENT_FAKE=true` liga um provedor simulado **só fora de produção** (a API recusa iniciar em produção com ele).
+- Formas de entrega "(exemplo)" existem só no banco local de desenvolvimento.
+
+### Não verificado / pendente com você
+
+- **Credenciais de teste do Mercado Pago** (Access Token, Public Key, chave do webhook) para homologar Pix e o
+  Card Payment Brick de verdade. O formulário do cartão foi escrito pela documentação, mas só roda com a chave pública.
+- Endereço público (https) da API para o Mercado Pago chamar o webhook.
+- Nome e logotipo da loja, fotos, dados da empresa no rodapé, textos de trocas/privacidade (Painel > Marca da loja).
+- Formas de entrega reais (retirada? quais CEPs? valores?).

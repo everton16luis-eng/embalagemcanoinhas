@@ -76,7 +76,8 @@ export function AdminShell({ children }: { children: ReactNode }) {
         <p className="text-[11px] font-semibold tracking-[0.14em] text-side-ink uppercase">Painel</p>
         <p className="mt-0.5 text-[15px] font-semibold text-white">Gestão da loja</p>
       </div>
-      <ul className="flex-1 space-y-0.5 px-2">
+      {/* So a lista rola: usuario e Sair ficam fixos embaixo, sempre sobre o fundo da barra. */}
+      <ul className="min-h-0 flex-1 space-y-0.5 overflow-y-auto overscroll-contain px-2 pb-2 [scrollbar-color:rgb(255_255_255/0.2)_transparent] [scrollbar-width:thin]">
         {items.map(({ href, label, icon: Icon }) => (
           <li key={href}>
             <Link
@@ -90,7 +91,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
           </li>
         ))}
       </ul>
-      <div className="border-t border-side-line p-2">
+      <div className="shrink-0 border-t border-side-line p-2">
         <Link href="/painel/conta" className={`flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm ${active('/painel/conta') ? 'bg-white/10 text-white' : 'text-side-ink hover:bg-white/5 hover:text-white'}`}>
           <UserRound size={17} strokeWidth={1.75} aria-hidden />
           <span className="min-w-0">
@@ -109,7 +110,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
   return (
     <MeContext.Provider value={{ me, can, reload }}>
       <div className="min-h-dvh lg:grid lg:grid-cols-[232px_1fr]">
-        <aside className="hidden bg-side lg:sticky lg:top-0 lg:block lg:h-dvh">{nav}</aside>
+        <aside className="hidden overflow-hidden bg-side lg:sticky lg:top-0 lg:block lg:h-dvh">{nav}</aside>
         <div className="flex items-center justify-between bg-side px-4 py-2.5 lg:hidden">
           <span className="text-sm font-semibold text-white">Gestão da loja</span>
           <button onClick={() => setOpen(true)} aria-label="Abrir menu" className="rounded p-1.5 text-white">

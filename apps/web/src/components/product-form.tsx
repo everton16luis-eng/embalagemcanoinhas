@@ -10,7 +10,8 @@ import { centsToInput, money, parseMoney, parseQty, qty, qtyToInput } from '@/li
 
 type Unit = { code: string; name: string; allows_fraction: boolean };
 type Category = { id: string; name: string; parent_id: string | null };
-type Pack = { id?: string; kind: 'sale' | 'purchase'; label: string; unitCode: string; baseQty: string; price: string; barcode: string; isDefault: boolean };
+type Tier = { minPacks: string; price: string };
+type Pack = { id?: string; kind: 'sale' | 'purchase'; label: string; unitCode: string; baseQty: string; price: string; barcode: string; isDefault: boolean; tiers: Tier[] };
 type Variant = { id?: string; sku: string; barcode: string; attrs: { key: string; value: string }[]; weightG: string; packagings: Pack[] };
 export type ProductForm = {
   id?: string;
@@ -45,7 +46,7 @@ export const emptyProduct = (): ProductForm => ({
   leadTimeDays: '',
   minStock: '0',
   specs: [],
-  variants: [{ sku: '', barcode: '', attrs: [], weightG: '', packagings: [{ kind: 'sale', label: 'Unidade', unitCode: 'UN', baseQty: '1', price: '', barcode: '', isDefault: true }] }],
+  variants: [{ sku: '', barcode: '', attrs: [], weightG: '', packagings: [{ kind: 'sale', label: 'Unidade', unitCode: 'UN', baseQty: '1', price: '', barcode: '', isDefault: true, tiers: [] }] }],
 });
 
 /** Produto da API para o formulario. */
@@ -74,7 +75,7 @@ export function toForm(p: any): ProductForm {
         barcode: v.barcode ?? '',
         attrs: Object.entries(v.attributes as Record<string, string>).map(([key, value]) => ({ key, value })),
         weightG: v.weight_g ? String(v.weight_g) : '',
-        packagings: v.packagings.map((k: any) => ({ id: k.id, kind: k.kind, label: k.label, unitCode: k.unit_code, baseQty: qtyToInput(k.base_qty), price: centsToInput(k.price_cents), barcode: k.barcode ?? '', isDefault: k.is_default })),
+        packagings: v.packagings.map((k: any) => ({ id: k.id, kind: k.kind, label: k.label, unitCode: k.unit_code, baseQty: qtyToInput(k.base_qty), price: centsToInput(k.price_cents), barcode: k.barcode ?? '', isDefault: k.is_default, tiers: (k.tiers ?? []).map((t: any) => ({ minPacks: String(t.minPacks), price: centsToInput(t.priceCents) })) })),
       })),
   };
 }
@@ -110,6 +111,7 @@ function toPayload(f: ProductForm) {
         priceCents: k.kind === 'sale' ? parseMoney(k.price) : null,
         barcode: k.barcode.trim() || null,
         isDefault: k.isDefault,
+        tiers: k.kind === 'sale' ? k.tiers.filter((t) => t.minPacks && t.price).map((t) => ({ minPacks: Number(t.minPacks), priceCents: parseMoney(t.price) })) : [],
       })),
     })),
   };
@@ -307,7 +309,8 @@ export function ProductEditor({ initial, onSaved }: { initial: ProductForm; onSa
                 <div className="space-y-2">
                   {v.packagings.map((k, pi) =>
                     k.kind !== kind ? null : (
-                      <div key={k.id ?? `n${pi}`} className="grid grid-cols-2 gap-2 rounded-md border border-line p-2.5 sm:grid-cols-[1.4fr_0.9fr_0.8fr_0.9fr_auto] sm:items-end">
+                      <div key={k.id ?? `n${pi}`} className="rounded-md border border-line p-2.5">
+                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-[1.4fr_0.9fr_0.8fr_0.9fr_auto] sm:items-end">
                         <Field label="Nome">{(id) => <Input id={id} required value={k.label} onChange={(e) => setPack(vi, pi, { label: e.target.value })} placeholder={kind === 'sale' ? 'Pacote com 50' : 'Caixa do fornecedor'} />}</Field>
                         <Field label="Unidade">
                           {(id) => (
@@ -345,6 +348,15 @@ export function ProductEditor({ initial, onSaved }: { initial: ProductForm; onSa
                           </Button>
                         </div>
                       </div>
+                      {kind === 'sale' && (
+                        <TierEditor
+                          tiers={k.tiers}
+                          listPrice={parseMoney(k.price)}
+                          disabled={Boolean(k.id) && !canPrice}
+                          onChange={(tiers) => setPack(vi, pi, { tiers })}
+                        />
+                      )}
+                      </div>
                     ),
                   )}
                 </div>
@@ -352,7 +364,7 @@ export function ProductEditor({ initial, onSaved }: { initial: ProductForm; onSa
                   type="button"
                   variant="ghost"
                   className="mt-1.5 -ml-2"
-                  onClick={() => setVariant(vi, { packagings: [...v.packagings, { kind, label: '', unitCode: kind === 'sale' ? 'PCT' : 'CX', baseQty: '', price: '', barcode: '', isDefault: !v.packagings.some((x) => x.kind === kind) }] })}
+                  onClick={() => setVariant(vi, { packagings: [...v.packagings, { kind, label: '', unitCode: kind === 'sale' ? 'PCT' : 'CX', baseQty: '', price: '', barcode: '', isDefault: !v.packagings.some((x) => x.kind === kind), tiers: [] }] })}
                 >
                   <Plus size={15} /> {kind === 'sale' ? 'Embalagem de venda' : 'Embalagem de compra'}
                 </Button>
@@ -364,7 +376,7 @@ export function ProductEditor({ initial, onSaved }: { initial: ProductForm; onSa
           </Panel>
         ))}
 
-        <Button type="button" variant="secondary" onClick={() => set('variants', [...f.variants, { sku: '', barcode: '', attrs: [{ key: '', value: '' }], weightG: '', packagings: [{ kind: 'sale', label: 'Unidade', unitCode: f.baseUnit, baseQty: '1', price: '', barcode: '', isDefault: true }] }])}>
+        <Button type="button" variant="secondary" onClick={() => set('variants', [...f.variants, { sku: '', barcode: '', attrs: [{ key: '', value: '' }], weightG: '', packagings: [{ kind: 'sale', label: 'Unidade', unitCode: f.baseUnit, baseQty: '1', price: '', barcode: '', isDefault: true, tiers: [] }] }])}>
           <Plus size={15} /> Adicionar variação (cor, tamanho…)
         </Button>
 
@@ -397,5 +409,41 @@ export function ProductEditor({ initial, onSaved }: { initial: ProductForm; onSa
       </div>
       {!editable && <Notice>Você pode consultar, mas não alterar o catálogo.</Notice>}
     </form>
+  );
+}
+
+/** Preco por quantidade: a partir de N embalagens, cada uma sai por R$ X. */
+function TierEditor({ tiers, listPrice, disabled, onChange }: { tiers: Tier[]; listPrice: number | null; disabled: boolean; onChange: (t: Tier[]) => void }) {
+  const set = (i: number, patch: Partial<Tier>) => onChange(tiers.map((t, j) => (j === i ? { ...t, ...patch } : t)));
+  return (
+    <div className="mt-2 border-t border-dashed border-line pt-2">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <span className="text-[13px] text-ink-soft">Preço por quantidade</span>
+        {tiers.map((t, i) => {
+          const price = parseMoney(t.price);
+          const off = listPrice && price ? Math.round((1 - price / listPrice) * 100) : null;
+          return (
+            <span key={i} className="inline-flex items-center gap-1.5 rounded border border-line bg-sunken/40 px-2 py-1 text-[13px]">
+              <span>a partir de</span>
+              <Input aria-label="Quantidade mínima de embalagens" inputMode="numeric" className="h-7 w-16 num" value={t.minPacks} disabled={disabled} onChange={(e) => set(i, { minPacks: e.target.value.replace(/\D/g, '') })} />
+              <span>emb., R$</span>
+              <Input aria-label="Preço de cada embalagem nesta faixa" inputMode="decimal" className="h-7 w-20 num" value={t.price} disabled={disabled} onChange={(e) => set(i, { price: e.target.value })} />
+              {off !== null && off > 0 && <span className="text-xs text-good">−{off}%</span>}
+              {!disabled && (
+                <button type="button" aria-label="Remover faixa" className="text-ink-faint hover:text-bad" onClick={() => onChange(tiers.filter((_, j) => j !== i))}>
+                  <Trash2 size={13} />
+                </button>
+              )}
+            </span>
+          );
+        })}
+        {!disabled && tiers.length < 6 && (
+          <Button type="button" variant="ghost" className="h-7 px-2 text-[13px]" onClick={() => onChange([...tiers, { minPacks: '', price: '' }])}>
+            <Plus size={14} /> Faixa
+          </Button>
+        )}
+        {tiers.length === 0 && disabled && <span className="text-[13px] text-ink-faint">nenhuma</span>}
+      </div>
+    </div>
   );
 }

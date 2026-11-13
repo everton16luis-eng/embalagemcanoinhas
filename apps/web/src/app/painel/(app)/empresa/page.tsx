@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Guard, useMe } from '@/components/shell';
 import { Badge, Button, Field, Input, Notice, PageHeader, Panel, Select } from '@/components/ui';
@@ -148,65 +149,24 @@ function CompanyForm() {
   );
 }
 
-const ACCREDITATION = { not_started: 'Não iniciado', in_progress: 'Em andamento', accredited: 'Credenciado' };
-
+/** A configuracao fiscal (credenciamento, regras, certificado, producao) fica na pagina Nota fiscal. */
 function FiscalSettings() {
-  const { can, me } = useMe();
+  const { can } = useMe();
   const [s, setS] = useState<any>(null);
-  const [series, setSeries] = useState('');
-  const [next, setNext] = useState('');
-  const [acc, setAcc] = useState('not_started');
-  const [notes, setNotes] = useState('');
-  const [msg, setMsg] = useState<{ tone: 'bad' | 'good'; text: string } | null>(null);
-  const editable = can('fiscal.manage') && me.user.mfaEnabled;
-  const apply = (x: any) => {
-    setS(x);
-    setSeries(x.nfe_series ?? '');
-    setNext(x.nfe_next_number ?? '');
-    setAcc(x.accreditation_status);
-    setNotes(x.accreditation_notes ?? '');
-  };
   useEffect(() => {
-    if (can('fiscal.view')) api('/admin/fiscal/settings').then((r) => apply(r.settings), (e) => setMsg({ tone: 'bad', text: e.message }));
+    if (can('fiscal.view')) api('/admin/fiscal/settings').then((r) => setS(r.settings), () => null);
   }, [can]);
   if (!can('fiscal.view') || !s) return null;
-
-  const save = async (e: FormEvent) => {
-    e.preventDefault();
-    try {
-      const r = await api('/admin/fiscal/settings', { method: 'PATCH', body: { nfeSeries: series === '' ? null : Number(series), nfeNextNumber: next === '' ? null : Number(next), accreditationStatus: acc, accreditationNotes: notes || null } });
-      apply(r.settings);
-      setMsg({ tone: 'good', text: 'Configuração fiscal gravada.' });
-    } catch (err) {
-      setMsg({ tone: 'bad', text: err instanceof Error ? err.message : 'Falha.' });
-    }
-  };
-
   return (
     <div id="fiscal">
       <Panel
         title="Emissão de NF-e (modelo 55)"
-        description="A emissão real só é liberada depois da homologação com o provedor fiscal e da validação do contador."
+        description="Credenciamento, regras fiscais, certificado digital e liberação de produção ficam na página Nota fiscal."
         actions={<Badge tone={s.environment === 'producao' ? 'good' : 'warn'}>{s.environment === 'producao' ? 'Produção' : 'Homologação'}</Badge>}
       >
-        {msg && <div className="mb-3"><Notice tone={msg.tone}>{msg.text}</Notice></div>}
-        <form onSubmit={save}>
-          <fieldset disabled={!editable} className="grid gap-4 sm:grid-cols-4">
-            <Field label="Credenciamento na SEF-SC">
-              {(id) => (
-                <Select id={id} value={acc} onChange={(e) => setAcc(e.target.value)}>
-                  {Object.entries(ACCREDITATION).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                </Select>
-              )}
-            </Field>
-            <Field label="Série" hint="0 a 999.">{(id) => <Input id={id} type="number" min={0} max={999} value={series} onChange={(e) => setSeries(e.target.value)} />}</Field>
-            <Field label="Próximo número" hint="Se já emitiu em outro sistema, o seguinte ao último usado.">{(id) => <Input id={id} type="number" min={1} value={next} onChange={(e) => setNext(e.target.value)} />}</Field>
-            <Field label="Provedor fiscal" hint="Escolhido na Fase 5.">{(id) => <Input id={id} value={s.provider ?? 'Não definido'} disabled />}</Field>
-            <Field label="Anotações do credenciamento" className="sm:col-span-4">{(id) => <Input id={id} maxLength={1000} value={notes} onChange={(e) => setNotes(e.target.value)} />}</Field>
-            {editable && <div className="sm:col-span-4"><Button type="submit">Gravar</Button></div>}
-          </fieldset>
-        </form>
-        <p className="mt-4 text-[13px] text-ink-faint">Certificado digital A1: o envio protegido (arquivo cifrado e alerta de vencimento) entra na Fase 5, junto com o provedor fiscal.</p>
+        <Link href="/painel/fiscal" className="text-sm font-medium text-act-dark underline">
+          Abrir Nota fiscal
+        </Link>
       </Panel>
     </div>
   );

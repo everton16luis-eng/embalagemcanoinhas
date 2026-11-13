@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { DOC_STATUS } from '@/components/fiscal';
 import { INVOICE_STATUS, METHOD_LABEL, ORDER_STATUS, PAYMENT_STATUS } from '@/components/orders';
 import { Guard, useMe } from '@/components/shell';
 import { Badge, Button, Field, Input, Notice, PageHeader, Panel, Textarea } from '@/components/ui';
@@ -36,6 +37,107 @@ type Order = {
   shipment: { carrier: string | null; tracking_code: string | null; tracking_url: string | null; volumes: number | null; shipped_at: string | null; delivered_at: string | null } | null;
   reservations: { id: string; sku: string; qty: string; backorder: boolean; status: string }[];
 };
+
+type FiscalCheck = {
+  ready: boolean;
+  environment: string;
+  issues: { code: string; message: string; productId?: string }[];
+  documents: { id: string; ref: string; status: string; number: string | null; series: string | null; sefaz_message: string | null; created_at: string; authorized_at: string | null }[];
+};
+
+/** Nota fiscal do pedido: conferencia, emissao e situacao. */
+function InvoicePanel({ order, onChange }: { order: Order; onChange: () => void }) {
+  const { can, me } = useMe();
+  const [f, setF] = useState<FiscalCheck | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ tone: 'good' | 'bad' | 'warn'; text: string } | null>(null);
+  const load = useCallback(() => api<FiscalCheck>(`/admin/fiscal/orders/${order.id}`).then(setF, (e) => setMsg({ tone: 'bad', text: e.message })), [order.id]);
+  useEffect(() => {
+    load();
+  }, [load, order.invoice_status]);
+  if (!f) return msg ? <Notice tone={msg.tone}>{msg.text}</Notice> : null;
+  const active = f.documents.find((d) => ['pending', 'processing', 'authorized'].includes(d.status));
+  const manage = can('fiscal.manage') && me.user.mfaEnabled;
+  const open = ['paid', 'preparing', 'ready'].includes(order.status);
+  const call = async (path: string, ok: string) => {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const r = await api<{ warning?: string | null; document: { status: string; sefaz_message: string | null } }>(path, { method: 'POST' });
+      if (r.warning) setMsg({ tone: 'warn', text: `${r.warning} A rotina tenta de novo a cada minuto.` });
+      else if (r.document.status === 'rejected') setMsg({ tone: 'bad', text: `Rejeitada: ${r.document.sefaz_message ?? 'veja o detalhe da nota.'}` });
+      else if (r.document.status === 'authorized') setMsg({ tone: 'good', text: ok });
+      else setMsg({ tone: 'warn', text: 'Nota em processamento na SEFAZ. A situação é atualizada sozinha.' });
+      await load();
+      onChange();
+    } catch (e) {
+      setMsg({ tone: 'bad', text: (e as Error).message });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Panel
+      title="Nota fiscal"
+      description={f.environment === 'homologacao' ? 'Ambiente de homologação: notas sem valor fiscal.' : undefined}
+      actions={
+        <Link href="/painel/fiscal" className="text-sm text-act-dark underline">
+          Configuração fiscal
+        </Link>
+      }
+    >
+      {msg && (
+        <div className="mb-3">
+          <Notice tone={msg.tone}>{msg.text}</Notice>
+        </div>
+      )}
+      {f.documents.length > 0 && (
+        <ul className="mb-3 space-y-1.5 text-sm">
+          {f.documents.map((d) => (
+            <li key={d.id} className="flex flex-wrap items-center gap-2">
+              <Badge tone={DOC_STATUS[d.status]!.tone}>{DOC_STATUS[d.status]!.label}</Badge>
+              <Link href={`/painel/fiscal/notas/${d.id}`} className="font-medium text-act-dark underline">
+                {d.number ? `NF-e nº ${d.number}` : d.ref}
+              </Link>
+              <span className="text-xs text-ink-faint">{when(d.authorized_at ?? d.created_at)}</span>
+              {d.status === 'rejected' && d.sefaz_message && <span className="w-full text-[13px] text-bad">{d.sefaz_message}</span>}
+            </li>
+          ))}
+        </ul>
+      )}
+      {!active && open && !f.ready && (
+        <div className="text-sm">
+          <p className="mb-1 font-medium">Antes de emitir, falta:</p>
+          <ul className="list-disc space-y-1 pl-5 text-ink-soft">
+            {f.issues.map((i, n) => (
+              <li key={n}>
+                {i.message}
+                {i.productId && (
+                  <Link href={`/painel/produtos/${i.productId}`} className="ml-1 text-act-dark underline">
+                    abrir produto
+                  </Link>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {!active && open && f.ready && manage && (
+        <Button variant="primary" busy={busy} onClick={() => call(`/admin/fiscal/orders/${order.id}/emit`, 'NF-e autorizada.')}>
+          {f.documents.some((d) => d.status === 'rejected') ? 'Emitir de novo' : 'Emitir NF-e'}
+        </Button>
+      )}
+      {!active && open && f.ready && !manage && <p className="text-sm text-ink-soft">Pronto para emitir. A emissão é feita por quem tem a permissão fiscal com verificação em duas etapas.</p>}
+      {active && active.status !== 'authorized' && manage && (
+        <Button busy={busy} onClick={() => call(`/admin/fiscal/documents/${active.id}/sync`, 'NF-e autorizada.')}>
+          Consultar situação agora
+        </Button>
+      )}
+      {!active && !open && f.documents.length === 0 && <p className="text-sm text-ink-soft">{order.status === 'pending_payment' ? 'A nota é emitida depois do pagamento.' : 'Sem nota.'}</p>}
+    </Panel>
+  );
+}
 
 const doc = (d: string) => (d.length === 11 ? d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4') : d.replace(/(\w{2})(\w{3})(\w{3})(\w{4})(\d{2})/, '$1.$2.$3/$4-$5'));
 const phone = (p: string) => p.replace(/^(\d{2})(\d{4,5})(\d{4})$/, '($1) $2-$3');
@@ -215,9 +317,9 @@ function Detail() {
               {o.status === 'ready' && can('shipping.manage') && (
                 <form onSubmit={dispatch} className="mt-4 border-t border-line pt-4">
                   <p className="mb-2 text-sm font-semibold">Despacho</p>
-                  {o.invoice_status === 'pending' && (
+                  {o.invoice_status !== 'authorized' && o.invoice_status !== 'not_required' && (
                     <div className="mb-3">
-                      <Notice tone="warn">A NF-e deste pedido ainda não foi autorizada. A emissão entra na próxima fase; até lá o despacho fica bloqueado.</Notice>
+                      <Notice tone="warn">A NF-e deste pedido ainda não foi autorizada. O despacho fica bloqueado até a autorização.</Notice>
                     </div>
                   )}
                   <div className="grid gap-2 sm:grid-cols-2">
@@ -226,7 +328,7 @@ function Detail() {
                     <Field label="Código de rastreio">{(fid) => <Input id={fid} value={ship.trackingCode} onChange={(e) => setShip({ ...ship, trackingCode: e.target.value })} />}</Field>
                     <Field label="Link de rastreio">{(fid) => <Input id={fid} type="url" value={ship.trackingUrl} onChange={(e) => setShip({ ...ship, trackingUrl: e.target.value })} />}</Field>
                   </div>
-                  <Button type="submit" variant="primary" className="mt-3" busy={busy === 'dispatch'} disabled={o.invoice_status === 'pending'}>
+                  <Button type="submit" variant="primary" className="mt-3" busy={busy === 'dispatch'} disabled={o.invoice_status !== 'authorized' && o.invoice_status !== 'not_required'}>
                     Despachar e baixar estoque
                   </Button>
                 </form>
@@ -241,13 +343,15 @@ function Detail() {
             </Panel>
           )}
 
+          {can('fiscal.view') && <InvoicePanel order={o} onChange={load} />}
+
           <Panel title="Histórico">
             <ol className="space-y-2 text-sm">
               {o.events.map((e, i) => (
                 <li key={i} className="flex gap-3">
                   <span className="num w-32 shrink-0 text-xs text-ink-faint">{when(e.created_at)}</span>
                   <span>
-                    <span className="font-medium">{ORDER_STATUS[e.status]?.label ?? e.status}</span>
+                    <span className="font-medium">{e.status === 'invoice' ? 'Nota fiscal' : (ORDER_STATUS[e.status]?.label ?? e.status)}</span>
                     {e.note && <span className="text-ink-soft"> — {e.note}</span>}
                     {e.actor_name && <span className="text-ink-faint"> · {e.actor_name}</span>}
                   </span>

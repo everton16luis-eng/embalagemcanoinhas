@@ -1,6 +1,6 @@
 'use client';
 
-import { BarChart3, Boxes, MapPinned, Package, Building2, ClipboardCheck, ClipboardList, FolderTree, History, LogOut, Menu, RefreshCw, Settings, ShoppingCart, Store, Truck, UserRound, Users, Warehouse, X } from 'lucide-react';
+import { BarChart3, Boxes, Building2, ClipboardCheck, ClipboardList, FileText, FolderTree, History, LogOut, MapPinned, Menu, Package, RefreshCw, Settings, ShoppingCart, Store, Truck, UserRound, Users, Warehouse, X } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
@@ -27,6 +27,7 @@ const NAV = [
   { href: '/painel/compras', label: 'Compras', icon: ShoppingCart, perm: 'purchases.view' },
   { href: '/painel/reposicao', label: 'Reposição', icon: RefreshCw, perm: 'purchases.view' },
   { href: '/painel/fornecedores', label: 'Fornecedores', icon: Truck, perm: 'purchases.view' },
+  { href: '/painel/fiscal', label: 'Nota fiscal', icon: FileText, perm: 'fiscal.view' },
   { href: '/painel/entregas', label: 'Formas de entrega', icon: MapPinned, perm: 'orders.view' },
   { href: '/painel/relatorios', label: 'Relatórios', icon: BarChart3, perm: 'reports.view' },
   { href: '/painel/empresa', label: 'Empresa e fiscal', icon: Building2, perm: 'company.view' },

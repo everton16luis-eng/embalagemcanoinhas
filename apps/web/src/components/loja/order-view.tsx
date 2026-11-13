@@ -26,6 +26,7 @@ export type Order = {
   payments: Payment[];
   events: { status: string; note: string | null; created_at: string }[];
   shipment: { carrier: string | null; tracking_code: string | null; tracking_url: string | null; shipped_at: string | null; delivered_at: string | null } | null;
+  invoice: { status: 'authorized' | 'canceled'; number: string; series: string; access_key: string; environment: string; files: string[] } | null;
 };
 type PayConfig = { enabled: boolean; provider: 'mercadopago' | 'fake' | null; publicKey: string | null };
 
@@ -115,6 +116,28 @@ export function OrderView({ base, devToken }: { base: string; devToken?: string 
               <b>{o.shipment.tracking_code}</b>
             )}
             {o.shipment.carrier && ` · ${o.shipment.carrier}`}
+          </p>
+        )}
+        {o.invoice && (
+          <p className="mt-3 border border-g-line p-3 text-sm">
+            <b>Nota fiscal nº {o.invoice.number}</b>
+            {o.invoice.status === 'canceled' ? (
+              <span className="text-g-red"> · cancelada</span>
+            ) : (
+              <>
+                {o.invoice.files.includes('danfe_pdf') && (
+                  <a href={`/api/v1${base}/invoice/danfe`} className="ml-2 font-semibold text-g-green underline">
+                    Baixar DANFE (PDF)
+                  </a>
+                )}
+                {o.invoice.files.includes('nfe_xml') && (
+                  <a href={`/api/v1${base}/invoice/xml`} className="ml-2 font-semibold text-g-green underline">
+                    XML
+                  </a>
+                )}
+              </>
+            )}
+            {o.invoice.environment === 'homologacao' && <span className="block text-xs text-g-faint">Emitida em ambiente de teste, sem valor fiscal.</span>}
           </p>
         )}
 

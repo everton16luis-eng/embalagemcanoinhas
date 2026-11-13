@@ -23,7 +23,10 @@ export const PAYMENT_STATUS: Record<string, { label: string; tone: Tone }> = {
 
 export const INVOICE_STATUS: Record<string, { label: string; tone: Tone }> = {
   pending: { label: 'NF-e pendente', tone: 'warn' },
+  processing: { label: 'NF-e em processamento', tone: 'warn' },
   authorized: { label: 'NF-e autorizada', tone: 'good' },
+  rejected: { label: 'NF-e rejeitada', tone: 'bad' },
+  canceled: { label: 'NF-e cancelada', tone: 'bad' },
   not_required: { label: 'Sem NF-e', tone: 'neutral' },
 };
 

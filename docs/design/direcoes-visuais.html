@@ -1,0 +1,666 @@
+<title>Direções visuais da loja</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=Figtree:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=Young+Serif&display=swap">
+<style>
+/* Apresentacao: coluna de leitura + molduras de tela (1280 desktop, 375 celular) reduzidas para caber. */
+:root {
+  --bg: #f4f5f4; --panel: #ffffff; --fg: #1a1f1d; --soft: #59625e; --faint: #858d89; --line: #dde1de; --act: #0f6b5c; --act-tint: #e3f0ec;
+  --sans: "IBM Plex Sans", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #141716; --panel: #1c201e; --fg: #e8ece9; --soft: #a8b1ac; --faint: #7d8782; --line: #2e3431; --act: #5fc3ab; --act-tint: #1d3530; color-scheme: dark } }
+:root[data-theme="dark"] { --bg: #141716; --panel: #1c201e; --fg: #e8ece9; --soft: #a8b1ac; --faint: #7d8782; --line: #2e3431; --act: #5fc3ab; --act-tint: #1d3530; color-scheme: dark }
+body { background: var(--bg); color: var(--fg); font: 15px/1.55 var(--sans); }
+.wrap { max-width: 1180px; margin: 0 auto; padding-block: 28px 64px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+h1 { font-size: clamp(26px, 4vw, 34px); line-height: 1.15; letter-spacing: -0.01em; margin: 0 0 8px; text-wrap: balance; }
+h2 { font-size: 22px; margin: 0 0 6px; text-wrap: balance; }
+h3 { font-size: 16px; margin: 0 0 6px; }
+p { margin: 0 0 10px; max-width: 70ch; }
+.lead { color: var(--soft); font-size: 16px; }
+.eyebrow { font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--soft); font-weight: 600; }
+.tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 22px 0 18px; position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); padding-block: 8px; }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+.tab { border: 1px solid var(--line); background: var(--panel); color: var(--fg); font: 600 14px var(--sans); padding: 8px 14px; border-radius: 6px; cursor: pointer; }
+.tab[aria-selected="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+.tab:focus-visible, button:focus-visible { outline: 2px solid var(--act); outline-offset: 2px; }
+.rec { font-size: 11px; font-weight: 700; margin-left: 6px; color: var(--act); }
+.tab[aria-selected="true"] .rec { color: inherit; }
+.note { background: var(--act-tint); border-radius: 6px; padding: 10px 14px; font-size: 14px; margin: 14px 0; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 16px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 16px 18px; min-width: 0; }
+.swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin-top: 6px; }
+.sw { display: flex; gap: 10px; align-items: center; font-size: 13px; }
+.sw i { width: 34px; height: 34px; border-radius: 4px; border: 1px solid var(--line); flex: none; }
+.sw b { display: block; font-weight: 600; }
+.sw code { color: var(--soft); font: 12px "IBM Plex Mono", monospace; }
+ul.plain { margin: 6px 0 0; padding-left: 18px; }
+ul.plain li { margin-bottom: 4px; }
+.frames-label { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin: 30px 0 8px; flex-wrap: wrap; }
+.frames-label span { color: var(--soft); font-size: 13px; }
+.duo { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 18px; align-items: start; }
+@media (max-width: 760px) { .duo { grid-template-columns: minmax(0, 1fr); } .duo .phone { max-width: 300px; } }
+.frame { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: #fff; box-shadow: 0 1px 2px rgb(0 0 0 / .06); }
+.frame .bar { height: 22px; background: var(--panel); border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 5px; padding: 0 8px; }
+.frame .bar i { width: 7px; height: 7px; border-radius: 50%; background: var(--line); }
+.frame .bar small { margin-left: 8px; font-size: 10px; color: var(--faint); font-family: "IBM Plex Mono", monospace; }
+.viewport { position: relative; overflow: hidden; }
+.screen { transform-origin: 0 0; position: absolute; top: 0; left: 0; }
+.phone .frame { border-radius: 22px; border-width: 6px; border-color: var(--fg); }
+.phone .bar { display: none; }
+table.cmp { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 640px; }
+table.cmp th, table.cmp td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+table.cmp th { font-size: 12px; color: var(--soft); font-weight: 600; }
+.scroll { overflow-x: auto; }
+.hier { counter-reset: h; list-style: none; padding: 0; margin: 8px 0 0; }
+.hier li { counter-increment: h; display: grid; grid-template-columns: 26px 1fr; gap: 8px; margin-bottom: 8px; }
+.hier li::before { content: counter(h); font: 600 12px "IBM Plex Mono", monospace; color: var(--act); background: var(--act-tint); border-radius: 4px; text-align: center; height: 22px; line-height: 22px; }
+@media (prefers-reduced-motion: no-preference) { .screen { transition: none; } }
+
+/* ======== Elementos comuns das telas (sempre claros: representam a loja) ======== */
+.m { font-size: 14px; line-height: 1.45; color: #1b1b1b; background: #fff; }
+.m * { box-sizing: border-box; }
+.m a { color: inherit; text-decoration: none; }
+.m .pc, .m .cat, .m .card-b, .m .pc * { min-width: 0; overflow-wrap: anywhere; }
+.m .ph { position: relative; display: grid; place-items: center; aspect-ratio: 1; width: 100%; }
+.m .ph svg { width: 54%; height: 54%; }
+.m .ph em { position: absolute; left: 6px; bottom: 5px; font: 500 9px "IBM Plex Mono", monospace; font-style: normal; letter-spacing: .04em; opacity: .55; text-transform: uppercase; }
+.m .logo-ph { border: 1.5px dashed currentColor; padding: 6px 12px; font-weight: 700; letter-spacing: .14em; font-size: 13px; opacity: .85; white-space: nowrap; }
+
+/* ======== A — Gôndola ======== */
+.A { --a-paper: #f3f4f1; --a-ink: #18211d; --a-green: #0e5b49; --a-green-2: #e1ece7; --a-label: #ffd23f; --a-red: #b8321c; --a-line: #d9ddd8; font-family: "Archivo", sans-serif; font-variation-settings: "wdth" 100; background: #fff; }
+.A .cond { font-stretch: 75%; font-variation-settings: "wdth" 72; }
+.A .top { display: flex; align-items: center; gap: 22px; padding: 14px 32px; }
+.A .search { flex: 1; display: flex; border: 2px solid var(--a-ink); height: 44px; }
+.A .search span { flex: 1; padding: 11px 14px; color: #6d736f; }
+.A .search b { background: var(--a-ink); color: #fff; padding: 0 22px; display: grid; place-items: center; font-weight: 600; }
+.A .acts { display: flex; gap: 18px; font-size: 13px; font-weight: 600; white-space: nowrap; }
+.A .acts i { font-style: normal; background: var(--a-label); padding: 1px 6px; margin-left: 4px; }
+.A .dept { background: var(--a-ink); color: #fff; display: flex; gap: 0; padding: 0 32px; text-transform: uppercase; font-weight: 600; font-size: 13px; letter-spacing: .03em; }
+.A .dept a { padding: 11px 14px; border-right: 1px solid #ffffff22; }
+.A .dept a:first-child { background: var(--a-green); }
+.A .strip { background: var(--a-green-2); color: var(--a-green); font-size: 13px; font-weight: 600; padding: 7px 32px; display: flex; gap: 28px; }
+.A .hero { display: grid; grid-template-columns: 1fr 1.25fr; gap: 28px; padding: 30px 32px; background: var(--a-paper); }
+.A .hero h1 { font: 800 46px/1.0 "Archivo", sans-serif; font-variation-settings: "wdth" 80; margin: 0 0 14px; letter-spacing: -.01em; text-transform: uppercase; }
+.A .hero p { font-size: 17px; color: #3b4440; max-width: 40ch; }
+.A .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.A .chips span { border: 1.5px solid var(--a-ink); padding: 6px 10px; font-weight: 600; font-size: 13px; background: #fff; }
+.A .cats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.A .cat { background: #fff; border: 1px solid var(--a-line); display: grid; grid-template-rows: 1fr auto; }
+.A .cat .ph { aspect-ratio: 4/3; background: #eef0ec; color: var(--a-green); }
+.A .cat b { padding: 9px 10px; font-weight: 700; font-size: 14px; line-height: 1.2; display: flex; justify-content: space-between; gap: 6px; }
+.A .cat b::after { content: "›"; color: var(--a-green); }
+.A .sec { padding: 26px 32px; }
+.A .sec-h { display: flex; justify-content: space-between; align-items: end; border-bottom: 3px solid var(--a-ink); padding-bottom: 8px; margin-bottom: 16px; }
+.A .sec-h h2 { font: 800 24px "Archivo", sans-serif; font-variation-settings: "wdth" 80; text-transform: uppercase; margin: 0; }
+.A .sec-h a { font-weight: 600; font-size: 13px; color: var(--a-green); }
+.A .ladder { display: grid; grid-template-columns: 1.2fr repeat(3, 1fr); border: 2px solid var(--a-ink); }
+.A .ladder > div { padding: 14px 16px; border-right: 1px solid var(--a-line); }
+.A .ladder > div:last-child { border-right: 0; }
+.A .ladder .q { font: 800 28px "Archivo", sans-serif; font-variation-settings: "wdth" 75; }
+.A .ladder .lab { background: var(--a-label); display: inline-block; padding: 2px 8px; font-weight: 700; margin-top: 4px; }
+.A .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; border-top: 1px solid var(--a-line); border-left: 1px solid var(--a-line); }
+.A .pc { border-right: 1px solid var(--a-line); border-bottom: 1px solid var(--a-line); padding: 14px; display: flex; flex-direction: column; gap: 8px; background: #fff; }
+.A .pc .ph { background: #f1f2ef; color: #6b746f; }
+.A .pc h3 { font: 600 15px/1.25 "Archivo", sans-serif; margin: 0; min-height: 38px; }
+.A .pc .pack { font-size: 12px; color: #5b635f; }
+.A .tag { background: var(--a-label); padding: 8px 10px 7px; display: grid; grid-template-columns: auto 1fr; align-items: end; gap: 2px 10px; }
+.A .tag .p { font: 800 26px/1 "Archivo", sans-serif; font-variation-settings: "wdth" 70; grid-row: span 2; }
+.A .tag .p small { font-size: 14px; font-weight: 700; }
+.A .tag .u { font-size: 11px; font-weight: 600; text-align: right; line-height: 1.2; }
+.A .tier { font-size: 12px; font-weight: 600; color: var(--a-green); }
+.A .st { font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 5px; }
+.A .st::before { content: ""; width: 8px; height: 8px; background: var(--a-green); }
+.A .st.order { color: #8a5a00; } .A .st.order::before { background: #d08b00; }
+.A .btn { background: var(--a-green); color: #fff; font-weight: 700; text-align: center; padding: 10px; font-size: 14px; }
+.A .btn.ghost { background: #fff; color: var(--a-ink); border: 1.5px solid var(--a-ink); }
+.A .trust { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; border: 1px solid var(--a-line); }
+.A .trust div { padding: 16px; border-right: 1px solid var(--a-line); font-size: 13px; color: #48504c; }
+.A .trust div:last-child { border: 0; }
+.A .trust b { display: block; font-size: 15px; color: var(--a-ink); margin-bottom: 3px; }
+.A .trust svg { width: 22px; height: 22px; color: var(--a-green); margin-bottom: 6px; }
+.A .foot { background: var(--a-ink); color: #cfd5d1; padding: 26px 32px; display: grid; grid-template-columns: 1.4fr 1fr 1fr 1fr; gap: 20px; font-size: 13px; }
+.A .foot b { color: #fff; display: block; margin-bottom: 6px; text-transform: uppercase; font-size: 12px; letter-spacing: .06em; }
+.A .crumbs { font-size: 12px; color: #5b635f; padding: 14px 32px 0; }
+.A .cat-h { padding: 6px 32px 16px; display: flex; justify-content: space-between; align-items: end; border-bottom: 1px solid var(--a-line); }
+.A .cat-h h1 { font: 800 36px "Archivo", sans-serif; font-variation-settings: "wdth" 78; text-transform: uppercase; margin: 0; }
+.A .layout { display: grid; grid-template-columns: 230px 1fr; gap: 24px; padding: 18px 32px 30px; }
+.A .filters h4 { font: 700 12px "Archivo", sans-serif; text-transform: uppercase; letter-spacing: .06em; margin: 16px 0 8px; border-top: 2px solid var(--a-ink); padding-top: 8px; }
+.A .filters label { display: flex; gap: 8px; font-size: 13px; margin-bottom: 6px; align-items: center; }
+.A .filters i { width: 14px; height: 14px; border: 1.5px solid var(--a-ink); display: inline-block; flex: none; }
+.A .filters i.on { background: var(--a-ink); box-shadow: inset 0 0 0 2px #fff; }
+.A .sortbar { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 12px; align-items: center; }
+.A .sortbar span:last-child { border: 1.5px solid var(--a-ink); padding: 5px 10px; font-weight: 600; }
+.A .grid3 { grid-template-columns: repeat(3, 1fr); }
+.A .pdp { display: grid; grid-template-columns: 1.1fr 1fr; gap: 36px; padding: 18px 32px 30px; }
+.A .gal { display: grid; grid-template-columns: 72px 1fr; gap: 10px; }
+.A .gal .thumbs { display: grid; gap: 8px; align-content: start; }
+.A .gal .thumbs .ph { background: #f1f2ef; border: 1px solid var(--a-line); color: #8b938e; }
+.A .gal .thumbs .ph:first-child { border: 2px solid var(--a-ink); }
+.A .gal .main { background: #f1f2ef; color: #6b746f; }
+.A .pdp h1 { font: 700 30px/1.15 "Archivo", sans-serif; margin: 6px 0 6px; }
+.A .meta { font-size: 13px; color: #5b635f; display: flex; gap: 14px; flex-wrap: wrap; }
+.A .pricebox { margin-top: 18px; display: grid; grid-template-columns: auto 1fr; gap: 18px; align-items: stretch; }
+.A .pricebox .tag { padding: 14px 16px; }
+.A .pricebox .tag .p { font-size: 44px; }
+.A table.tiers { border-collapse: collapse; width: 100%; font-size: 13px; }
+.A table.tiers td, .A table.tiers th { border: 1px solid var(--a-line); padding: 7px 10px; text-align: left; }
+.A table.tiers th { background: var(--a-paper); font-weight: 700; font-size: 12px; }
+.A table.tiers tr.on td { background: var(--a-green-2); font-weight: 700; }
+.A .buy { display: grid; grid-template-columns: 150px 1fr; gap: 10px; margin-top: 16px; }
+.A .qty { border: 2px solid var(--a-ink); display: grid; grid-template-columns: 40px 1fr 40px; text-align: center; align-items: center; font-weight: 700; height: 48px; }
+.A .buy .btn { display: grid; place-items: center; font-size: 16px; }
+.A .ship { margin-top: 14px; border: 1px solid var(--a-line); padding: 12px 14px; font-size: 13px; display: grid; grid-template-columns: 1fr auto; gap: 6px 10px; }
+.A .ship span.in { border: 1px solid #9aa29d; padding: 6px 10px; color: #6b736f; }
+.A .specs { padding: 0 32px 30px; display: grid; grid-template-columns: 1fr 1fr; gap: 36px; }
+.A .specs dl { display: grid; grid-template-columns: 1fr 1.4fr; margin: 0; font-size: 13px; }
+.A .specs dt, .A .specs dd { margin: 0; padding: 8px 0; border-bottom: 1px solid var(--a-line); }
+.A .specs dt { color: #5b635f; }
+/* celular A */
+.A.mob .top { padding: 10px 14px; gap: 10px; }
+.A.mob .mrow { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; }
+.A.mob .search { height: 40px; margin: 0 14px 10px; }
+.A.mob .dept { padding: 0 14px; overflow: hidden; white-space: nowrap; font-size: 12px; }
+.A.mob .dept a { padding: 9px 10px; }
+.A.mob .hero { grid-template-columns: 1fr; padding: 18px 14px; gap: 14px; }
+.A.mob .hero h1 { font-size: 32px; }
+.A.mob .hero p { font-size: 15px; }
+.A.mob .cats { grid-template-columns: 1fr 1fr; gap: 8px; }
+.A.mob .sec { padding: 18px 14px; }
+.A.mob .sec-h h2 { font-size: 19px; }
+.A.mob .grid { grid-template-columns: 1fr 1fr; }
+.A.mob .pc { padding: 10px; }
+.A.mob .tag .p { font-size: 21px; }
+.A.mob .ladder { grid-template-columns: 1fr 1fr; }
+.A.mob .ladder > div { border-bottom: 1px solid var(--a-line); padding: 10px 12px; }
+.A.mob .ladder .q { font-size: 22px; }
+.A.mob .tabbar { position: sticky; bottom: 0; display: grid; grid-template-columns: repeat(4, 1fr); background: #fff; border-top: 1px solid var(--a-line); font-size: 11px; font-weight: 600; text-align: center; }
+.A.mob .tabbar span { padding: 9px 0 10px; }
+.A.mob .tabbar span:first-child { color: var(--a-green); box-shadow: inset 0 3px 0 var(--a-green); }
+
+/* ======== B — Ateliê ======== */
+.B { --b-white: #fffdfa; --b-cocoa: #2f221b; --b-kraft: #c9ad85; --b-kraft-2: #efe4d3; --b-rose: #c4566a; --b-pist: #6f8a4a; --b-line: #e6dccd; font-family: "Figtree", sans-serif; background: var(--b-white); color: var(--b-cocoa); }
+.B .serif { font-family: "Young Serif", serif; font-weight: 400; }
+.B .top { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 18px 40px; border-bottom: 1px solid var(--b-line); }
+.B .nav { display: flex; gap: 22px; font-size: 14px; font-weight: 500; }
+.B .right { display: flex; justify-content: flex-end; gap: 18px; font-size: 14px; font-weight: 500; }
+.B .hero { display: grid; grid-template-columns: 1.15fr 1fr; min-height: 420px; }
+.B .hero .ph { aspect-ratio: auto; height: 100%; background: var(--b-kraft-2); color: #9b7f58; }
+.B .hero .txt { padding: 54px 48px; display: flex; flex-direction: column; justify-content: center; gap: 14px; }
+.B .hero h1 { font: 400 48px/1.08 "Young Serif", serif; margin: 0; }
+.B .hero p { font-size: 17px; color: #5a4a40; max-width: 38ch; }
+.B .btn { background: var(--b-cocoa); color: var(--b-white); padding: 12px 20px; font-weight: 600; display: inline-block; border-radius: 3px; }
+.B .btn.ghost { background: transparent; color: var(--b-cocoa); border: 1.5px solid var(--b-cocoa); }
+.B .occ { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; padding: 36px 40px; }
+.B .occ .card-b { display: grid; gap: 10px; }
+.B .occ .ph { aspect-ratio: 4/5; background: var(--b-kraft-2); color: #a5865c; }
+.B .ktag { justify-self: start; position: relative; background: var(--b-kraft); color: var(--b-cocoa); padding: 6px 14px 6px 22px; font-weight: 600; font-size: 13px; clip-path: polygon(10px 0, 100% 0, 100% 100%, 10px 100%, 0 50%); }
+.B .ktag::before { content: ""; position: absolute; left: 9px; top: 50%; width: 5px; height: 5px; border-radius: 50%; background: var(--b-white); transform: translateY(-50%); }
+.B h2 { font: 400 30px "Young Serif", serif; margin: 0; }
+.B .sec { padding: 10px 40px 36px; }
+.B .sec-h { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 18px; }
+.B .sec-h a { font-size: 14px; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+.B .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 26px 20px; }
+.B .pc { display: grid; gap: 7px; }
+.B .pc .ph { background: #f4ede2; color: #a08561; }
+.B .pc h3 { font: 500 15px/1.3 "Figtree", sans-serif; margin: 2px 0 0; }
+.B .pc .pack { font-size: 13px; color: #7a6a5f; }
+.B .pc .pr { font-weight: 700; font-size: 16px; }
+.B .pc .pr small { font-weight: 500; font-size: 12px; color: #7a6a5f; margin-left: 4px; }
+.B .pc .tier { font-size: 12px; color: var(--b-pist); font-weight: 600; }
+.B .pc .order { font-size: 12px; color: var(--b-rose); font-weight: 600; }
+.B .band { background: var(--b-kraft-2); padding: 34px 40px; display: grid; grid-template-columns: 1fr 1.3fr; gap: 30px; align-items: center; }
+.B .band ol { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.B .band li { background: var(--b-white); padding: 14px; font-size: 13px; }
+.B .band li b { display: block; font: 400 22px "Young Serif", serif; }
+.B .trust { display: grid; grid-template-columns: repeat(4, 1fr); padding: 26px 40px; gap: 20px; font-size: 13px; color: #5a4a40; border-top: 1px solid var(--b-line); }
+.B .trust b { display: block; color: var(--b-cocoa); font-size: 14px; }
+.B .foot { background: var(--b-cocoa); color: #e9dccb; padding: 26px 40px; display: grid; grid-template-columns: 1.5fr 1fr 1fr; gap: 20px; font-size: 13px; }
+.B .foot b { color: #fff; display: block; margin-bottom: 6px; }
+.B .crumbs { font-size: 13px; color: #7a6a5f; padding: 16px 40px 0; }
+.B .cat-h { padding: 8px 40px 22px; display: grid; grid-template-columns: 1fr 1fr; gap: 30px; align-items: end; }
+.B .cat-h h1 { font: 400 40px "Young Serif", serif; margin: 0; }
+.B .cat-h p { color: #5a4a40; margin: 0; }
+.B .fbar { display: flex; gap: 10px; padding: 12px 40px; border-top: 1px solid var(--b-line); border-bottom: 1px solid var(--b-line); font-size: 13px; font-weight: 600; align-items: center; }
+.B .fbar span { border: 1px solid var(--b-line); padding: 6px 12px; border-radius: 20px; background: #fff; }
+.B .fbar span.on { background: var(--b-cocoa); color: #fff; border-color: var(--b-cocoa); }
+.B .fbar em { margin-left: auto; font-style: normal; font-weight: 500; color: #7a6a5f; }
+.B .grid.cat { padding: 24px 40px 36px; grid-template-columns: repeat(4, 1fr); }
+.B .pdp { display: grid; grid-template-columns: 1.2fr 1fr; gap: 44px; padding: 18px 40px 30px; }
+.B .gal { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.B .gal .ph { background: #f4ede2; color: #a08561; }
+.B .gal .ph:first-child { grid-column: span 2; aspect-ratio: 4/3; }
+.B .pdp h1 { font: 400 34px/1.15 "Young Serif", serif; margin: 6px 0 8px; }
+.B .pdp .lede { color: #5a4a40; }
+.B .pr-big { font-size: 30px; font-weight: 700; margin-top: 14px; }
+.B .pr-big small { font-size: 14px; font-weight: 500; color: #7a6a5f; }
+.B .tiers-b { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 12px; }
+.B .tiers-b div { border: 1px solid var(--b-line); padding: 10px; font-size: 13px; text-align: center; border-radius: 3px; }
+.B .tiers-b div.on { border-color: var(--b-cocoa); background: var(--b-kraft-2); }
+.B .tiers-b b { display: block; font-size: 16px; }
+.B .buy { display: grid; grid-template-columns: 130px 1fr; gap: 10px; margin-top: 18px; }
+.B .qty { border: 1.5px solid var(--b-cocoa); border-radius: 3px; display: grid; grid-template-columns: 34px 1fr 34px; text-align: center; align-items: center; height: 48px; font-weight: 700; }
+.B .buy .btn { text-align: center; display: grid; place-items: center; }
+.B .info { margin-top: 18px; border-top: 1px solid var(--b-line); font-size: 14px; }
+.B .info div { padding: 11px 0; border-bottom: 1px solid var(--b-line); display: flex; justify-content: space-between; }
+/* celular B */
+.B.mob .top { grid-template-columns: auto 1fr auto; padding: 12px 16px; gap: 10px; }
+.B.mob .hero { grid-template-columns: 1fr; min-height: 0; }
+.B.mob .hero .ph { aspect-ratio: 4/3; height: auto; }
+.B.mob .hero .txt { padding: 22px 16px; }
+.B.mob .hero h1 { font-size: 30px; }
+.B.mob .occ { grid-template-columns: 1fr 1fr; padding: 22px 16px; gap: 12px; }
+.B.mob .sec { padding: 6px 16px 24px; }
+.B.mob h2 { font-size: 23px; }
+.B.mob .grid { grid-template-columns: 1fr 1fr; gap: 18px 12px; }
+.B.mob .band { grid-template-columns: 1fr; padding: 22px 16px; }
+.B.mob .band ol { grid-template-columns: 1fr; }
+.B.mob .msearch { margin: 0 16px 14px; border: 1px solid var(--b-line); border-radius: 3px; padding: 10px 12px; color: #8a7a6f; background: #fff; }
+
+/* ======== C — Catálogo técnico ======== */
+.C { --c-ink: #121417; --c-blue: #1d47c9; --c-blue-2: #e7ecfb; --c-grid: #e4e7ec; --c-mid: #5c6370; --c-amber: #b26a00; font-family: "IBM Plex Sans", sans-serif; background: #fff; color: var(--c-ink); }
+.C .mono { font-family: "IBM Plex Mono", monospace; }
+.C .cnd { font-family: "IBM Plex Sans Condensed", sans-serif; }
+.C .top { display: grid; grid-template-columns: auto 1fr auto; gap: 24px; align-items: center; padding: 12px 28px; border-bottom: 1px solid var(--c-grid); }
+.C .search { border: 1px solid #b9bfca; height: 40px; display: flex; align-items: center; padding: 0 12px; color: #7a818d; font-size: 14px; gap: 8px; }
+.C .search kbd { margin-left: auto; font: 11px "IBM Plex Mono", monospace; border: 1px solid #c9ced7; padding: 1px 5px; }
+.C .acts { display: flex; gap: 18px; font-size: 13px; font-weight: 500; }
+.C .acts b { background: var(--c-blue); color: #fff; padding: 1px 6px; margin-left: 4px; font-weight: 600; }
+.C .dept { display: flex; gap: 22px; padding: 0 28px; font: 600 13px "IBM Plex Sans Condensed", sans-serif; border-bottom: 1px solid var(--c-grid); text-transform: uppercase; letter-spacing: .03em; }
+.C .dept a { padding: 10px 0; }
+.C .dept a.on { box-shadow: inset 0 -2px 0 var(--c-blue); color: var(--c-blue); }
+.C .hero { display: grid; grid-template-columns: 1.3fr 1fr; gap: 0; border-bottom: 1px solid var(--c-grid); }
+.C .hero .l { padding: 34px 28px; border-right: 1px solid var(--c-grid); }
+.C .hero h1 { font: 600 38px/1.1 "IBM Plex Sans Condensed", sans-serif; margin: 0 0 12px; }
+.C .hero p { color: var(--c-mid); font-size: 16px; max-width: 46ch; }
+.C .quick { padding: 26px 28px; background: #f6f7f9; }
+.C .quick h3 { font: 600 14px "IBM Plex Sans Condensed", sans-serif; text-transform: uppercase; letter-spacing: .05em; margin: 0 0 10px; }
+.C .qrow { display: grid; grid-template-columns: 1fr 70px 90px; gap: 6px; margin-bottom: 6px; font: 13px "IBM Plex Mono", monospace; }
+.C .qrow span { background: #fff; border: 1px solid #c9ced7; padding: 8px 9px; }
+.C .qrow span.ok { color: var(--c-blue); border-color: transparent; background: transparent; padding-left: 0; }
+.C .btn { background: var(--c-blue); color: #fff; font-weight: 600; padding: 10px 14px; text-align: center; font-size: 14px; }
+.C .btn.out { background: #fff; color: var(--c-ink); border: 1px solid var(--c-ink); }
+.C .index { display: grid; grid-template-columns: repeat(4, 1fr); border-bottom: 1px solid var(--c-grid); }
+.C .index div { padding: 16px 28px 16px 28px; border-right: 1px solid var(--c-grid); }
+.C .index div:nth-child(4n) { border-right: 0; }
+.C .index div:nth-child(-n+4) { border-bottom: 1px solid var(--c-grid); }
+.C .index b { font: 600 16px "IBM Plex Sans Condensed", sans-serif; display: block; }
+.C .index small { color: var(--c-mid); font-size: 12px; }
+.C .sec { padding: 24px 28px; }
+.C .sec-h { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; }
+.C .sec-h h2 { font: 600 22px "IBM Plex Sans Condensed", sans-serif; margin: 0; }
+.C .sec-h a { color: var(--c-blue); font-size: 13px; font-weight: 600; }
+.C table.list { width: 100%; border-collapse: collapse; font-size: 13px; }
+.C table.list th { text-align: left; font: 600 11px "IBM Plex Sans Condensed", sans-serif; text-transform: uppercase; letter-spacing: .05em; color: var(--c-mid); padding: 8px 10px; border-bottom: 1px solid var(--c-ink); }
+.C table.list td { padding: 8px 10px; border-bottom: 1px solid var(--c-grid); vertical-align: middle; }
+.C table.list td.n { text-align: right; font-family: "IBM Plex Mono", monospace; white-space: nowrap; }
+.C table.list .th { width: 52px; }
+.C table.list .th .ph { background: #f3f4f6; color: #8a909b; width: 44px; }
+.C table.list .th .ph em { display: none; }
+.C .stc { font: 600 12px "IBM Plex Sans Condensed", sans-serif; color: var(--c-blue); }
+.C .stc.order { color: var(--c-amber); }
+.C .qty-s { display: inline-grid; grid-template-columns: 22px 34px 22px; border: 1px solid #b9bfca; text-align: center; font: 12px "IBM Plex Mono", monospace; height: 28px; align-items: center; }
+.C .add { background: var(--c-blue); color: #fff; font-weight: 600; padding: 5px 10px; font-size: 12px; }
+.C .trust { display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid var(--c-grid); }
+.C .trust div { padding: 18px 28px; border-right: 1px solid var(--c-grid); font-size: 13px; color: var(--c-mid); }
+.C .trust b { display: block; color: var(--c-ink); font: 600 15px "IBM Plex Sans Condensed", sans-serif; }
+.C .foot { background: #f6f7f9; border-top: 1px solid var(--c-grid); padding: 22px 28px; display: grid; grid-template-columns: 1.4fr 1fr 1fr 1fr; font-size: 12px; color: var(--c-mid); gap: 18px; }
+.C .foot b { color: var(--c-ink); display: block; margin-bottom: 4px; }
+.C .crumbs { font: 12px "IBM Plex Mono", monospace; color: var(--c-mid); padding: 14px 28px 0; }
+.C .cat-h { padding: 4px 28px 14px; display: flex; justify-content: space-between; align-items: end; }
+.C .cat-h h1 { font: 600 32px "IBM Plex Sans Condensed", sans-serif; margin: 0; }
+.C .layout { display: grid; grid-template-columns: 220px 1fr; border-top: 1px solid var(--c-grid); }
+.C .filters { border-right: 1px solid var(--c-grid); padding: 14px 20px 14px 28px; font-size: 13px; }
+.C .filters h4 { font: 600 11px "IBM Plex Sans Condensed", sans-serif; text-transform: uppercase; letter-spacing: .06em; color: var(--c-mid); margin: 12px 0 6px; }
+.C .filters label { display: flex; justify-content: space-between; margin-bottom: 4px; }
+.C .filters label i { font-style: normal; color: var(--c-mid); font-family: "IBM Plex Mono", monospace; font-size: 11px; }
+.C .range { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font: 12px "IBM Plex Mono", monospace; }
+.C .range span { border: 1px solid #c9ced7; padding: 5px 7px; }
+.C .listwrap { padding: 12px 20px 26px; }
+.C .views { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 6px; align-items: center; color: var(--c-mid); }
+.C .views b { color: var(--c-ink); }
+.C .pdp { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid var(--c-grid); }
+.C .draw { border-right: 1px solid var(--c-grid); padding: 22px 28px; }
+.C .draw .ph { background: #f6f7f9; color: #6a7180; aspect-ratio: 4/3; }
+.C .draw .ph svg { width: 42%; }
+.C .dim { position: absolute; font: 11px "IBM Plex Mono", monospace; color: var(--c-blue); }
+.C .dimline { position: absolute; border-color: var(--c-blue); border-style: solid; }
+.C .info { padding: 22px 28px; }
+.C .info h1 { font: 600 28px/1.15 "IBM Plex Sans Condensed", sans-serif; margin: 4px 0 8px; }
+.C table.spec { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 10px; }
+.C table.spec td { padding: 6px 0; border-bottom: 1px solid var(--c-grid); }
+.C table.spec td:last-child { text-align: right; font-family: "IBM Plex Mono", monospace; }
+.C table.tq { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 14px; }
+.C table.tq th { font: 600 11px "IBM Plex Sans Condensed", sans-serif; text-transform: uppercase; color: var(--c-mid); text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--c-ink); }
+.C table.tq td { padding: 7px 8px; border-bottom: 1px solid var(--c-grid); font-family: "IBM Plex Mono", monospace; }
+.C table.tq tr.on td { background: var(--c-blue-2); color: var(--c-blue); font-weight: 600; }
+.C .buy { display: grid; grid-template-columns: 140px 1fr; gap: 8px; margin-top: 14px; }
+.C .qty { border: 1px solid var(--c-ink); display: grid; grid-template-columns: 34px 1fr 34px; text-align: center; align-items: center; height: 44px; font: 600 14px "IBM Plex Mono", monospace; }
+.C .buy .btn { display: grid; place-items: center; }
+/* celular C */
+.C.mob .top { grid-template-columns: auto 1fr auto; padding: 10px 14px; gap: 10px; }
+.C.mob .msearch { margin: 10px 14px; }
+.C.mob .hero { grid-template-columns: 1fr; }
+.C.mob .hero .l { padding: 18px 14px; border-right: 0; border-bottom: 1px solid var(--c-grid); }
+.C.mob .hero h1 { font-size: 27px; }
+.C.mob .quick { padding: 16px 14px; }
+.C.mob .qrow { grid-template-columns: 1fr 52px 74px; }
+.C.mob .index { grid-template-columns: 1fr 1fr; }
+.C.mob .index div { padding: 12px 14px; border-bottom: 1px solid var(--c-grid); }
+.C.mob .index div:nth-child(2n) { border-right: 0; }
+.C.mob .sec { padding: 18px 14px; }
+.C.mob .mlist > div { display: grid; grid-template-columns: 56px 1fr; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--c-grid); }
+.C.mob .mlist .ph { background: #f3f4f6; color: #8a909b; }
+.C.mob .mlist .ph em { display: none; }
+.C.mob .mlist h3 { font: 600 14px/1.25 "IBM Plex Sans", sans-serif; margin: 0 0 3px; }
+.C.mob .mlist .row { display: flex; justify-content: space-between; align-items: center; margin-top: 6px; font-family: "IBM Plex Mono", monospace; font-size: 13px; }
+</style>
+
+<div class="wrap">
+  <p class="eyebrow">Fase 4 · proposta para aprovação</p>
+  <h1>Três direções visuais para a loja</h1>
+  <p class="lead">Cada direção mostra a página inicial no computador e no celular, uma página de categoria e uma de produto. A recomendação está na aba <b>Comparar e decidir</b>. O painel administrativo não muda.</p>
+  <div class="note"><b>Tudo nestas telas é provisório:</b> marca (caixa tracejada), fotos (desenhos marcados como "foto"), preços, prazos e CNPJ. Nenhum produto, avaliação ou selo é real. Fotos dos produtos de verdade vão substituir os desenhos.</div>
+
+  <div class="tabs" role="tablist" aria-label="Direções">
+    <button class="tab" role="tab" id="t-a" aria-controls="p-a" data-k="a">A · Gôndola<span class="rec">recomendada</span></button>
+    <button class="tab" role="tab" id="t-b" aria-controls="p-b" data-k="b">B · Ateliê</button>
+    <button class="tab" role="tab" id="t-c" aria-controls="p-c" data-k="c">C · Catálogo técnico</button>
+    <button class="tab" role="tab" id="t-d" aria-controls="p-d" data-k="decidir">Comparar e decidir</button>
+  </div>
+
+  <!-- ================= A ================= -->
+  <section id="p-a" role="tabpanel" aria-labelledby="t-a">
+    <h2>A · Gôndola</h2>
+    <p class="lead">Loja grande e organizada, com o vocabulário do varejo de bairro: corredores (departamentos), etiqueta de gôndola e escada de preço por quantidade. Quem entra sabe em segundos o que a loja vende e quanto fica levando mais.</p>
+    <div class="grid2">
+      <div class="card">
+        <h3>Paleta</h3>
+        <div class="swatches">
+          <div class="sw"><i style="background:#18211d"></i><span><b>Grafite</b><code>#18211D</code> texto, faixa de departamentos</span></div>
+          <div class="sw"><i style="background:#0e5b49"></i><span><b>Verde balcão</b><code>#0E5B49</code> ação, "em estoque"</span></div>
+          <div class="sw"><i style="background:#ffd23f"></i><span><b>Amarelo etiqueta</b><code>#FFD23F</code> só preço</span></div>
+          <div class="sw"><i style="background:#f3f4f1"></i><span><b>Papel</b><code>#F3F4F1</code> fundos de seção</span></div>
+          <div class="sw"><i style="background:#b8321c"></i><span><b>Vermelho</b><code>#B8321C</code> oferta real, raro</span></div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Tipografia e forma</h3>
+        <ul class="plain">
+          <li><b>Archivo</b> em uma família só: estreita e em caixa alta nos títulos e departamentos, normal nos nomes de produto, estreita e pesada nos preços.</li>
+          <li>Quinas retas, bordas de 1 px, grade de produtos encostada como prateleira (sem cartões flutuantes nem sombra).</li>
+          <li>Assinatura: a <b>etiqueta amarela</b> com preço da embalagem e preço por unidade, e a <b>escada de quantidade</b> (1, 10, 50 unidades).</li>
+        </ul>
+      </div>
+    </div>
+    <div data-dir="A"></div>
+    <div class="grid2" style="margin-top:22px">
+      <div class="card"><h3>Hierarquia da página inicial</h3><ol class="hier"><li>Busca larga e departamentos fixos: quem já sabe o que quer chega em um toque.</li><li>Categorias com foto logo no primeiro olhar: mostram o que se vende sem slogan.</li><li>Escada de quantidade: explica uma vez como funciona o preço para quem compra para revender.</li><li>Produtos com preço comparável (por unidade) e disponibilidade.</li><li>Pagamento, entrega, nota fiscal e atendimento antes do rodapé.</li></ol></div>
+      <div class="card"><h3>Hierarquia do produto</h3><ol class="hier"><li>Nome, o que vem na embalagem e se está em estoque ou sob encomenda.</li><li>Etiqueta de preço e faixa de quantidade, com a faixa atual destacada conforme a quantidade escolhida.</li><li>Quantidade em passos da embalagem e um único botão de compra.</li><li>Frete pelo CEP.</li><li>Medidas e uso (cabe bolo de até X cm), que respondem a dúvida mais comum.</li></ol></div>
+    </div>
+  </section>
+
+  <!-- ================= B ================= -->
+  <section id="p-b" role="tabpanel" aria-labelledby="t-b" hidden>
+    <h2>B · Ateliê</h2>
+    <p class="lead">Mais quente e editorial: a loja conversa com quem confeita, organizando a vitrine por ocasião (aniversário, casamento, bolo no pote para vender). Mais foto, menos produtos por tela, preço discreto.</p>
+    <div class="grid2">
+      <div class="card">
+        <h3>Paleta</h3>
+        <div class="swatches">
+          <div class="sw"><i style="background:#2f221b"></i><span><b>Cacau</b><code>#2F221B</code> texto, botões</span></div>
+          <div class="sw"><i style="background:#c9ad85"></i><span><b>Kraft</b><code>#C9AD85</code> etiquetas</span></div>
+          <div class="sw"><i style="background:#efe4d3"></i><span><b>Kraft claro</b><code>#EFE4D3</code> faixas, fotos</span></div>
+          <div class="sw"><i style="background:#c4566a"></i><span><b>Rosa glacê</b><code>#C4566A</code> sob encomenda</span></div>
+          <div class="sw"><i style="background:#6f8a4a"></i><span><b>Pistache</b><code>#6F8A4A</code> preço por quantidade</span></div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Tipografia e forma</h3>
+        <ul class="plain">
+          <li><b>Young Serif</b> nos títulos, <b>Figtree</b> em todo o resto.</li>
+          <li>Fotos grandes e verticais, muito respiro, cantos quase retos.</li>
+          <li>Assinatura: <b>tag de kraft</b> recortada, com o furo do barbante, marcando ocasiões e categorias.</li>
+        </ul>
+      </div>
+    </div>
+    <div data-dir="B"></div>
+    <div class="grid2" style="margin-top:22px">
+      <div class="card"><h3>Hierarquia</h3><ol class="hier"><li>Foto grande e uma frase sobre para quem é a loja.</li><li>Comprar por ocasião: leva a seleções prontas.</li><li>Produtos em 4 colunas, preço abaixo do nome.</li><li>Faixa explicando preço por quantidade.</li></ol></div>
+      <div class="card"><h3>Risco</h3><p>Parece loja boutique. Mostra menos produtos por tela e depende de fotografia boa e frequente; sem ela, fica vazia. Para quem compra o mesmo item todo mês, a busca e a comparação ficam em segundo plano.</p></div>
+    </div>
+  </section>
+
+  <!-- ================= C ================= -->
+  <section id="p-c" role="tabpanel" aria-labelledby="t-c" hidden>
+    <h2>C · Catálogo técnico</h2>
+    <p class="lead">Feita para quem compra sempre: lista em linhas com medidas e preço por unidade, pedido rápido por código e quantidade, desenho com as medidas no lugar da foto principal.</p>
+    <div class="grid2">
+      <div class="card">
+        <h3>Paleta</h3>
+        <div class="swatches">
+          <div class="sw"><i style="background:#121417"></i><span><b>Preto</b><code>#121417</code> texto, réguas</span></div>
+          <div class="sw"><i style="background:#1d47c9"></i><span><b>Cobalto</b><code>#1D47C9</code> ação, medidas</span></div>
+          <div class="sw"><i style="background:#e7ecfb"></i><span><b>Cobalto claro</b><code>#E7ECFB</code> faixa ativa</span></div>
+          <div class="sw"><i style="background:#e4e7ec"></i><span><b>Grade</b><code>#E4E7EC</code> divisões</span></div>
+          <div class="sw"><i style="background:#b26a00"></i><span><b>Âmbar</b><code>#B26A00</code> sob encomenda</span></div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Tipografia e forma</h3>
+        <ul class="plain">
+          <li><b>IBM Plex Sans Condensed</b> nos títulos, <b>Plex Sans</b> no texto, <b>Plex Mono</b> em códigos, medidas e preços.</li>
+          <li>Tudo em grade de linhas finas, sem cartões, sem fotos grandes.</li>
+          <li>Assinatura: <b>cotas de medida</b> desenhadas sobre o produto e a caixa de <b>pedido rápido</b>.</li>
+        </ul>
+      </div>
+    </div>
+    <div data-dir="C"></div>
+    <div class="grid2" style="margin-top:22px">
+      <div class="card"><h3>Hierarquia</h3><ol class="hier"><li>Busca com atalho e pedido rápido por código.</li><li>Índice de departamentos em texto.</li><li>Lista comparável: medidas, embalagem, preço por unidade, estoque, quantidade e botão na mesma linha.</li></ol></div>
+      <div class="card"><h3>Risco</h3><p>Fria para o cliente de varejo que chega pelo Instagram ou WhatsApp e quer ver o produto. Parece sistema de compra, não loja; a vitrine perde apelo de presente e ocasião.</p></div>
+    </div>
+  </section>
+
+  <!-- ================= Decidir ================= -->
+  <section id="p-d" role="tabpanel" aria-labelledby="t-d" hidden>
+    <h2>Comparar e decidir</h2>
+    <div class="scroll card" style="padding:0">
+      <table class="cmp">
+        <thead><tr><th></th><th>A · Gôndola</th><th>B · Ateliê</th><th>C · Catálogo técnico</th></tr></thead>
+        <tbody>
+          <tr><th>Parece</th><td>Loja grande e organizada da região</td><td>Ateliê / boutique de confeitaria</td><td>Distribuidor / sistema de compras</td></tr>
+          <tr><th>Cliente de varejo</th><td>Bom: vê produto e preço claro</td><td>Ótimo: inspiração por ocasião</td><td>Fraco: muita informação técnica</td></tr>
+          <tr><th>Confeiteira que compra todo mês</th><td>Bom: busca, preço por unidade, escada de quantidade</td><td>Médio: precisa navegar mais</td><td>Ótimo: pedido rápido e lista</td></tr>
+          <tr><th>Produtos por tela</th><td>8 a 12</td><td>4 a 8</td><td>12 a 20</td></tr>
+          <tr><th>Depende de foto profissional</th><td>Médio (fundo neutro, mesmo enquadramento)</td><td>Alto (fotos de ambiente)</td><td>Baixo</td></tr>
+          <tr><th>Sob encomenda</th><td>Indicador âmbar + prazo no card</td><td>Texto rosa no card</td><td>Coluna de estoque</td></tr>
+          <tr><th>Envelhece</th><td>Devagar: vocabulário de varejo é estável</td><td>Mais rápido: segue tendência</td><td>Devagar</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="grid2" style="margin-top:16px">
+      <div class="card">
+        <h3>Recomendação: A · Gôndola</h3>
+        <p>É a que corresponde ao que você pediu: varejo especializado, com cara de loja grande e organizada, sem perder o jeito de comércio da região. Atende o cliente de varejo e o profissional na mesma tela, porque a etiqueta mostra o preço da embalagem e o da unidade, e a escada de quantidade mostra a vantagem de levar mais.</p>
+        <p>Das outras, eu aproveitaria funções, não o visual: o <b>pedido rápido por código</b> da C (na conta do cliente e na busca) e as <b>seleções por ocasião</b> da B como uma linha secundária da página inicial.</p>
+      </div>
+      <div class="card">
+        <h3>Para decidir</h3>
+        <ul class="plain">
+          <li>Responda com a letra escolhida (ou ajustes: "A, mas com o verde mais claro").</li>
+          <li>Depois da aprovação, aplico a direção na loja inteira: busca, categoria, produto, carrinho, checkout e conta.</li>
+          <li>Ainda preciso de: nome e logotipo (se já existirem), fotos dos produtos e se haverá retirada no balcão em Canoinhas.</li>
+          <li>Enquanto isso sigo com o que não depende do visual: clientes, carrinho, pedidos, Mercado Pago e frete na API.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+(() => {
+  // ---------- dados de exemplo (ilustrativos) ----------
+  const brl = (c) => (c / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  const P = [
+    { kind: 'box', name: 'Caixa para bolo com visor 25 × 25 × 12 cm', sku: 'CXB-2525-VIS', pack: 'Unidade', price: 390, per: 'R$ 3,90 a unidade', tier: '10+ un: R$ 3,50', dim: '25 × 25 × 12', st: 'in' },
+    { kind: 'liner', name: 'Forminha de papel nº 5 marrom', sku: 'FPN5-MAR', pack: 'Pacote com 100', price: 690, per: 'R$ 0,069 a forminha', tier: '10+ pct: R$ 6,20', dim: '3,5 × 2,5', st: 'in' },
+    { kind: 'pot', name: 'Pote para bolo no pote 250 ml com tampa', sku: 'PBP-250', pack: 'Pacote com 25', price: 2250, per: 'R$ 0,90 o pote', tier: '4+ pct: R$ 20,90', dim: 'ø 7,5 × 8', st: 'in' },
+    { kind: 'bag', name: 'Saco de celofane transparente 10 × 20 cm', sku: 'SCT-1020', pack: 'Pacote com 100', price: 780, per: 'R$ 0,078 o saco', tier: '10+ pct: R$ 7,10', dim: '10 × 20', st: 'in' },
+    { kind: 'nozzle', name: 'Bico de confeitar pitanga 1M inox', sku: 'BCP-1M', pack: 'Unidade', price: 990, per: 'R$ 9,90 a unidade', tier: '', dim: 'ø 2,8 × 5', st: 'in' },
+    { kind: 'jar', name: 'Granulado de chocolate macio 1 kg', sku: 'GRC-1KG', pack: 'Pacote de 1 kg', price: 2490, per: 'R$ 24,90 o kg', tier: '5+ pct: R$ 22,90', dim: '1 kg', st: 'in' },
+    { kind: 'ribbon', name: 'Fita de cetim 10 mm × 10 m rosa', sku: 'FCT-10-RS', pack: 'Rolo', price: 450, per: 'R$ 0,45 o metro', tier: '', dim: '10 mm', st: 'in' },
+    { kind: 'cupbox', name: 'Caixa para 4 cupcakes com berço', sku: 'CXC-4', pack: 'Unidade · mínimo 50', price: 280, per: 'R$ 2,80 a unidade', tier: '', dim: '18 × 18 × 9', st: 'order', lead: 'Sob encomenda · 7 dias úteis' },
+  ];
+  const CAT = [
+    { kind: 'box', name: 'Caixa para bolo com visor 20 × 20 × 10 cm', sku: 'CXB-2020-VIS', pack: 'Unidade', price: 320, per: 'R$ 3,20 a unidade', tier: '10+ un: R$ 2,90', dim: '20 × 20 × 10', st: 'in' },
+    P[0],
+    { kind: 'box', name: 'Caixa para bolo com visor 30 × 30 × 15 cm', sku: 'CXB-3030-VIS', pack: 'Unidade', price: 520, per: 'R$ 5,20 a unidade', tier: '10+ un: R$ 4,70', dim: '30 × 30 × 15', st: 'in' },
+    { kind: 'box', name: 'Caixa kraft para fatia de bolo', sku: 'CXF-KR', pack: 'Pacote com 10', price: 1490, per: 'R$ 1,49 a caixa', tier: '5+ pct: R$ 13,50', dim: '12 × 8 × 7', st: 'in' },
+    P[7],
+    { kind: 'cupbox', name: 'Caixa para 6 doces com berço', sku: 'CXD-6', pack: 'Pacote com 10', price: 1190, per: 'R$ 1,19 a caixa', tier: '', dim: '13 × 9 × 4', st: 'in' },
+    { kind: 'box', name: 'Caixa alta para bolo de andar 30 × 30 × 30 cm', sku: 'CXA-3030', pack: 'Unidade', price: 1190, per: 'R$ 11,90 a unidade', tier: '', dim: '30 × 30 × 30', st: 'order', lead: 'Sob encomenda · 10 dias úteis' },
+    { kind: 'box', name: 'Caixa para bolo sem visor 25 × 25 × 12 cm', sku: 'CXB-2525', pack: 'Unidade', price: 290, per: 'R$ 2,90 a unidade', tier: '10+ un: R$ 2,60', dim: '25 × 25 × 12', st: 'in' },
+    { kind: 'box', name: 'Caixa para torta redonda ø 26 cm', sku: 'CXT-26', pack: 'Unidade', price: 460, per: 'R$ 4,60 a unidade', tier: '', dim: '28 × 28 × 10', st: 'in' },
+  ];
+  const DEPTS = ['Todos os departamentos', 'Caixas e bandejas', 'Forminhas', 'Potes e sobremesa', 'Sacos e celofane', 'Fitas e tags', 'Descartáveis', 'Utensílios', 'Confeitos e corantes'];
+  const CATS = [['box', 'Caixas e bandejas'], ['liner', 'Forminhas e cápsulas'], ['pot', 'Potes e sobremesa'], ['bag', 'Sacos e celofane'], ['ribbon', 'Fitas e tags'], ['jar', 'Confeitos e corantes']];
+
+  // desenhos de marcacao (substituidos por fotos reais)
+  const S = 'fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"';
+  const ICON = {
+    box: `<svg viewBox="0 0 64 64" ${S}><path d="M10 22 32 12l22 10v24L32 56 10 46z"/><path d="M10 22l22 10 22-10M32 32v24"/><path d="M16 29l10 4.5v10L16 39z" stroke-dasharray="2 2"/></svg>`,
+    liner: `<svg viewBox="0 0 64 64" ${S}><ellipse cx="32" cy="20" rx="20" ry="5"/><path d="M12 20l6 30h28l6-30"/><path d="M19 22l3 28M26 24l1.5 26M32 25v25M38 24l-1.5 26M45 22l-3 28"/></svg>`,
+    pot: `<svg viewBox="0 0 64 64" ${S}><rect x="18" y="10" width="28" height="7" rx="2"/><path d="M20 17h24l-2 37H22z"/><path d="M22 30h20" stroke-dasharray="2 2"/></svg>`,
+    bag: `<svg viewBox="0 0 64 64" ${S}><path d="M20 10h24v44H20z"/><path d="M20 16h24M24 13h16" stroke-dasharray="2 2"/><path d="M28 26l8 8" opacity=".5"/></svg>`,
+    nozzle: `<svg viewBox="0 0 64 64" ${S}><path d="M22 14h20l-6 34h-8z"/><path d="M28 48l-2 6h12l-2-6M30 54v-6M34 54v-6"/></svg>`,
+    jar: `<svg viewBox="0 0 64 64" ${S}><path d="M18 14h28v8l4 6v26H14V28l4-6z"/><path d="M18 22h28"/><path d="M22 36h2M30 40h2M38 35h2M26 46h2M36 46h2" stroke-width="2.4"/></svg>`,
+    ribbon: `<svg viewBox="0 0 64 64" ${S}><ellipse cx="32" cy="32" rx="18" ry="18"/><ellipse cx="32" cy="32" rx="7" ry="7"/><path d="M48 40l10 10-6 2 2 6-10-10"/></svg>`,
+    cupbox: `<svg viewBox="0 0 64 64" ${S}><path d="M8 26h48v24H8z"/><path d="M8 26l6-10h36l6 10"/><circle cx="20" cy="38" r="5"/><circle cx="32" cy="38" r="5"/><circle cx="44" cy="38" r="5"/></svg>`,
+  };
+  const ph = (k, label = 'foto') => `<div class="ph">${ICON[k]}<em>${label}</em></div>`;
+  const ico = {
+    pix: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3l9 9-9 9-9-9z"/><path d="M8 12h8"/></svg>',
+    truck: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 6h12v10H2zM14 10h4l3 3v3h-7"/><circle cx="6" cy="18" r="2"/><circle cx="17" cy="18" r="2"/></svg>',
+    doc: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 3h9l4 4v14H6z"/><path d="M9 11h7M9 15h7"/></svg>',
+    chat: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 5h16v11H9l-5 4z"/></svg>',
+  };
+  const TRUST = [['pix', 'Pix e cartão', 'Pagamento seguro pelo provedor; a loja não guarda dados do cartão.'], ['truck', 'Entrega no Planalto Norte', 'Por transportadora, com frete calculado pelo CEP.'], ['doc', 'Nota fiscal', 'NF-e em todas as compras, com CPF ou CNPJ.'], ['chat', 'Atendimento', 'WhatsApp e e-mail em horário comercial.']];
+
+  // ---------- A ----------
+  const aCard = (p) => `<div class="pc">${ph(p.kind)}<div class="${p.st === 'order' ? 'st order' : 'st'}">${p.st === 'order' ? p.lead : 'Em estoque'}</div><h3>${p.name}</h3><div class="pack">${p.pack} · <span style="font-family:IBM Plex Mono,monospace">${p.sku}</span></div><div class="tag"><span class="p">${brl(p.price).replace('R$', '<small>R$</small>')}</span><span class="u">${p.pack.split(' ·')[0]}</span><span class="u">${p.per}</span></div><div class="tier">${p.tier || '&nbsp;'}</div><div class="btn">Adicionar</div></div>`;
+  const aTop = () => `<div class="top"><span class="logo-ph">SUA MARCA</span><div class="search"><span>Buscar caixa, forminha, pote, código…</span><b>Buscar</b></div><div class="acts"><span>Entrar</span><span>Pedidos</span><span>Carrinho<i>3</i></span></div></div><nav class="dept cond">${DEPTS.map((d) => `<a>${d}</a>`).join('')}</nav>`;
+  const aTrust = () => `<div class="trust">${TRUST.map(([i, t, d]) => `<div>${ico[i]}<b>${t}</b>${d}</div>`).join('')}</div>`;
+  const aFoot = () => `<div class="foot"><div><b>Sua marca</b>Embalagens, utensílios e confeitos para confeitaria e panificação. Canoinhas · SC<br>CNPJ 00.000.000/0000-00 (exemplo)</div><div><b>Comprar</b>Departamentos<br>Comprar em quantidade<br>Sob encomenda</div><div><b>Ajuda</b>Entrega e frete<br>Trocas e devoluções<br>Pagamento</div><div><b>Atendimento</b>WhatsApp (00) 00000-0000<br>Seg. a sex., 8h às 18h</div></div>`;
+  const A = {
+    home: () => `<div class="m A">${aTop()}<div class="strip"><span>Envio por transportadora para o Planalto Norte</span><span>Pix e cartão</span><span>Nota fiscal em todas as compras</span></div>
+      <div class="hero"><div><h1>Embalagens e insumos para confeitaria</h1><p>Caixas, forminhas, potes, sacos, fitas e confeitos, da unidade ao fardo. Quanto mais você leva, menor o preço por unidade.</p><div class="chips"><span>Bolo no pote</span><span>Doces finos</span><span>Cupcake</span><span>Bolo de aniversário</span><span>Delivery</span></div></div>
+      <div class="cats">${CATS.map(([k, n]) => `<a class="cat">${ph(k)}<b>${n}</b></a>`).join('')}</div></div>
+      <div class="sec"><div class="sec-h"><h2>Comprar em quantidade</h2><a>Como funciona ›</a></div><div class="ladder"><div><b>Caixa com visor 25 cm</b><br><small>O desconto aparece no carrinho, sem cadastro especial.</small></div><div><small>1 a 9 un</small><div class="q">R$ 3,90</div></div><div><small>10 a 49 un</small><div class="q">R$ 3,50</div><span class="lab">−10%</span></div><div><small>50 un ou mais</small><div class="q">R$ 3,20</div><span class="lab">−18%</span></div></div></div>
+      <div class="sec" style="padding-top:4px"><div class="sec-h"><h2>Mais procurados</h2><a>Ver todos ›</a></div><div class="grid">${P.map(aCard).join('')}</div></div>
+      <div class="sec" style="padding-top:4px">${aTrust()}</div>${aFoot()}</div>`,
+    mobile: () => `<div class="m A mob"><div class="mrow"><span style="font-weight:700;font-size:13px">Menu</span><span class="logo-ph">SUA MARCA</span><span style="font-weight:700;font-size:13px">Carrinho <i style="font-style:normal;background:#ffd23f;padding:1px 5px">3</i></span></div><div class="search"><span>Buscar produto ou código</span><b>OK</b></div><nav class="dept cond">${DEPTS.slice(1).map((d) => `<a>${d}</a>`).join('')}</nav>
+      <div class="hero"><div><h1>Embalagens e insumos para confeitaria</h1><p>Da unidade ao fardo. Quanto mais você leva, menor o preço por unidade.</p></div><div class="cats">${CATS.slice(0, 4).map(([k, n]) => `<a class="cat">${ph(k)}<b>${n}</b></a>`).join('')}</div></div>
+      <div class="sec"><div class="sec-h"><h2>Comprar em quantidade</h2></div><div class="ladder"><div><small>1 a 9 un</small><div class="q">R$ 3,90</div></div><div><small>10 a 49 un</small><div class="q">R$ 3,50</div></div><div style="grid-column:span 2"><small>50 un ou mais</small><div class="q">R$ 3,20 <span class="lab" style="font-size:12px">−18%</span></div></div></div></div>
+      <div class="sec" style="padding-top:0"><div class="sec-h"><h2>Mais procurados</h2></div><div class="grid">${P.slice(0, 4).map(aCard).join('')}</div></div>
+      <div class="tabbar"><span>Início</span><span>Departamentos</span><span>Pedidos</span><span>Conta</span></div></div>`,
+    category: () => `<div class="m A">${aTop()}<div class="crumbs">Início › Caixas e bandejas › <b>Caixas para bolo</b></div><div class="cat-h"><h1>Caixas para bolo</h1><span style="font-size:13px;color:#5b635f">9 produtos</span></div>
+      <div class="layout"><aside class="filters"><h4>Tipo</h4><label><i class="on"></i>Com visor</label><label><i></i>Sem visor</label><label><i></i>Para cupcake e doces</label><label><i></i>Para fatia</label><h4>Medida da base</h4><label><i></i>Até 20 cm</label><label><i class="on"></i>21 a 25 cm</label><label><i></i>26 a 30 cm</label><h4>Disponibilidade</h4><label><i class="on"></i>Em estoque</label><label><i></i>Sob encomenda</label><h4>Embalagem</h4><label><i></i>Unidade</label><label><i></i>Pacote</label><label><i></i>Fardo</label></aside>
+      <div><div class="sortbar"><span>Filtros: <b>Com visor · 21 a 25 cm · Em estoque</b> <u style="margin-left:8px">limpar</u></span><span>Ordenar: menor preço por unidade ▾</span></div><div class="grid grid3">${CAT.slice(0, 6).map(aCard).join('')}</div></div></div>${aFoot()}</div>`,
+    product: () => `<div class="m A">${aTop()}<div class="crumbs">Início › Caixas e bandejas › Caixas para bolo › <b>Caixa com visor 25 cm</b></div>
+      <div class="pdp"><div class="gal"><div class="thumbs">${['box', 'box', 'box', 'box'].map((k, i) => ph(k, i ? 'det.' : 'foto')).join('')}</div><div class="main">${ph('box', 'foto principal')}</div></div>
+      <div><div class="st">Em estoque</div><h1>Caixa para bolo com visor 25 × 25 × 12 cm</h1><div class="meta"><span>Vendida por unidade</span><span>SKU CXB-2525-VIS</span><span>Cabe bolo de até 23 cm</span></div>
+      <div class="pricebox"><div class="tag"><span class="p"><small>R$</small> 3,50</span><span class="u">cada,</span><span class="u">na faixa de 10 a 49</span></div><table class="tiers"><tr><th>Quantidade</th><th>Preço por unidade</th></tr><tr><td>1 a 9</td><td>R$ 3,90</td></tr><tr class="on"><td>10 a 49</td><td>R$ 3,50</td></tr><tr><td>50 ou mais</td><td>R$ 3,20</td></tr></table></div>
+      <div class="buy"><div class="qty"><span>−</span><span>20</span><span>+</span></div><div class="btn">Adicionar 20 un · R$ 70,00</div></div>
+      <div class="ship"><b>Calcular frete</b><span></span><span class="in">CEP 89460-000</span><div class="btn ghost" style="padding:7px 12px">Calcular</div></div>
+      <p style="font-size:12px;color:#5b635f;margin-top:10px">Fardo com 100 unidades disponível na mesma página: escolha a embalagem antes da quantidade.</p></div></div>
+      <div class="specs"><div><div class="sec-h" style="margin-bottom:6px"><h2 style="font-size:18px">Medidas e material</h2></div><dl><dt>Medida interna</dt><dd>25 × 25 × 12 cm</dd><dt>Visor</dt><dd>Filme transparente na tampa</dd><dt>Material</dt><dd>Papel cartão (exemplo)</dd><dt>Montagem</dt><dd>Dobrável, sem cola</dd></dl></div><div><div class="sec-h" style="margin-bottom:6px"><h2 style="font-size:18px">Combina com</h2></div><div class="grid" style="grid-template-columns:1fr 1fr">${[P[6], P[3]].map(aCard).join('')}</div></div></div></div>`,
+  };
+
+  // ---------- B ----------
+  const bCard = (p) => `<div class="pc">${ph(p.kind)}<h3>${p.name}</h3><div class="pack">${p.pack}</div><div class="pr">${brl(p.price)}<small>${p.per}</small></div>${p.st === 'order' ? `<div class="order">${p.lead}</div>` : p.tier ? `<div class="tier">${p.tier}</div>` : ''}</div>`;
+  const bTop = () => `<div class="top"><nav class="nav"><a>Comprar</a><a>Ocasiões</a><a>Em quantidade</a></nav><span class="logo-ph">SUA MARCA</span><div class="right"><span>Buscar</span><span>Conta</span><span>Sacola (3)</span></div></div>`;
+  const bFoot = () => `<div class="foot"><div><b>Sua marca</b>Embalagens e insumos para confeitaria em Canoinhas · SC.<br>CNPJ 00.000.000/0000-00 (exemplo)</div><div><b>Ajuda</b>Entrega · Trocas · Pagamento</div><div><b>Fale com a gente</b>WhatsApp (00) 00000-0000</div></div>`;
+  const OCC = [['box', 'Bolo de aniversário'], ['cupbox', 'Doces finos'], ['pot', 'Bolo no pote para vender'], ['bag', 'Lembrancinhas']];
+  const B = {
+    home: () => `<div class="m B">${bTop()}<div class="hero">${ph('box', 'foto de ambiente')}<div class="txt"><span class="ktag">Para quem confeita</span><h1>Tudo para embalar o que você faz com cuidado</h1><p>Caixas, forminhas, potes, fitas e confeitos para quem vende bolo e doce, da primeira encomenda à produção da semana.</p><div style="display:flex;gap:10px"><a class="btn">Ver produtos</a><a class="btn ghost">Comprar em quantidade</a></div></div></div>
+      <div class="occ">${OCC.map(([k, n]) => `<div class="card-b">${ph(k)}<span class="ktag">${n}</span></div>`).join('')}</div>
+      <div class="sec"><div class="sec-h"><h2>Mais pedidos</h2><a>Ver tudo</a></div><div class="grid">${P.slice(0, 8).map(bCard).join('')}</div></div>
+      <div class="band"><div><h2>Levando mais, paga menos</h2><p style="color:#5a4a40;margin-top:8px">O preço cai sozinho no carrinho quando você atinge a quantidade.</p></div><ol><li><b>R$ 3,90</b>de 1 a 9 unidades</li><li><b>R$ 3,50</b>de 10 a 49</li><li><b>R$ 3,20</b>50 ou mais</li></ol></div>
+      <div class="trust">${TRUST.map(([, t, d]) => `<div><b>${t}</b>${d}</div>`).join('')}</div>${bFoot()}</div>`,
+    mobile: () => `<div class="m B mob"><div class="top"><span style="font-weight:600;font-size:13px">Menu</span><span class="logo-ph" style="justify-self:center">SUA MARCA</span><span style="font-size:13px;font-weight:600">Sacola (3)</span></div><div class="msearch" style="margin-top:12px">Buscar na loja</div><div class="hero">${ph('box', 'foto de ambiente')}<div class="txt"><span class="ktag">Para quem confeita</span><h1>Tudo para embalar o que você faz com cuidado</h1><a class="btn" style="text-align:center">Ver produtos</a></div></div>
+      <div class="occ">${OCC.map(([k, n]) => `<div class="card-b">${ph(k)}<span class="ktag">${n}</span></div>`).join('')}</div><div class="sec"><div class="sec-h"><h2>Mais pedidos</h2></div><div class="grid">${P.slice(0, 4).map(bCard).join('')}</div></div></div>`,
+    category: () => `<div class="m B">${bTop()}<div class="crumbs">Comprar / Caixas</div><div class="cat-h"><h1>Caixas para bolo</h1><p>Com e sem visor, para bolo inteiro, fatia, cupcake e doces. Medidas internas em cada produto.</p></div><div class="fbar"><span class="on">Com visor</span><span>Sem visor</span><span>Cupcake e doces</span><span>Fatia</span><span>Pronta entrega</span><em>Ordenar: mais pedidos ▾</em></div><div class="grid cat">${CAT.slice(0, 8).map(bCard).join('')}</div>${bFoot()}</div>`,
+    product: () => `<div class="m B">${bTop()}<div class="crumbs">Comprar / Caixas / Caixa com visor 25 cm</div><div class="pdp"><div class="gal">${ph('box', 'foto principal')}${ph('box', 'detalhe')}${ph('box', 'em uso')}</div>
+      <div><span class="ktag">Bolo de aniversário</span><h1>Caixa para bolo com visor 25 × 25 × 12 cm</h1><p class="lede">Para bolo de até 23 cm de diâmetro. Tampa com visor para mostrar a decoração.</p><div class="pr-big">R$ 3,90 <small>a unidade</small></div>
+      <div class="tiers-b"><div><b>R$ 3,90</b>1 a 9</div><div class="on"><b>R$ 3,50</b>10 a 49</div><div><b>R$ 3,20</b>50 ou mais</div></div>
+      <div class="buy"><div class="qty"><span>−</span><span>20</span><span>+</span></div><a class="btn">Pôr na sacola · R$ 70,00</a></div>
+      <div class="info"><div><span>Pronta entrega</span><span>Em estoque</span></div><div><span>Frete</span><span style="text-decoration:underline">Calcular pelo CEP</span></div><div><span>Medidas e material</span><span>+</span></div><div><span>Como montar</span><span>+</span></div></div></div></div>${bFoot()}</div>`,
+  };
+
+  // ---------- C ----------
+  const cRow = (p) => `<tr><td class="th">${ph(p.kind)}</td><td><b style="font-weight:600">${p.name}</b><br><span class="mono" style="font-size:11px;color:#5c6370">${p.sku}</span></td><td class="mono">${p.dim}</td><td>${p.pack}</td><td class="n">${brl(p.price)}</td><td class="n" style="color:#5c6370">${p.per.replace(/^R\$ ([\d,]+) (.*)$/, 'R$ $1')}</td><td><span class="stc ${p.st === 'order' ? 'order' : ''}">${p.st === 'order' ? p.lead.replace('Sob encomenda · ', 'Encomenda ') : 'Em estoque'}</span></td><td><span class="qty-s"><span>−</span><span>1</span><span>+</span></span></td><td><span class="add">Adicionar</span></td></tr>`;
+  const cHead = '<tr><th></th><th>Produto</th><th>Medida (cm)</th><th>Embalagem</th><th style="text-align:right">Preço</th><th style="text-align:right">Unidade</th><th>Estoque</th><th>Qtd.</th><th></th></tr>';
+  const cTop = () => `<div class="top"><span class="logo-ph">SUA MARCA</span><div class="search">Buscar por nome, medida ou código<kbd>/</kbd></div><div class="acts"><span>Pedido rápido</span><span>Minha conta</span><span>Carrinho<b>3</b></span></div></div><nav class="dept">${DEPTS.slice(1).map((d, i) => `<a class="${i === 0 ? 'on' : ''}">${d}</a>`).join('')}</nav>`;
+  const cFoot = () => `<div class="foot"><div><b>Sua marca</b>Canoinhas · SC · CNPJ 00.000.000/0000-00 (exemplo)</div><div><b>Compra</b>Pedido rápido<br>Recomprar pedido</div><div><b>Entrega</b>Prazos e frete</div><div><b>Atendimento</b>(00) 00000-0000</div></div>`;
+  const C = {
+    home: () => `<div class="m C">${cTop()}<div class="hero"><div class="l"><h1>Embalagens, utensílios e insumos para confeitaria</h1><p>Medida, embalagem e preço por unidade na mesma linha. Compre por código ou repita um pedido anterior.</p><div style="display:flex;gap:8px;margin-top:14px"><span class="btn">Ver departamentos</span><span class="btn out">Repetir último pedido</span></div></div>
+      <div class="quick"><h3>Pedido rápido</h3><div class="qrow"><span>CXB-2525-VIS</span><span>20</span><span class="ok">R$ 70,00</span></div><div class="qrow"><span>FPN5-MAR</span><span>5</span><span class="ok">R$ 34,50</span></div><div class="qrow"><span>Código</span><span>Qtd.</span><span></span></div><div class="btn" style="margin-top:8px">Adicionar 2 itens ao carrinho</div></div></div>
+      <div class="index">${DEPTS.slice(1).map((d) => `<div><b>${d}</b><small>Ver produtos →</small></div>`).join('')}</div>
+      <div class="sec"><div class="sec-h"><h2>Mais comprados</h2><a>Ver lista completa</a></div><table class="list"><thead>${cHead}</thead><tbody>${P.map(cRow).join('')}</tbody></table></div>
+      <div class="trust">${TRUST.map(([, t, d]) => `<div><b>${t}</b>${d}</div>`).join('')}</div>${cFoot()}</div>`,
+    mobile: () => `<div class="m C mob"><div class="top"><span style="font-weight:600;font-size:13px">Menu</span><span class="logo-ph" style="justify-self:center">SUA MARCA</span><span style="font-size:13px;font-weight:600">Carrinho 3</span></div><div class="search msearch">Nome, medida ou código</div><div class="hero"><div class="l"><h1>Embalagens e insumos para confeitaria</h1></div><div class="quick"><h3>Pedido rápido</h3><div class="qrow"><span>CXB-2525-VIS</span><span>20</span><span class="ok">R$ 70</span></div><div class="qrow"><span>Código</span><span>Qtd.</span><span></span></div></div></div>
+      <div class="index">${DEPTS.slice(1, 7).map((d) => `<div><b>${d}</b></div>`).join('')}</div><div class="sec"><div class="sec-h"><h2>Mais comprados</h2></div><div class="mlist">${P.slice(0, 4).map((p) => `<div>${ph(p.kind)}<div><h3>${p.name}</h3><span class="mono" style="font-size:11px;color:#5c6370">${p.sku} · ${p.pack}</span><div class="row"><span>${brl(p.price)}</span><span class="add">Adicionar</span></div></div></div>`).join('')}</div></div></div>`,
+    category: () => `<div class="m C">${cTop()}<div class="crumbs">início / caixas-e-bandejas / caixas-para-bolo</div><div class="cat-h"><h1>Caixas para bolo</h1><span class="mono" style="font-size:12px;color:#5c6370">9 itens</span></div>
+      <div class="layout"><aside class="filters"><h4>Tipo</h4><label>Com visor <i>6</i></label><label>Sem visor <i>1</i></label><label>Cupcake e doces <i>2</i></label><h4>Base (cm)</h4><div class="range"><span>de 20</span><span>até 25</span></div><h4>Altura (cm)</h4><div class="range"><span>de 8</span><span>até 15</span></div><h4>Estoque</h4><label>Em estoque <i>7</i></label><label>Encomenda <i>2</i></label></aside>
+      <div class="listwrap"><div class="views"><span>Exibindo <b>9</b> · ordenado por <b>preço por unidade</b></span><span><b>Lista</b> · Grade</span></div><table class="list"><thead>${cHead}</thead><tbody>${CAT.map(cRow).join('')}</tbody></table></div></div>${cFoot()}</div>`,
+    product: () => `<div class="m C">${cTop()}<div class="crumbs">início / caixas-e-bandejas / caixas-para-bolo / CXB-2525-VIS</div><div class="pdp"><div class="draw"><div class="ph" style="position:relative">${ICON.box}<em>desenho técnico · foto ao lado</em><span class="dimline" style="left:28%;right:28%;bottom:12%;border-width:0 0 1px"></span><span class="dim" style="left:46%;bottom:5%">250 mm</span><span class="dimline" style="right:22%;top:24%;bottom:22%;border-width:0 1px 0 0"></span><span class="dim" style="right:12%;top:46%">120 mm</span></div><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:8px">${['box', 'box', 'box', 'box'].map(() => `<div style="background:#f6f7f9;color:#8a909b">${ph('box')}</div>`).join('')}</div></div>
+      <div class="info"><span class="mono" style="font-size:12px;color:#5c6370">CXB-2525-VIS · <span class="stc">Em estoque</span></span><h1>Caixa para bolo com visor 25 × 25 × 12 cm</h1><table class="spec"><tr><td>Medida interna</td><td>250 × 250 × 120 mm</td></tr><tr><td>Cabe bolo de até</td><td>ø 230 mm</td></tr><tr><td>Material</td><td>papel cartão (exemplo)</td></tr><tr><td>Embalagens</td><td>unidade · fardo 100</td></tr></table>
+      <table class="tq"><thead><tr><th>Quantidade</th><th>Unidade</th><th>Economia</th></tr></thead><tbody><tr><td>1–9</td><td>R$ 3,90</td><td>—</td></tr><tr class="on"><td>10–49</td><td>R$ 3,50</td><td>−10%</td></tr><tr><td>50+</td><td>R$ 3,20</td><td>−18%</td></tr></tbody></table>
+      <div class="buy"><div class="qty"><span>−</span><span>20</span><span>+</span></div><div class="btn">Adicionar · R$ 70,00</div></div><p style="font-size:12px;color:#5c6370;margin-top:10px" class="mono">Frete: informe o CEP no carrinho.</p></div></div>${cFoot()}</div>`,
+  };
+
+  const DIRS = { A, B, C };
+  const frame = (html, w, url) => `<div class="frame"><div class="bar"><i></i><i></i><i></i><small>${url}</small></div><div class="viewport" data-w="${w}"><div class="screen" style="width:${w}px">${html}</div></div></div>`;
+  for (const host of document.querySelectorAll('[data-dir]')) {
+    const d = DIRS[host.dataset.dir];
+    host.innerHTML = `
+      <div class="frames-label"><h3>Página inicial</h3><span>computador (1280 px) e celular (375 px), reduzidos</span></div>
+      <div class="duo"><div>${frame(d.home(), 1280, 'sualoja.com.br')}</div><div class="phone">${frame(d.mobile(), 375, '')}</div></div>
+      <div class="frames-label"><h3>Categoria</h3><span>computador</span></div>${frame(d.category(), 1280, 'sualoja.com.br/caixas-para-bolo')}
+      <div class="frames-label"><h3>Produto</h3><span>computador</span></div>${frame(d.product(), 1280, 'sualoja.com.br/p/caixa-bolo-visor-25')}`;
+  }
+
+  // Molduras: desenha na largura real e reduz para caber na coluna.
+  const fit = () => {
+    for (const vp of document.querySelectorAll('.viewport')) {
+      if (!vp.offsetParent) continue;
+      const w = Number(vp.dataset.w);
+      const scr = vp.firstElementChild;
+      const s = Math.min(1, vp.clientWidth / w);
+      scr.style.transform = `scale(${s})`;
+      vp.style.height = `${Math.ceil(scr.offsetHeight * s)}px`;
+    }
+  };
+  const ro = new ResizeObserver(fit);
+  document.querySelectorAll('.viewport').forEach((v) => ro.observe(v));
+  document.fonts?.ready.then(fit);
+
+  // Abas com endereco (#a, #b, #c, #decidir)
+  const tabs = [...document.querySelectorAll('.tab')];
+  const show = (k) => {
+    const key = tabs.some((t) => t.dataset.k === k) ? k : 'a';
+    for (const t of tabs) {
+      const on = t.dataset.k === key;
+      t.setAttribute('aria-selected', on);
+      t.tabIndex = on ? 0 : -1;
+      document.getElementById(t.getAttribute('aria-controls')).hidden = !on;
+    }
+    fit();
+    setTimeout(fit, 60);
+  };
+  tabs.forEach((t) => t.addEventListener('click', () => { history.replaceState(null, '', `#${t.dataset.k}`); show(t.dataset.k); }));
+  window.addEventListener('hashchange', () => show(location.hash.slice(1)));
+  show(location.hash.slice(1));
+})();
+</script>

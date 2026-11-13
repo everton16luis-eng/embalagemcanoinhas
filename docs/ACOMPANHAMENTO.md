@@ -107,7 +107,18 @@ Ver [00-diagnostico-e-plano.md](00-diagnostico-e-plano.md).
 
 - Inspeção por captura de tela: o painel do navegador seguia oculto; a verificação foi por texto e medidas.
 
-## Fase 4 — Loja, carrinho, checkout e pedidos — próxima
+## Fase 4 — Loja, carrinho, checkout e pedidos — em andamento
+
+### Direção visual — aguardando aprovação (13/11/2026)
+
+Proposta em [design/direcoes-visuais.html](design/direcoes-visuais.html): A · Gôndola (recomendada), B · Ateliê,
+C · Catálogo técnico, cada uma com página inicial (computador e celular), categoria e produto, paleta, tipografia,
+hierarquia e riscos. Marca, fotos, preços e CNPJ nas telas são provisórios.
+
+Pesquisa de referências: padrões de atacado (preço por faixa de quantidade, comparação de tamanhos de embalagem,
+pedido rápido por código) e lojas de confeitaria guiadas pela embalagem. Nada copiado.
+
+Informações ainda necessárias: nome e logotipo, fotos dos produtos, se haverá retirada no balcão.
 
 Antes da vitrine: 3 direções visuais com mockups para aprovação. Em paralelo, sem depender da aprovação: clientes,
 carrinho e pedido na API, integração do Mercado Pago (documentação oficial), frete e expedição.

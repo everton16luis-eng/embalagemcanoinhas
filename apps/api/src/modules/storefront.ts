@@ -42,6 +42,27 @@ const SORTS: Record<string, string> = {
 };
 
 export async function catalogRoutes(app: FastifyInstance) {
+  /** Marca e identificacao da empresa para cabecalho e rodape. So o que ja foi cadastrado no painel. */
+  app.get('/store', async () => {
+    const s = (await pool.query('SELECT store_name, tagline, logo_key, whatsapp_number, support_email, pages FROM store_settings')).rows[0] ?? {};
+    const c =
+      (
+        await pool.query(
+          `SELECT legal_name, trade_name, cnpj, street, number, district, city, uf, cep, phone, email FROM company_profiles ORDER BY version DESC LIMIT 1`,
+        )
+      ).rows[0] ?? null;
+    const pages = Object.fromEntries(Object.entries((s.pages ?? {}) as Record<string, unknown>).filter(([, v]) => typeof v === 'string' && v.trim()));
+    return { store: { name: s.store_name ?? null, tagline: s.tagline ?? null, logoKey: s.logo_key ?? null, whatsapp: s.whatsapp_number ?? null, email: s.support_email ?? null, pages: Object.keys(pages) }, company: c };
+  });
+
+  app.get('/pages/:key', async (req) => {
+    const { key } = z.object({ key: z.enum(['about', 'returns', 'privacy', 'shipping', 'terms']) }).parse(req.params);
+    const s = (await pool.query('SELECT pages FROM store_settings')).rows[0];
+    const text = s?.pages?.[key];
+    if (typeof text !== 'string' || !text.trim()) throw notFound();
+    return { key, text };
+  });
+
   app.get('/categories', async () => {
     const { rows } = await pool.query(
       `SELECT c.id, c.parent_id, c.name, c.slug, c.description, c.position,

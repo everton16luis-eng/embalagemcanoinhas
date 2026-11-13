@@ -28,6 +28,21 @@
   --color-bad: #b42318;
   --color-bad-tint: #fdeceb;
   --radius-ctl: 6px;
+
+  /* LOJA (direcao A, Gondola): grafite, verde balcao, amarelo etiqueta so no preco. Cantos retos. */
+  --font-loja: 'Archivo Variable', ui-sans-serif, system-ui, sans-serif;
+  --color-g-ink: #18211d;
+  --color-g-soft: #48504c;
+  --color-g-faint: #6b736f;
+  --color-g-paper: #f3f4f1;
+  --color-g-photo: #eef0ec;
+  --color-g-line: #d9ddd8;
+  --color-g-green: #0e5b49;
+  --color-g-green-dark: #0a4537;
+  --color-g-green-tint: #e1ece7;
+  --color-g-label: #ffd23f;
+  --color-g-red: #b8321c;
+  --color-g-amber: #8a5a00;
 }
 
 @layer base {
@@ -56,5 +71,25 @@
       transition-duration: 0.01ms !important;
       animation-duration: 0.01ms !important;
     }
+  }
+}
+
+/* Loja: tipografia condensada so em titulos, departamentos e precos. */
+@layer components {
+  .loja {
+    font-family: var(--font-loja);
+    font-size: 15px;
+    color: var(--color-g-ink);
+    background: #fff;
+  }
+  .loja :focus-visible {
+    outline: 2px solid var(--color-g-green);
+    outline-offset: 2px;
+  }
+  .cond {
+    font-stretch: 75%;
+  }
+  .cond-x {
+    font-stretch: 68%;
   }
 }

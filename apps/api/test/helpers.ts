@@ -95,6 +95,10 @@ export async function loggedAs(app: FastifyInstance, role: string, opts: { mfa?:
 
 /** Limpa os dados entre arquivos de teste. A auditoria e somente inclusao e nao e apagada. */
 export async function resetCatalog() {
+  // Movimentos e recebimentos sao imutaveis (gatilho por linha); no banco de teste o dono limpa com TRUNCATE.
+  await owner.query(
+    'TRUNCATE inventory_count_items, inventory_counts, purchase_receipt_items, purchase_receipts, purchase_order_items, purchase_orders, supplier_products, supplier_contacts, suppliers, stock_reservations, stock_movements, stock_balances',
+  );
   await owner.query('DELETE FROM product_images; DELETE FROM packagings; DELETE FROM product_variants; DELETE FROM products; DELETE FROM categories');
 }
 

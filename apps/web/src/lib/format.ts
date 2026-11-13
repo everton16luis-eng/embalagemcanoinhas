@@ -78,3 +78,7 @@ export const ORIGINS = [
   '7 – Estrangeira, mercado interno, sem similar nacional (CAMEX)',
   '8 – Nacional, conteúdo de importação acima de 70%',
 ];
+
+const unitBrl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 4 });
+/** Custo por unidade base: um copo pode custar R$ 0,0437, entao mostra ate 4 casas. */
+export const unitMoney = (cents: string | number | null | undefined) => (cents === null || cents === undefined ? '—' : unitBrl.format(Number(cents) / 100));

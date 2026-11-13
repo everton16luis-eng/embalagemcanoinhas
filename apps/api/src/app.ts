@@ -14,7 +14,12 @@ import { categoryRoutes } from './modules/categories.js';
 import { companyRoutes, fiscalSettingsRoutes, storeSettingsRoutes } from './modules/company.js';
 import { productImageRoutes, publicImageRoutes } from './modules/images.js';
 import { productRoutes } from './modules/products.js';
+import { inventoryRoutes } from './modules/inventory.js';
+import { purchaseRoutes } from './modules/purchases.js';
 import { setupRoutes } from './modules/setup.js';
+import { stockReportRoutes } from './modules/stock-reports.js';
+import { stockRoutes } from './modules/stock.js';
+import { supplierRoutes } from './modules/suppliers.js';
 import { userRoutes } from './modules/users.js';
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
@@ -92,6 +97,11 @@ export async function buildApp(opts: { notifier: ResetNotifier; routes?: { metho
   await app.register(companyRoutes, { prefix: '/api/v1/admin/company' });
   await app.register(fiscalSettingsRoutes, { prefix: '/api/v1/admin/fiscal/settings' });
   await app.register(storeSettingsRoutes, { prefix: '/api/v1/admin/store-settings' });
+  await app.register(stockRoutes, { prefix: '/api/v1/admin/stock' });
+  await app.register(stockReportRoutes, { prefix: '/api/v1/admin/stock-reports' });
+  await app.register(inventoryRoutes, { prefix: '/api/v1/admin/inventory-counts' });
+  await app.register(supplierRoutes, { prefix: '/api/v1/admin/suppliers' });
+  await app.register(purchaseRoutes, { prefix: '/api/v1/admin/purchase-orders' });
   await app.register(publicImageRoutes, { prefix: '/api/v1/public' });
   return app;
 }

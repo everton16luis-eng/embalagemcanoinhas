@@ -39,6 +39,14 @@ describe('varredura de rotas', () => {
       // 400 seria validacao antes da permissao: nunca pode acontecer.
       expect([403], `${r.method} ${r.url} → ${res.statusCode}`).toContain(res.statusCode);
     }
+    // Atendente consulta saldo, mas nao movimenta estoque nem compra.
+    const stockWrites = routes.filter((r) => r.method !== 'GET' && /\/admin\/(stock|suppliers|purchase-orders|inventory-counts)/.test(r.url));
+    expect(stockWrites.length).toBeGreaterThan(12);
+    for (const r of stockWrites) expect((await sales.send(r.method as never, fill(r.url), {})).statusCode, `${r.method} ${r.url}`).toBe(403);
+    expect((await sales.get('/api/v1/admin/stock')).statusCode).toBe(200);
+    for (const url of ['/api/v1/admin/suppliers', '/api/v1/admin/purchase-orders', '/api/v1/admin/stock-reports/replenishment', '/api/v1/admin/stock-reports/summary']) {
+      expect((await sales.get(url)).statusCode, url).toBe(403);
+    }
     for (const url of ['/api/v1/admin/users', '/api/v1/admin/audit', '/api/v1/admin/company', '/api/v1/admin/store-settings']) {
       expect((await sales.get(url)).statusCode, url).toBe(403);
     }

@@ -66,9 +66,9 @@ function Templates({ data, reload }: { data: Overview; reload: () => void }) {
           <li key={ev.event} className="py-3">
             {editing?.event === ev.event ? (
               <form onSubmit={save} className="grid gap-3 sm:grid-cols-[1fr_8rem_auto] sm:items-end">
-                <Field label={`Modelo para “${ev.label}”`} required hint="Nome exato do modelo no WhatsApp Manager.">
+                <Field label={`Modelo para “${ev.label}”`} required>
                   {(id) => (
-                    <Input id={id} required value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value.toLowerCase() })} placeholder="pedido_pago" />
+                    <Input id={id} required value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value.toLowerCase() })} placeholder="pedido_pago" aria-describedby={`modelo-dica-${ev.event}`} />
                   )}
                 </Field>
                 <Field label="Idioma" required>
@@ -78,6 +78,9 @@ function Templates({ data, reload }: { data: Overview; reload: () => void }) {
                   <input type="checkbox" checked={editing.active} onChange={(e) => setEditing({ ...editing, active: e.target.checked })} />
                   Enviar
                 </label>
+                <p id={`modelo-dica-${ev.event}`} className="-mt-1.5 text-[13px] text-ink-faint sm:col-span-3">
+                  Nome exato do modelo no WhatsApp Manager.
+                </p>
                 {error && (
                   <div className="sm:col-span-3">
                     <Notice tone="bad">{error}</Notice>

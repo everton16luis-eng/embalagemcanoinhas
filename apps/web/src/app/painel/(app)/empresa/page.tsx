@@ -123,9 +123,13 @@ function CompanyForm() {
           </div>
         </Panel>
         {editable && (
-          <div className="flex flex-wrap items-end gap-3">
-            <Field label="Motivo da alteração" className="min-w-64 flex-1" hint="Fica no histórico desta versão.">{(id) => <Input id={id} maxLength={300} value={form.changeNote} onChange={set('changeNote')} />}</Field>
-            <Button type="submit" variant="primary" busy={busy}>Gravar nova versão</Button>
+          <div>
+            {/* Dica fora da linha alinhada pela base: senao o botao desce ate a altura da dica. */}
+            <div className="flex flex-wrap items-end gap-3">
+              <Field label="Motivo da alteração" className="min-w-64 flex-1">{(id) => <Input id={id} maxLength={300} value={form.changeNote} onChange={set('changeNote')} aria-describedby="motivo-dica" />}</Field>
+              <Button type="submit" variant="primary" busy={busy}>Gravar nova versão</Button>
+            </div>
+            <p id="motivo-dica" className="mt-1.5 text-[13px] text-ink-faint">Fica no histórico desta versão.</p>
           </div>
         )}
       </fieldset>

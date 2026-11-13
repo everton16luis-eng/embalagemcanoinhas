@@ -1,5 +1,8 @@
 # Acompanhamento
 
+Testes que dependem de HTTPS, credenciais reais, da empresa ou do contador ficam em
+[TESTES-PENDENTES.md](TESTES-PENDENTES.md) e não seguram o desenvolvimento.
+
 ## Fase 1 — Diagnóstico — concluída (13/11/2026)
 
 Ver [00-diagnostico-e-plano.md](00-diagnostico-e-plano.md).

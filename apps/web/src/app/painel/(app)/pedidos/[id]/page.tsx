@@ -15,7 +15,8 @@ type Order = {
   number: number;
   status: string;
   channel: string;
-  buyer: { kind: string; name: string; email: string; phone: string; document: string; stateRegistration: string | null };
+  // Vendas de marketplace trazem so o nome (os dados do comprador ficam na plataforma).
+  buyer: { kind?: string; name: string; email?: string | null; phone?: string | null; document?: string | null; stateRegistration?: string | null };
   ship_to: { recipient: string; cep: string; street: string; number: string; complement?: string | null; district: string; city: string; uf: string } | null;
   shipping_snapshot: { name: string; kind: string; minDays: number; maxDays: number; carrier?: { service: string; company: string | null; serviceName: string } };
   payment_method: string;
@@ -364,15 +365,21 @@ function Detail() {
         <div className="min-w-0 space-y-4">
           <Panel title="Cliente">
             <p className="font-medium">{o.buyer.name}</p>
-            <p className="text-sm text-ink-soft">
-              {o.buyer.kind === 'pj' ? 'CNPJ' : 'CPF'} {doc(o.buyer.document)}
-              {o.buyer.stateRegistration && ` · IE ${o.buyer.stateRegistration}`}
-            </p>
-            <p className="mt-1 text-sm break-all">{o.buyer.email}</p>
-            <p className="text-sm">{phone(o.buyer.phone)}</p>
-            <a className="mt-2 inline-block text-sm text-act-dark underline" href={`https://wa.me/55${o.buyer.phone}`} target="_blank" rel="noreferrer">
-              Conversar no WhatsApp
-            </a>
+            {(o.buyer.document || o.buyer.stateRegistration) && (
+              <p className="text-sm text-ink-soft">
+                {o.buyer.document && `${o.buyer.kind === 'pj' ? 'CNPJ' : 'CPF'} ${doc(o.buyer.document)}`}
+                {o.buyer.stateRegistration && ` · IE ${o.buyer.stateRegistration}`}
+              </p>
+            )}
+            {o.buyer.email && <p className="mt-1 text-sm break-all">{o.buyer.email}</p>}
+            {o.buyer.phone && (
+              <>
+                <p className="text-sm">{phone(o.buyer.phone)}</p>
+                <a className="mt-2 inline-block text-sm text-act-dark underline" href={`https://wa.me/55${o.buyer.phone}`} target="_blank" rel="noreferrer">
+                  Conversar no WhatsApp
+                </a>
+              </>
+            )}
           </Panel>
           <Panel title="Entrega">
             <p className="text-sm font-medium">{o.shipping_snapshot.name}</p>
@@ -390,6 +397,8 @@ function Detail() {
                 <br />
                 {o.ship_to.district} · {o.ship_to.city}/{o.ship_to.uf} · CEP {o.ship_to.cep.replace(/(\d{5})(\d{3})/, '$1-$2')}
               </p>
+            ) : o.shipping_snapshot.kind === 'marketplace' ? (
+              <p className="mt-1 text-sm text-ink-soft">Endereço e etiqueta ficam na plataforma do marketplace.</p>
             ) : (
               <p className="mt-1 text-sm text-ink-soft">Cliente retira na loja.</p>
             )}

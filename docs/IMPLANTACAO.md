@@ -75,6 +75,9 @@ Primeiro proprietário (a senha inicial aparece uma única vez; ative o MFA no p
 npm run create-owner -w apps/api -- email@dominio.com.br "Nome"
 ```
 
+Para demonstrar antes de ter o catálogo real: [DEMONSTRACAO.md](DEMONSTRACAO.md) (`demo:seed` e, depois,
+`demo:reset`, que apaga tudo e deixa só os proprietários).
+
 ## 5. Serviços (systemd)
 
 Como administrador:

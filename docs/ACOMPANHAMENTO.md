@@ -417,3 +417,22 @@ Contratos conferidos na documentação oficial e decisões em
   usuário de desenvolvimento ligados só no banco e retirados logo depois.
 - Não verificado: nada foi instalado num servidor de verdade (itens em TESTES-PENDENTES, seção Lançamento).
 
+
+### Dados de demonstração e reversão (13/11/2026)
+
+- `npm run demo:seed -- --confirmar DEMO` enche um banco vazio com uma loja fictícia de 6 meses: ~100 produtos,
+  ~450 pedidos em todos os canais e situações, 240 orçamentos, compras, inventários, clientes, marketplaces e
+  WhatsApp. O estoque é simulado em ordem de data, então saldo, reservas e custo médio batem com o livro de
+  movimentos. Empresa, regras fiscais, certificado e NF-e ficam vazios (não se inventa dado fiscal). Roteiro em
+  [DEMONSTRACAO.md](DEMONSTRACAO.md).
+- `npm run demo:reset -- --confirmar APAGAR-TUDO` apaga todos os cadastros e deixa só os proprietários e a
+  auditoria. Recusa se houver nota fiscal, XML de compra, pagamento real ou conta de marketplace conectada; faz
+  backup antes; tudo numa transação.
+- Correções achadas com os dados de demonstração: a previsão de entrega das compras aparecia "Invalid Date" (a API
+  mandava data com hora); a página do pedido quebrava em pedido sem CPF/CNPJ, caso das vendas de marketplace, e
+  dizia "cliente retira na loja" para elas.
+- Testes: seed, reversão e seed de novo num banco temporário; conferência por SQL (saldo = soma dos movimentos,
+  reservado = reservas ativas, nenhuma data no futuro, nenhum gatilho desligado depois); trava fiscal recusando; painel
+  aberto com os dados (pedidos, orçamentos, vendas, compras, estoque, inventário, relatórios, WhatsApp, loja). API com
+  140 testes passando.
+- Não verificado: rodar no servidor (anotado em TESTES-PENDENTES).

@@ -116,5 +116,7 @@ feito só com os simulados.
       esquecer a senha do painel depende de alguém com "Gerenciar usuários" gerar uma nova (tela Usuários). Clientes
       da loja ainda não têm recuperação de senha: precisa do provedor de e-mail. Decidir o provedor antes do lançamento.
 
+- [ ] **Servidor** `demo:seed` e `demo:reset` no banco de produção (ver [DEMONSTRACAO.md](DEMONSTRACAO.md)); a
+      reversão roda **antes** da primeira nota de homologação e do catálogo real.
 - [ ] **Você** Nome, logotipo, fotos, textos de trocas e privacidade, formas de entrega reais.
 - [ ] **Você** + **Contador** Liberar produção fiscal no painel só depois de tudo acima.

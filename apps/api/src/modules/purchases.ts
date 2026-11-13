@@ -35,7 +35,7 @@ const receiptSchema = z.strictObject({
   items: z.array(z.strictObject({ itemId: z.uuid(), packs: qty })).min(1).max(200),
 });
 
-const ORDER_COLS = `o.id, o.number, o.supplier_id, s.name AS supplier_name, o.status, o.expected_at, o.freight_cents, o.other_costs_cents, o.notes,
+const ORDER_COLS = `o.id, o.number, o.supplier_id, s.name AS supplier_name, o.status, o.expected_at::text AS expected_at, o.freight_cents, o.other_costs_cents, o.notes,
   o.created_at, o.sent_at, o.closed_at, o.cancel_reason, o.version, u.name AS created_by_name,
   (SELECT coalesce(sum(round(i.packs * i.pack_cost_cents)), 0)::bigint FROM purchase_order_items i WHERE i.order_id = o.id) AS goods_cents`;
 

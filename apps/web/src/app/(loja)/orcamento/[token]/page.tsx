@@ -50,6 +50,12 @@ export default function QuotePage() {
   const [shipId, setShipId] = useState('');
   const [addr, setAddr] = useState({ recipient: '', street: '', number: '', complement: '', district: '', city: '', uf: 'SC' });
   const [busy, setBusy] = useState(false);
+  const [optinText, setOptinText] = useState<string | null>(null);
+  const [waOptin, setWaOptin] = useState(false);
+
+  useEffect(() => {
+    api<{ whatsappOptinText?: string | null }>('/public/checkout/payment-config').then((c) => setOptinText(c.whatsappOptinText ?? null), () => setOptinText(null));
+  }, []);
 
   const base = `/public/quotes/${encodeURIComponent(token)}`;
   useEffect(() => {
@@ -90,6 +96,7 @@ export default function QuotePage() {
           buyer: { kind, email: email.trim() || null, document: document.trim() || null },
           shippingOptionId: q!.shipping ? null : shipId || null,
           address: !q!.shipping && ship?.kind === 'delivery' ? { ...addr, cep, complement: addr.complement || null } : null,
+          whatsappOptin: Boolean(optinText) && waOptin,
         },
       });
       router.push(`/pedido/${r.orderToken}`);
@@ -255,6 +262,12 @@ export default function QuotePage() {
                 </label>
               ))}
             </div>
+            {optinText && (
+              <label className="mt-4 flex cursor-pointer items-start gap-2.5 text-sm">
+                <input type="checkbox" checked={waOptin} onChange={(e) => setWaOptin(e.target.checked)} className="mt-0.5 size-4 shrink-0 accent-g-ink" />
+                <span>{optinText}</span>
+              </label>
+            )}
           </section>
 
           {error && (

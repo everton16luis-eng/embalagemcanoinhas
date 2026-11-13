@@ -81,6 +81,30 @@ Roteiro detalhado em [07-marketplaces.md](07-marketplaces.md) §5. Tudo abaixo f
 - [ ] **Você** Anúncios do ML com variação: saldo segue manual; decidir se vale implementar o envio de todas as
       variações juntas.
 
+## WhatsApp e transportadoras (Fase 8)
+
+Roteiro em [08-whatsapp-transportadoras-relatorios.md](08-whatsapp-transportadoras-relatorios.md). Tudo abaixo foi
+feito só com os simulados.
+
+- [ ] **Você** Criar o app na Meta (WhatsApp Business Platform), registrar o número e pôr `WA_PHONE_NUMBER_ID`,
+      `WA_ACCESS_TOKEN` (token de usuário de sistema), `WA_APP_SECRET` e `WA_VERIFY_TOKEN` no `.env`.
+- [ ] **Você** Criar e aprovar no WhatsApp Manager os 3 modelos (pagamento confirmado, pronto para retirada,
+      despachado) com as variáveis nomeadas `{{nome}}`, `{{pedido}}` e `{{rastreio}}`; cadastrar os nomes no painel.
+- [ ] **HTTPS** Cadastrar a URL do webhook (`/api/v1/webhooks/whatsapp`) com o token de verificação e assinar o
+      campo `messages`; conferir que a verificação responde o `hub.challenge`.
+- [ ] **HTTPS** Pedido de teste com consentimento: aviso chega no celular; situação passa a entregue e lida no painel.
+- [ ] **HTTPS** Responder SAIR: número bloqueado, próximos avisos não saem.
+- [ ] **HTTPS** Mensagem do cliente → resposta pelo painel dentro de 24 h; depois de 24 h o painel bloqueia.
+- [ ] Conferir com respostas reais os campos usados do webhook (status, erros) e a recusa de modelo inexistente.
+- [ ] **Você** Conta no Melhor Envio (sandbox primeiro): gerar o token e pôr `MELHOR_ENVIO_TOKEN` e
+      `MELHOR_ENVIO_USER_AGENT` (nome do app e e-mail técnico, exigido pela API) no `.env`; `MELHOR_ENVIO_SANDBOX=false`
+      só em produção.
+- [ ] **Você** Confirmar como o token é renovado (não achado na documentação pública) e a validade dele.
+- [ ] Cotação real: conferir `custom_price`/`custom_delivery_time` e serviços indisponíveis com o CEP da empresa.
+- [ ] **Você** Escolher os serviços de transportadora que a loja oferece e cadastrar o CEP da empresa; preencher
+      peso e medidas das variações (sem eles a opção não aparece).
+- [ ] **Você** Decidir como comprar o frete e gerar etiqueta (hoje fora do sistema).
+
 ## Lançamento
 
 - [ ] **Você** Nome, logotipo, fotos, textos de trocas e privacidade, formas de entrega reais.

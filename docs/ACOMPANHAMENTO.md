@@ -322,6 +322,62 @@ Critério do plano: **pedidos importados sem duplicidade e estoque sincronizado*
 
 ---
 
+## Fase 8 — WhatsApp, transportadoras e relatórios — entregue para validação (13/11/2026)
+
+Escopo do plano: avisos por WhatsApp (API oficial), cotação de transportadoras por API e relatórios avançados.
+Contratos conferidos na documentação oficial e decisões em
+[08-whatsapp-transportadoras-relatorios.md](08-whatsapp-transportadoras-relatorios.md); testes reais em
+[TESTES-PENDENTES.md](TESTES-PENDENTES.md).
+
+### Pronto
+
+- **Consentimento**: caixa opcional no checkout e na aceitação do orçamento, com o nome da loja no texto ("Quero
+  receber atualizações deste pedido pelo WhatsApp da {loja}. Para parar, responda SAIR."). Texto e data gravados no
+  pedido. Sem nome da loja cadastrado, a caixa não aparece.
+- **Avisos automáticos** por modelo aprovado (pagamento confirmado, pronto para retirada, despachado com rastreio):
+  fila com um aviso por pedido e evento (nunca duplica), novas tentativas com espera crescente (até 8), sem envio a
+  quem respondeu SAIR. Os modelos são cadastrados no painel (WhatsApp, `settings.manage` com MFA).
+- **Webhook** `/api/v1/webhooks/whatsapp`: verificação do `hub.challenge` e assinatura `X-Hub-Signature-256`
+  conferida no corpo bruto; mensagens repetidas ignoradas; situação da mensagem só avança (enviada → entregue → lida).
+- **Caixa de conversas** no painel (permissão do balcão): mensagens recebidas e enviadas, situação de cada envio,
+  resposta em texto livre só dentro de 24 h da última mensagem do cliente; número que pediu SAIR fica bloqueado.
+- **Transportadora**: nova forma de entrega "Transportadora (cotação automática)" com o código do serviço, dias de
+  separação, taxa de manuseio e frete grátis acima de um valor. A cotação (Melhor Envio, endpoint de cálculo) usa
+  CEP de origem da empresa, CEP do cliente e peso/medidas das variações; guarda 30 min em cache. Produto sem peso ou
+  medidas, provedor fora do ar ou sem CEP de origem: a opção some e ficam as formas próprias. O pedido guarda a
+  cotação escolhida (aparece no detalhe do pedido).
+- **Relatórios de vendas** (Vendas, `reports.view`): pedidos pagos por dia ou mês, canal e forma de pagamento,
+  ticket médio, frete; produtos com custo, margem estimada e curva ABC; exportação CSV (separador `;`, abre no Excel).
+- A emissão automática de NF-e fica restrita à loja e ao balcão.
+
+### Testes
+
+- API: 138 testes passando (13 novos em `phase8.test.ts`): consentimento gravado e fila sem duplicar, envio e nova
+  tentativa, falha definitiva, SAIR bloqueia, webhook sem assinatura recusado e repetido ignorado, situação não
+  regride, janela de 24 h na resposta, cotação com cache, provedor fora do ar, produto sem medidas, relatórios
+  (totais, ABC, margem, período inválido).
+- Navegador (desenvolvimento, simulados `WHATSAPP_FAKE`/`CARRIER_FAKE`): cadastrar transportadora; mensagem recebida
+  por webhook assinado aparece na caixa, resposta enviada com situação "Enviada"; definir modelo; relatório de vendas
+  com um pedido pago. As três telas a 375 px sem transbordar. MFA do usuário de desenvolvimento ligado só no banco
+  para a verificação e desligado logo depois.
+
+### Decisões registradas
+
+- Só a API oficial (Cloud API) ou link `wa.me`; nenhuma automação não oficial.
+- Mensagem fora da janela de 24 h só por modelo aprovado; o painel não deixa enviar texto livre fora dela.
+- Transportadora aparece para o cliente como entrega, para manter endereço, checkout e NF-e iguais.
+- Token do Melhor Envio vem do `.env`; a renovação (OAuth) não foi achada na documentação pública e fica pendente.
+- Custo do relatório é estimativa (custo médio na baixa do estoque, ou o atual se o pedido não saiu).
+
+### Não verificado / pendente com você
+
+- Nada foi enviado ao WhatsApp nem cotado no Melhor Envio de verdade (app da Meta, número, modelos aprovados e conta
+  do Melhor Envio estão em TESTES-PENDENTES).
+- O CEP de origem do ambiente de desenvolvimento não está cadastrado; a cotação na loja só foi testada nos testes
+  automáticos.
+
+---
+
 ## Preparação do lançamento (V1)
 
 - **Backup e restauração** (critério do plano): `scripts/backup.mjs` com `backup`, `verify` e `restore-test`.

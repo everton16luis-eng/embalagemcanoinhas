@@ -1,6 +1,6 @@
 'use client';
 
-import { BarChart3, Blocks, Boxes, Building2, ClipboardCheck, ClipboardList, FileText, FolderTree, History, LogOut, MapPinned, Menu, Package, ReceiptText, RefreshCw, Search, Settings, ShoppingCart, Store, Truck, UserRound, Users, Warehouse, X } from 'lucide-react';
+import { BarChart3, Blocks, MessageCircle, TrendingUp, Boxes, Building2, ClipboardCheck, ClipboardList, FileText, FolderTree, History, LogOut, MapPinned, Menu, Package, ReceiptText, RefreshCw, Search, Settings, ShoppingCart, Store, Truck, UserRound, Users, Warehouse, X } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
@@ -22,6 +22,7 @@ const NAV = [
   { href: '/painel/balcao', label: 'Balcão', icon: Search, perm: 'sales_desk.use' },
   { href: '/painel/orcamentos', label: 'Orçamentos', icon: ReceiptText, perm: 'sales_desk.use' },
   { href: '/painel/pedidos', label: 'Pedidos', icon: Package, perm: 'orders.view' },
+  { href: '/painel/whatsapp', label: 'WhatsApp', icon: MessageCircle, perm: 'sales_desk.use' },
   { href: '/painel/marketplaces', label: 'Marketplaces', icon: Blocks, perm: 'marketplaces.manage' },
   { href: '/painel/produtos', label: 'Produtos', icon: Boxes, perm: 'catalog.view' },
   { href: '/painel/categorias', label: 'Categorias', icon: FolderTree, perm: 'catalog.view' },
@@ -32,7 +33,8 @@ const NAV = [
   { href: '/painel/fornecedores', label: 'Fornecedores', icon: Truck, perm: 'purchases.view' },
   { href: '/painel/fiscal', label: 'Nota fiscal', icon: FileText, perm: 'fiscal.view' },
   { href: '/painel/entregas', label: 'Formas de entrega', icon: MapPinned, perm: 'orders.view' },
-  { href: '/painel/relatorios', label: 'Relatórios', icon: BarChart3, perm: 'reports.view' },
+  { href: '/painel/vendas', label: 'Vendas', icon: TrendingUp, perm: 'reports.view' },
+  { href: '/painel/relatorios', label: 'Relatórios de estoque', icon: BarChart3, perm: 'reports.view' },
   { href: '/painel/empresa', label: 'Empresa e fiscal', icon: Building2, perm: 'company.view' },
   { href: '/painel/loja', label: 'Marca da loja', icon: Store, perm: 'settings.manage' },
   { href: '/painel/usuarios', label: 'Usuários', icon: Users, perm: 'users.view' },

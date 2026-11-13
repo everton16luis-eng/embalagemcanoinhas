@@ -17,7 +17,7 @@ type Order = {
   channel: string;
   buyer: { kind: string; name: string; email: string; phone: string; document: string; stateRegistration: string | null };
   ship_to: { recipient: string; cep: string; street: string; number: string; complement?: string | null; district: string; city: string; uf: string } | null;
-  shipping_snapshot: { name: string; kind: string; minDays: number; maxDays: number };
+  shipping_snapshot: { name: string; kind: string; minDays: number; maxDays: number; carrier?: { service: string; company: string | null; serviceName: string } };
   payment_method: string;
   subtotal_cents: string;
   discount_cents: string;
@@ -376,6 +376,11 @@ function Detail() {
           </Panel>
           <Panel title="Entrega">
             <p className="text-sm font-medium">{o.shipping_snapshot.name}</p>
+            {o.shipping_snapshot.carrier && (
+              <p className="text-[13px] text-ink-faint">
+                Cotado: {[o.shipping_snapshot.carrier.company, o.shipping_snapshot.carrier.serviceName].filter(Boolean).join(' · ')} (serviço {o.shipping_snapshot.carrier.service})
+              </p>
+            )}
             {o.ship_to ? (
               <p className="mt-1 text-sm text-ink-soft">
                 {o.ship_to.recipient}

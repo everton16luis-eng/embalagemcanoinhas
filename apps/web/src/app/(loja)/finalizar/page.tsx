@@ -12,7 +12,7 @@ type Me = {
   customer: { kind: 'pf' | 'pj'; name: string; email: string; phone: string | null; document: string | null; state_registration: string | null };
   addresses: { id: string; recipient: string; cep: string; street: string; number: string; complement: string | null; district: string; city: string; uf: string; is_default: boolean }[];
 };
-type PayConfig = { enabled: boolean; methods: string[] };
+type PayConfig = { enabled: boolean; methods: string[]; whatsappOptinText?: string | null };
 const newKey = () => globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
 const input = 'h-11 w-full border-[1.5px] border-g-line bg-white px-3 outline-none focus:border-g-ink';
@@ -39,6 +39,7 @@ export default function CheckoutPage() {
   const [addr, setAddr] = useState({ recipient: '', street: '', number: '', complement: '', district: '', city: '', uf: 'SC' });
   const [method, setMethod] = useState<'pix' | 'card'>('pix');
   const [notes, setNotes] = useState('');
+  const [waOptin, setWaOptin] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -106,6 +107,7 @@ export default function CheckoutPage() {
           address: ship.kind === 'delivery' ? { ...addr, cep, complement: addr.complement || null } : null,
           paymentMethod: method,
           notes: notes || null,
+          whatsappOptin: Boolean(pay?.whatsappOptinText) && waOptin,
           expectedTotalCents: total,
         },
       });
@@ -262,6 +264,12 @@ export default function CheckoutPage() {
           <F label="Observação (opcional)" className="mt-4">
             <textarea maxLength={500} value={notes} onChange={(e) => setNotes(e.target.value)} className="min-h-20 w-full border-[1.5px] border-g-line px-3 py-2 outline-none focus:border-g-ink" />
           </F>
+          {pay?.whatsappOptinText && (
+            <label className="mt-4 flex cursor-pointer items-start gap-2.5 text-sm">
+              <input type="checkbox" checked={waOptin} onChange={(e) => setWaOptin(e.target.checked)} className="mt-0.5 size-4 shrink-0 accent-g-ink" />
+              <span>{pay.whatsappOptinText}</span>
+            </label>
+          )}
         </section>
       </div>
 

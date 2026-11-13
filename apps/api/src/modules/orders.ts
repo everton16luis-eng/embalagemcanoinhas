@@ -296,6 +296,8 @@ export async function checkoutRoutes(app: FastifyInstance) {
     provider: app.payments?.name ?? null,
     publicKey: app.payments?.publicKey ?? null,
     methods: app.payments ? ['pix', 'card'] : [],
+    // Caixa de consentimento so aparece com WhatsApp configurado e nome da loja cadastrado.
+    whatsappOptinText: app.whatsapp ? await currentOptinText(pool) : null,
   }));
 
   app.post('/', { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (req, reply) => {

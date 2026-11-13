@@ -4,7 +4,7 @@ Roteiro para subir a V1 num servidor Ubuntu sem interface. Os arquivos de apoio 
 Nada aqui foi executado num servidor real ainda: os itens de conferência estão em
 [TESTES-PENDENTES.md](TESTES-PENDENTES.md).
 
-Arquitetura: nginx (HTTPS) → Next.js `127.0.0.1:3020` (loja e painel; repassa `/api` para a API) → API
+Arquitetura: nginx (HTTPS) → Next.js `127.0.0.1:3047` (loja e painel; repassa `/api` para a API) → API
 `127.0.0.1:4010` → PostgreSQL próprio da loja `127.0.0.1:54330`. Nenhuma porta da aplicação fica aberta para fora;
 o banco não é compartilhado com outros sistemas do servidor.
 
@@ -108,7 +108,7 @@ journalctl -u loja-api -n 100 --no-pager
 Domínio: `embalagemcanoinhas.com.br` (o `www` redireciona para ele). O DNS precisa ter registro A dos dois nomes
 para o IP do servidor antes do certificado. O servidor usa CloudPanel e tem outros sites: a loja ganha arquivos
 nginx próprios e o certificado sai por **webroot** (nunca `certbot --nginx`, que já quebrou o `default.conf` do
-CloudPanel). A loja escuta na porta 3020 porque a 3010 já é usada por outro sistema nesse servidor.
+CloudPanel). A loja escuta na porta 3047 porque a 3010 e a 3020 já são usadas por outro sistema nesse servidor.
 
 Primeiro só a porta 80, para validar o domínio:
 

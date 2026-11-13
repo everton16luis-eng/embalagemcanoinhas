@@ -1,6 +1,6 @@
 'use client';
 
-import { BarChart3, Boxes, Building2, ClipboardCheck, ClipboardList, FileText, FolderTree, History, LogOut, MapPinned, Menu, Package, RefreshCw, Settings, ShoppingCart, Store, Truck, UserRound, Users, Warehouse, X } from 'lucide-react';
+import { BarChart3, Boxes, Building2, ClipboardCheck, ClipboardList, FileText, FolderTree, History, LogOut, MapPinned, Menu, Package, ReceiptText, RefreshCw, Search, Settings, ShoppingCart, Store, Truck, UserRound, Users, Warehouse, X } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
@@ -19,6 +19,8 @@ export function useMe() {
 // Itens das fases seguintes nao aparecem: o menu mostra so o que ja funciona.
 const NAV = [
   { href: '/painel', label: 'Configuração inicial', icon: ClipboardCheck, perm: null },
+  { href: '/painel/balcao', label: 'Balcão', icon: Search, perm: 'sales_desk.use' },
+  { href: '/painel/orcamentos', label: 'Orçamentos', icon: ReceiptText, perm: 'sales_desk.use' },
   { href: '/painel/pedidos', label: 'Pedidos', icon: Package, perm: 'orders.view' },
   { href: '/painel/produtos', label: 'Produtos', icon: Boxes, perm: 'catalog.view' },
   { href: '/painel/categorias', label: 'Categorias', icon: FolderTree, perm: 'catalog.view' },

@@ -219,3 +219,55 @@ Decisões e comparação de provedores: `docs/05-fiscal-nfe.md`.
   IBS/CBS, política de emissão, rateio de frete por item, pedido de retirada sem endereço.
 - Com a empresa: contrato com o provedor, certificado A1 enviado a ele, credenciamento na SEF-SC.
 - Importação de XML de compra: testada só com XML montado nos testes; vale conferir com um XML real de fornecedor.
+
+---
+
+## Fase 6 — Central comercial — entregue para validação (13/11/2026)
+
+Critério do plano: **orçamento → pedido sem redigitar**. Testes externos desta fase estão em
+[TESTES-PENDENTES.md](TESTES-PENDENTES.md).
+
+### Pronto
+
+- **Balcão** (permissão `sales_desk.use`): busca rápida por nome, SKU ou código de barras, com preço, faixas por
+  quantidade, saldo em embalagens disponíveis (já descontadas as reservas) ou prazo de sob encomenda.
+- **Compartilhar pelo WhatsApp**: link oficial `wa.me` (formato conferido na Central de Ajuda do WhatsApp). A
+  mensagem é enviada pela pessoa, no WhatsApp dela; não há automação. O painel só registra que o link foi aberto.
+- **Orçamento**: preço calculado pelo banco e congelado nos itens; validade de 1 a 30 dias (padrão 7); entrega
+  definida ou "a combinar"; cliente com nome e WhatsApp, e-mail e CPF/CNPJ opcionais. Repetir o envio não duplica.
+  Itens e eventos imutáveis; orçamento não é apagado (só cancelado com motivo).
+- **Desconto** só com a permissão de preços (com MFA), menor que o total dos itens, auditado.
+- **Link público do orçamento** (`/orcamento/{token}`): o cliente vê os itens e totais, completa só o que falta
+  (e-mail, CPF/CNPJ, entrega), escolhe Pix ou cartão e aceita. O link não mostra telefone, e-mail nem documento.
+- **Conversão em pedido** (pelo atendente ou pelo cliente): mesmos preços do orçamento até a validade, reserva de
+  estoque, pedido no canal "balcão", prazo de pagamento até o fim do dia de validade (mínimo 1 h, máximo 24 h).
+  Clique duplo, outro atendente ou o cliente pelo link devolvem o mesmo pedido. Se o pedido for cancelado por falta de
+  pagamento e o orçamento ainda valer, a próxima conversão cria outro pedido reaproveitando os dados já completados.
+- **Bloqueios**: orçamento vencido (oferece cópia com preços atuais), cancelado, ou com item que saiu de venda ou sem
+  saldo (sob encomenda passa).
+- Criação do pedido extraída do checkout (`insertOrder`) e usada pelos dois caminhos.
+
+### Testes
+
+- API: 104 testes passando (8 novos em `quotes.test.ts`): busca por nome/SKU/código de barras e curinga do LIKE,
+  permissão, preço congelado com faixa, repetição sem duplicar, desconto só com MFA e limite, item fora de venda,
+  documento inválido, entrega sem endereço, link público sem dados de contato, conversão com preço antigo depois de
+  aumento, reserva, repetição pelo atendente e pelo cliente, reconversão após cancelamento por prazo, entrega
+  escolhida pelo cliente, vencido/cancelado/sem saldo, cópia com preço atual, imutabilidade.
+- Navegador (banco de desenvolvimento, cliente fictício): busca, link do WhatsApp, criação do orçamento, página
+  pública a 375 px sem transbordar, aceite com retirada e Pix até a página do pedido, lista de orçamentos com
+  "Virou pedido". Sem erros no console.
+
+### Decisões registradas
+
+- Preço do orçamento vale até a validade mesmo que o preço do produto mude; disponibilidade é conferida na conversão.
+- Saldo só é reservado quando o orçamento vira pedido (orçamento não segura estoque).
+- Orçamento não se edita: para mudar, cancela-se ou faz-se uma cópia (preços e frete recalculados).
+- Sem pagamento online configurado, a conversão é recusada (o pedido não teria como ser pago).
+
+### Não verificado / pendente com você
+
+- Abrir o link `wa.me` num celular com WhatsApp e conferir a mensagem; link público acessado de fora (precisa HTTPS).
+- Pagamento "na loja" (dinheiro, maquininha) para pedidos do balcão não existe: hoje o pedido do balcão é pago por
+  Pix ou cartão online. Se quiser receber no balcão, é uma decisão sua (e do contador, para a nota).
+

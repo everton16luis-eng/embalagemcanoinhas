@@ -98,7 +98,7 @@ async function shippingFor(db: Q, lines: CartLine[], subtotal: number, optionId:
 }
 
 const QUOTE_COLS = `q.id, q.number, q.status, q.buyer, q.customer_id, q.ship_to, q.shipping_option_id, q.shipping_snapshot, q.subtotal_cents, q.discount_cents, q.freight_cents,
-  q.total_cents, q.notes, q.valid_until, q.order_id, q.conversions, q.shared_at, q.canceled_at, q.cancel_reason, q.created_at, q.updated_at,
+  q.total_cents, q.notes, q.valid_until::text AS valid_until, q.order_id, q.conversions, q.shared_at, q.canceled_at, q.cancel_reason, q.created_at, q.updated_at,
   q.valid_until < (now() AT TIME ZONE 'America/Sao_Paulo')::date AS expired`;
 
 export async function quoteView(db: Q, id: string) {
@@ -469,6 +469,18 @@ export async function publicQuoteRoutes(app: FastifyInstance) {
   app.get('/:token', limit, async (req) => {
     const id = await quoteByToken(tokenOf(req));
     return { quote: await publicQuoteView(pool, id) };
+  });
+
+  /** Formas de entrega para o orcamento sem frete definido, calculadas com os itens dele (nao com o carrinho). */
+  app.get('/:token/shipping', limit, async (req) => {
+    const id = await quoteByToken(tokenOf(req));
+    const { cep } = z
+      .object({ cep: z.string().transform((v) => v.replace(/\D/g, '')).pipe(z.string().regex(/^\d{8}$/, 'CEP com 8 números.')).optional() })
+      .parse(req.query);
+    const q = (await pool.query<{ subtotal_cents: string }>('SELECT subtotal_cents FROM quotes WHERE id = $1', [id])).rows[0]!;
+    const items = (await pool.query<{ packaging_id: string; packs: number }>('SELECT packaging_id, packs FROM quote_items WHERE quote_id = $1', [id])).rows;
+    const w = cartWeight(await priceLines(pool, items.map((i) => ({ packagingId: i.packaging_id, packs: i.packs }))));
+    return { options: await quoteShipping(pool, cep ?? null, Number(q.subtotal_cents), w.grams, w.missing.length > 0) };
   });
 
   app.post('/:token/accept', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req, reply) => {

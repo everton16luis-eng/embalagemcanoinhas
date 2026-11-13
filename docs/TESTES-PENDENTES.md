@@ -51,6 +51,8 @@ Legenda: **HTTPS** = precisa da API publicada com certificado · **Você** = dep
 - [ ] Abrir o link `wa.me` gerado num celular com WhatsApp e conferir o texto (acentos, quebras de linha, link do
       orçamento).
 - [ ] **HTTPS** Link público do orçamento aberto pelo cliente fora da rede local.
+- [ ] **HTTPS** Cliente aceita o orçamento pelo link e paga com Pix de teste do Mercado Pago (fim a fim).
+- [ ] **Você** Decidir se o balcão recebe pagamento presencial (dinheiro/maquininha); hoje só Pix e cartão online.
 
 ## Lançamento
 

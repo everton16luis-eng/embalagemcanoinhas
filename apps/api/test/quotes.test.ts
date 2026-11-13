@@ -172,6 +172,9 @@ describe('orçamento → pedido sem redigitar', () => {
     const visitor = client(app);
     const url = `/api/v1/public/quotes/${q.token}/accept`;
     expect((await visitor.post(url, { paymentMethod: 'pix', buyer: { email: 'j@teste.local', document: '52998224725' } })).json().error.code).toBe('SHIPPING_REQUIRED');
+    const opts = (await visitor.get(`/api/v1/public/quotes/${q.token}/shipping?cep=89460-000`)).json().options;
+    expect(opts.map((o: any) => o.id)).toEqual(expect.arrayContaining([pickupId, deliveryId]));
+    expect(opts.find((o: any) => o.id === deliveryId).priceCents).toBe(1500);
     const r = await visitor.post(url, { paymentMethod: 'pix', buyer: { email: 'j@teste.local', document: '52998224725' }, shippingOptionId: pickupId });
     expect(r.statusCode, r.body).toBe(201);
     const order = (await visitor.get(`/api/v1/public/orders/${r.json().orderToken}`)).json().order;

@@ -1,0 +1,686 @@
+<meta charset="utf-8">
+<title>Direções visuais da loja · segunda rodada</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=DM+Sans:opsz,wght@9..40,400..700&family=Fraunces:opsz,wght,SOFT@9..144,400..700,0..100&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&family=Manrope:wght@400..800&family=Work+Sans:wght@400..700&display=swap">
+<style>
+/* Apresentacao: coluna de leitura + molduras de tela (1280 desktop, 375 celular) reduzidas para caber. */
+:root {
+  --bg: #f4f5f4; --panel: #ffffff; --fg: #1a1f1d; --soft: #59625e; --faint: #858d89; --line: #dde1de; --act: #0f6b5c; --act-tint: #e3f0ec;
+  --sans: "IBM Plex Sans", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #141716; --panel: #1c201e; --fg: #e8ece9; --soft: #a8b1ac; --faint: #7d8782; --line: #2e3431; --act: #5fc3ab; --act-tint: #1d3530; color-scheme: dark } }
+:root[data-theme="dark"] { --bg: #141716; --panel: #1c201e; --fg: #e8ece9; --soft: #a8b1ac; --faint: #7d8782; --line: #2e3431; --act: #5fc3ab; --act-tint: #1d3530; color-scheme: dark }
+body { background: var(--bg); color: var(--fg); font: 15px/1.55 var(--sans); }
+.wrap { max-width: 1180px; margin: 0 auto; padding-block: 28px 64px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+h1 { font-size: clamp(26px, 4vw, 34px); line-height: 1.15; letter-spacing: -0.01em; margin: 0 0 8px; text-wrap: balance; }
+h2 { font-size: 22px; margin: 0 0 6px; text-wrap: balance; }
+h3 { font-size: 16px; margin: 0 0 6px; }
+p { margin: 0 0 10px; max-width: 70ch; }
+.lead { color: var(--soft); font-size: 16px; }
+.eyebrow { font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--soft); font-weight: 600; }
+.tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 22px 0 18px; position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); padding-block: 8px; }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+.tab { border: 1px solid var(--line); background: var(--panel); color: var(--fg); font: 600 14px var(--sans); padding: 8px 14px; border-radius: 6px; cursor: pointer; }
+.tab[aria-selected="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+.tab:focus-visible, button:focus-visible { outline: 2px solid var(--act); outline-offset: 2px; }
+.rec { font-size: 11px; font-weight: 700; margin-left: 6px; color: var(--act); }
+.tab[aria-selected="true"] .rec { color: inherit; }
+.note { background: var(--act-tint); border-radius: 6px; padding: 10px 14px; font-size: 14px; margin: 14px 0; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 16px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 16px 18px; min-width: 0; }
+.swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin-top: 6px; }
+.sw { display: flex; gap: 10px; align-items: center; font-size: 13px; }
+.sw i { width: 34px; height: 34px; border-radius: 4px; border: 1px solid var(--line); flex: none; }
+.sw b { display: block; font-weight: 600; }
+.sw code { color: var(--soft); font: 12px "IBM Plex Mono", monospace; }
+ul.plain { margin: 6px 0 0; padding-left: 18px; }
+ul.plain li { margin-bottom: 4px; }
+.frames-label { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin: 30px 0 8px; flex-wrap: wrap; }
+.frames-label span { color: var(--soft); font-size: 13px; }
+.duo { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 18px; align-items: start; }
+@media (max-width: 760px) { .duo { grid-template-columns: minmax(0, 1fr); } .duo .phone { max-width: 300px; } }
+.frame { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: #fff; box-shadow: 0 1px 2px rgb(0 0 0 / .06); }
+.frame .bar { height: 22px; background: var(--panel); border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 5px; padding: 0 8px; }
+.frame .bar i { width: 7px; height: 7px; border-radius: 50%; background: var(--line); }
+.frame .bar small { margin-left: 8px; font-size: 10px; color: var(--faint); font-family: "IBM Plex Mono", monospace; }
+.viewport { position: relative; overflow: hidden; }
+.screen { transform-origin: 0 0; position: absolute; top: 0; left: 0; }
+.phone .frame { border-radius: 22px; border-width: 6px; border-color: var(--fg); }
+.phone .bar { display: none; }
+table.cmp { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 640px; }
+table.cmp th, table.cmp td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+table.cmp th { font-size: 12px; color: var(--soft); font-weight: 600; }
+.scroll { overflow-x: auto; }
+.hier { counter-reset: h; list-style: none; padding: 0; margin: 8px 0 0; }
+.hier li { counter-increment: h; display: grid; grid-template-columns: 26px 1fr; gap: 8px; margin-bottom: 8px; }
+.hier li::before { content: counter(h); font: 600 12px "IBM Plex Mono", monospace; color: var(--act); background: var(--act-tint); border-radius: 4px; text-align: center; height: 22px; line-height: 22px; }
+@media (prefers-reduced-motion: no-preference) { .screen { transition: none; } }
+
+/* ======== Elementos comuns das telas (sempre claros: representam a loja) ======== */
+.m { font-size: 14px; line-height: 1.45; color: #1b1b1b; background: #fff; }
+.m * { box-sizing: border-box; }
+.m a { color: inherit; text-decoration: none; }
+.m .pc, .m .cat, .m .card-b, .m .pc * { min-width: 0; overflow-wrap: anywhere; }
+.m .ph { position: relative; display: grid; place-items: center; aspect-ratio: 1; width: 100%; }
+.m .ph svg { width: 54%; height: 54%; }
+.m .ph em { position: absolute; left: 6px; bottom: 5px; font: 500 9px "IBM Plex Mono", monospace; font-style: normal; letter-spacing: .04em; opacity: .55; text-transform: uppercase; }
+.m .logo-ph { border: 1.5px dashed currentColor; padding: 6px 12px; font-weight: 700; letter-spacing: .14em; font-size: 13px; opacity: .85; white-space: nowrap; }
+
+
+/* ======== D — Balcão ======== */
+.D { --d-tom: #d4401c; --d-tom-dk: #a92f12; --d-char: #231f1c; --d-cream: #fff4e6; --d-cream-2: #fbe6cc; --d-ok: #2e7d4f; --d-line: #eadccb; font-family: "DM Sans", sans-serif; background: #fff; color: var(--d-char); }
+.D .disp { font-family: "Bricolage Grotesque", sans-serif; font-variation-settings: "opsz" 72; letter-spacing: -.02em; }
+.D .top { display: flex; align-items: center; gap: 20px; padding: 14px 32px; border-bottom: 1px solid var(--d-line); }
+.D .logo-ph { color: var(--d-tom); }
+.D .search { flex: 1; display: flex; align-items: center; background: var(--d-cream); border-radius: 12px; height: 46px; padding: 0 16px; color: #7b6e62; gap: 10px; }
+.D .search svg { width: 18px; height: 18px; }
+.D .pickup { display: flex; align-items: center; gap: 10px; border: 1.5px solid var(--d-char); border-radius: 12px; padding: 6px 12px; font-size: 12px; line-height: 1.25; white-space: nowrap; }
+.D .pickup b { display: block; font-size: 13px; }
+.D .pickup i { width: 9px; height: 9px; border-radius: 50%; background: var(--d-ok); flex: none; }
+.D .acts { display: flex; gap: 16px; font-size: 13px; font-weight: 600; white-space: nowrap; }
+.D .acts em { font-style: normal; background: var(--d-tom); color: #fff; border-radius: 9px; padding: 1px 7px; margin-left: 4px; }
+.D .rail { display: grid; grid-template-columns: repeat(8, 1fr); gap: 10px; padding: 18px 32px; }
+.D .rail a { display: grid; justify-items: center; gap: 6px; font-size: 13px; font-weight: 600; text-align: center; line-height: 1.2; }
+.D .rail .ico { width: 64px; height: 64px; border-radius: 18px; background: var(--d-cream); color: var(--d-tom); display: grid; place-items: center; }
+.D .rail .ico svg { width: 36px; height: 36px; }
+.D .rail a:first-child .ico { background: var(--d-tom); color: #fff; }
+.D .hero { display: grid; grid-template-columns: 1.15fr 1fr; gap: 24px; padding: 6px 32px 26px; }
+.D .hero-l { background: var(--d-cream); border-radius: 20px; padding: 30px 32px; }
+.D .hero h1 { font-size: 46px; line-height: 1.02; margin: 0 0 12px; font-weight: 800; }
+.D .hero h1 span { color: var(--d-tom); }
+.D .hero p { font-size: 16px; color: #5b5048; max-width: 44ch; }
+.D .ways { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 18px; }
+.D .way { background: #fff; border-radius: 14px; padding: 14px; border: 1.5px solid var(--d-line); }
+.D .way.on { border-color: var(--d-char); }
+.D .way b { display: block; font-size: 15px; margin-bottom: 3px; }
+.D .way small { color: #6d6157; font-size: 12px; }
+.D .hero-r { border-radius: 20px; overflow: hidden; display: grid; grid-template-rows: 1fr auto; background: var(--d-char); color: #fff; }
+.D .hero-r .ph { aspect-ratio: auto; height: 100%; min-height: 220px; color: #f6c9b9; background: #3a332e; }
+.D .hero-r .cap { padding: 14px 18px; display: flex; justify-content: space-between; gap: 10px; font-size: 13px; }
+.D .hero-r .cap b { font-size: 15px; display: block; }
+.D .sec { padding: 22px 32px; }
+.D .sec-h { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 14px; }
+.D .sec-h h2 { font-size: 28px; margin: 0; font-weight: 800; }
+.D .sec-h a { font-weight: 700; font-size: 13px; color: var(--d-tom); }
+.D .again { display: grid; grid-template-columns: 1fr auto; gap: 16px; align-items: center; border: 1.5px dashed var(--d-tom); border-radius: 16px; padding: 14px 18px; }
+.D .again .mini { display: flex; gap: 8px; margin-top: 8px; }
+.D .again .mini .ph { width: 46px; aspect-ratio: 1; background: var(--d-cream); color: var(--d-tom); border-radius: 10px; }
+.D .again .mini .ph em { display: none; }
+.D .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.D .pc { border-radius: 16px; border: 1px solid var(--d-line); padding: 12px; display: flex; flex-direction: column; gap: 7px; background: #fff; }
+.D .pc .ph { background: var(--d-cream); color: #b8775f; border-radius: 12px; }
+.D .pc h3 { font: 600 14px/1.3 "DM Sans", sans-serif; margin: 0; min-height: 36px; }
+.D .pc .pack { font-size: 12px; color: #776a5f; }
+.D .price { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.D .price b { font: 800 24px "Bricolage Grotesque", sans-serif; }
+.D .price small { font-size: 12px; color: #776a5f; }
+.D .tier { font-size: 12px; font-weight: 700; color: var(--d-tom-dk); background: var(--d-cream); border-radius: 8px; padding: 4px 8px; align-self: start; }
+.D .st { font-size: 12px; font-weight: 600; color: var(--d-ok); }
+.D .st.order { color: #9a5b00; }
+.D .step { display: grid; grid-template-columns: 38px 1fr 38px; border-radius: 12px; overflow: hidden; border: 1.5px solid var(--d-char); font-weight: 700; text-align: center; height: 40px; align-items: center; }
+.D .step span:first-child, .D .step span:last-child { background: var(--d-char); color: #fff; height: 100%; display: grid; place-items: center; font-size: 18px; }
+.D .step.add { grid-template-columns: 1fr; background: var(--d-tom); color: #fff; border-color: var(--d-tom); }
+.D .step.add span { background: transparent !important; font-size: 14px !important; }
+.D .trust { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.D .trust div { background: var(--d-cream); border-radius: 14px; padding: 14px; font-size: 13px; color: #5b5048; }
+.D .trust b { display: block; font-size: 15px; color: var(--d-char); margin: 4px 0 2px; }
+.D .trust svg { width: 22px; height: 22px; color: var(--d-tom); }
+.D .foot { background: var(--d-char); color: #d9cfc6; padding: 26px 32px; display: grid; grid-template-columns: 1.4fr 1fr 1fr 1.2fr; gap: 20px; font-size: 13px; margin-top: 10px; }
+.D .foot b { color: #fff; display: block; margin-bottom: 6px; }
+.D .crumbs { font-size: 12px; color: #7b6e62; padding: 16px 32px 0; }
+.D .pdp { display: grid; grid-template-columns: 1.05fr 1fr; gap: 34px; padding: 14px 32px 30px; }
+.D .pdp .main { border-radius: 20px; background: var(--d-cream); color: #b8775f; }
+.D .thumbs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 8px; }
+.D .thumbs .ph { border-radius: 12px; background: var(--d-cream); color: #c99a86; }
+.D .thumbs .ph em { display: none; }
+.D .thumbs .ph:first-child { outline: 2px solid var(--d-char); }
+.D .pdp h1 { font-size: 34px; line-height: 1.08; margin: 6px 0 8px; font-weight: 800; }
+.D .ladder { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 14px 0; }
+.D .ladder div { border: 1.5px solid var(--d-line); border-radius: 12px; padding: 10px 12px; font-size: 12px; color: #6d6157; }
+.D .ladder div.on { border-color: var(--d-char); background: var(--d-cream); }
+.D .ladder b { display: block; font: 800 22px "Bricolage Grotesque", sans-serif; color: var(--d-char); }
+.D .choose { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0; }
+.D .choose div { border: 1.5px solid var(--d-line); border-radius: 12px; padding: 10px 12px; font-size: 12px; color: #6d6157; }
+.D .choose div.on { border-color: var(--d-ok); background: #eef6f1; }
+.D .choose b { display: block; font-size: 14px; color: var(--d-char); }
+.D .buy { display: grid; grid-template-columns: 150px 1fr; gap: 10px; }
+.D .bigbtn { background: var(--d-tom); color: #fff; border-radius: 12px; display: grid; place-items: center; font-weight: 800; font-size: 16px; height: 48px; }
+.D .specs { margin-top: 18px; border-top: 1px solid var(--d-line); font-size: 13px; }
+.D .specs div { display: grid; grid-template-columns: 140px 1fr; padding: 7px 0; border-bottom: 1px solid var(--d-line); }
+.D .specs span:first-child { color: #7b6e62; }
+/* celular */
+.D.mob .mtop { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px 8px; }
+.D.mob .msearch { margin: 0 16px; }
+.D.mob .mpick { margin: 10px 16px 0; display: flex; gap: 8px; align-items: center; font-size: 12px; background: #eef6f1; border-radius: 10px; padding: 8px 10px; }
+.D.mob .mpick i { width: 8px; height: 8px; border-radius: 50%; background: var(--d-ok); }
+.D.mob .rail { grid-template-columns: repeat(4, 1fr); padding: 14px 16px 6px; gap: 8px; }
+.D.mob .rail .ico { width: 56px; height: 56px; border-radius: 16px; }
+.D.mob .rail a { font-size: 11px; }
+.D.mob .mhero { margin: 10px 16px; background: var(--d-cream); border-radius: 18px; padding: 18px; }
+.D.mob .mhero h1 { font-size: 30px; line-height: 1.04; margin: 0 0 8px; font-weight: 800; }
+.D.mob .mhero h1 span { color: var(--d-tom); }
+.D.mob .sec { padding: 12px 16px; }
+.D.mob .sec-h h2 { font-size: 22px; }
+.D.mob .grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+.D.mob .pc { padding: 8px; border-radius: 14px; }
+.D.mob .pc h3 { font-size: 13px; }
+.D.mob .price b { font-size: 20px; }
+.D.mob .btab { display: grid; grid-template-columns: repeat(5, 1fr); border-top: 1px solid var(--d-line); background: #fff; padding: 8px 0 12px; font-size: 10px; text-align: center; font-weight: 600; color: #7b6e62; }
+.D.mob .btab span::before { content: ""; display: block; width: 20px; height: 20px; margin: 0 auto 3px; border-radius: 6px; background: var(--d-cream-2); }
+.D.mob .btab span.on { color: var(--d-tom); }
+.D.mob .btab span.on::before { background: var(--d-tom); }
+
+/* ======== E — Monte seu kit ======== */
+.E { --e-night: #16233f; --e-night-2: #22325a; --e-paper: #f6f2ea; --e-lilac: #6f58cf; --e-lilac-2: #ece7fb; --e-lime: #d8f06a; --e-line: #e3ddd1; font-family: "Manrope", sans-serif; background: var(--e-paper); color: var(--e-night); }
+.E .serif { font-family: "Instrument Serif", serif; font-weight: 400; letter-spacing: -.01em; }
+.E .top { background: var(--e-night); color: #fff; display: flex; align-items: center; gap: 26px; padding: 14px 32px; }
+.E .logo-ph { color: #fff; }
+.E .nav { display: flex; gap: 20px; font-size: 13px; font-weight: 600; color: #c8cfe0; }
+.E .nav a:first-child { color: var(--e-lime); }
+.E .search { flex: 1; border-bottom: 1.5px solid #5f6d92; padding: 8px 2px; color: #9aa5c2; font-size: 14px; }
+.E .acts { display: flex; gap: 16px; font-size: 13px; font-weight: 600; white-space: nowrap; }
+.E .acts em { font-style: normal; color: var(--e-night); background: var(--e-lime); border-radius: 4px; padding: 0 6px; margin-left: 4px; }
+.E .hero { display: grid; grid-template-columns: 1fr 1.05fr; gap: 0; background: var(--e-night); color: #fff; padding: 10px 32px 34px; }
+.E .hero h1 { font-size: 64px; line-height: .98; margin: 18px 0 14px; }
+.E .hero h1 i { color: var(--e-lime); }
+.E .hero p { color: #c8cfe0; font-size: 16px; max-width: 42ch; }
+.E .projs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+.E .projs span { border: 1px solid #5f6d92; border-radius: 6px; padding: 7px 11px; font-size: 13px; font-weight: 600; color: #dfe4f0; }
+.E .projs span.on { background: #fff; color: var(--e-night); border-color: #fff; }
+.E .calc { background: var(--e-paper); color: var(--e-night); border-radius: 10px; padding: 18px 20px; align-self: start; margin-top: 18px; }
+.E .calc-h { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding-bottom: 12px; border-bottom: 1px solid var(--e-line); }
+.E .calc-h h3 { font: 400 26px "Instrument Serif", serif; margin: 0; }
+.E .qtyin { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; }
+.E .qtyin b { border: 1.5px solid var(--e-night); border-radius: 6px; padding: 5px 12px; font-size: 16px; background: #fff; }
+.E .line { display: grid; grid-template-columns: 44px 1fr auto auto; gap: 12px; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--e-line); font-size: 13px; }
+.E .line .ph { background: #fff; color: var(--e-lilac); border-radius: 6px; }
+.E .line .ph em { display: none; }
+.E .line small { display: block; color: #66708a; font-size: 12px; }
+.E .line .why { font-size: 12px; color: var(--e-lilac); font-weight: 700; white-space: nowrap; }
+.E .line .v { font-weight: 700; white-space: nowrap; }
+.E .total { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 12px; }
+.E .total .n { font-size: 13px; color: #66708a; }
+.E .total .n b { display: block; font-size: 24px; color: var(--e-night); }
+.E .btn { background: var(--e-night); color: #fff; border-radius: 8px; padding: 12px 18px; font-weight: 700; font-size: 14px; text-align: center; }
+.E .btn.lime { background: var(--e-lime); color: var(--e-night); }
+.E .sec { padding: 30px 32px; }
+.E .sec-h { display: flex; justify-content: space-between; align-items: end; margin-bottom: 16px; }
+.E .sec-h h2 { font: 400 38px "Instrument Serif", serif; margin: 0; }
+.E .sec-h a { font-size: 13px; font-weight: 700; color: var(--e-lilac); }
+.E .kits { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.E .kit { background: #fff; border-radius: 10px; overflow: hidden; border: 1px solid var(--e-line); }
+.E .kit .row { display: grid; grid-template-columns: repeat(3, 1fr); background: var(--e-lilac-2); }
+.E .kit .row .ph { color: var(--e-lilac); }
+.E .kit .row .ph em { display: none; }
+.E .kit .b { padding: 14px 16px; }
+.E .kit h3 { font: 400 26px/1.05 "Instrument Serif", serif; margin: 0 0 6px; }
+.E .kit p { font-size: 13px; color: #66708a; margin: 0 0 10px; }
+.E .kit .f { display: flex; justify-content: space-between; align-items: center; font-size: 13px; font-weight: 700; }
+.E .list { background: #fff; border-radius: 10px; border: 1px solid var(--e-line); }
+.E .row-p { display: grid; grid-template-columns: 64px 1.6fr 1fr 1fr 150px; gap: 16px; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--e-line); font-size: 13px; }
+.E .row-p:last-child { border-bottom: 0; }
+.E .row-p .ph { background: var(--e-paper); color: #7a84a0; border-radius: 6px; }
+.E .row-p .ph em { display: none; }
+.E .row-p h3 { font: 700 14px/1.3 "Manrope", sans-serif; margin: 0; }
+.E .row-p .pk { color: #66708a; font-size: 12px; }
+.E .row-p .pr { font-weight: 800; font-size: 17px; }
+.E .row-p .pr small { display: block; font-weight: 500; font-size: 12px; color: #66708a; }
+.E .row-p .used { font-size: 12px; color: var(--e-lilac); font-weight: 700; }
+.E .row-p .st { font-size: 12px; font-weight: 600; color: #2e7d4f; }
+.E .row-p .st.order { color: #9a5b00; }
+.E .row-p .btn { padding: 9px 12px; font-size: 13px; }
+.E .trust { display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid var(--e-line); }
+.E .trust div { padding: 16px 16px 16px 0; font-size: 13px; color: #66708a; }
+.E .trust b { display: block; color: var(--e-night); font-size: 15px; margin-bottom: 2px; }
+.E .foot { background: var(--e-night); color: #b9c2d8; padding: 26px 32px; display: grid; grid-template-columns: 1.4fr 1fr 1fr 1fr; gap: 20px; font-size: 13px; }
+.E .foot b { color: #fff; display: block; margin-bottom: 6px; }
+.E .crumbs { font-size: 12px; color: #66708a; padding: 18px 32px 0; }
+.E .pdp { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; padding: 14px 32px 34px; }
+.E .pdp .main { background: #fff; border-radius: 10px; color: #7a84a0; border: 1px solid var(--e-line); }
+.E .pdp h1 { font: 400 46px/1.02 "Instrument Serif", serif; margin: 8px 0 10px; }
+.E .facts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; border: 1px solid var(--e-line); border-radius: 10px; background: #fff; margin: 14px 0; }
+.E .facts div { padding: 10px 14px; border-right: 1px solid var(--e-line); font-size: 12px; color: #66708a; }
+.E .facts div:last-child { border: 0; }
+.E .facts b { display: block; font-size: 18px; color: var(--e-night); }
+.E .howmany { background: var(--e-night); color: #fff; border-radius: 10px; padding: 16px 18px; }
+.E .howmany h3 { font: 400 24px "Instrument Serif", serif; margin: 0 0 8px; }
+.E .howmany .q { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: center; font-size: 13px; color: #c8cfe0; }
+.E .howmany .q b { color: var(--e-lime); font-size: 22px; }
+.E .inkits { margin-top: 14px; font-size: 13px; }
+.E .inkits span { display: inline-block; background: var(--e-lilac-2); color: var(--e-lilac); border-radius: 6px; padding: 4px 9px; font-weight: 700; margin: 4px 4px 0 0; }
+/* celular */
+.E.mob .mtop { background: var(--e-night); color: #fff; display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; }
+.E.mob .mhero { background: var(--e-night); color: #fff; padding: 4px 16px 20px; }
+.E.mob .mhero h1 { font-size: 40px; line-height: 1; margin: 6px 0 12px; }
+.E.mob .mhero h1 i { color: var(--e-lime); }
+.E.mob .projs { margin-top: 0; }
+.E.mob .projs span { font-size: 12px; padding: 6px 9px; }
+.E.mob .calc { margin: -6px 12px 0; position: relative; padding: 14px; box-shadow: 0 1px 0 var(--e-line); }
+.E.mob .calc-h h3 { font-size: 22px; }
+.E.mob .line { grid-template-columns: 36px 1fr auto; }
+.E.mob .line .why { display: none; }
+.E.mob .total .n b { font-size: 20px; }
+.E.mob .sec { padding: 22px 16px; }
+.E.mob .sec-h h2 { font-size: 30px; }
+.E.mob .kits { grid-template-columns: 1fr; }
+
+/* ======== F — Calendário ======== */
+.F { --f-plum: #5b1f45; --f-plum-2: #7b2e5f; --f-ivory: #fbf6ef; --f-honey: #c98a1c; --f-blush: #f3e2e8; --f-ink: #2a1b24; --f-line: #eaded6; font-family: "Work Sans", sans-serif; background: var(--f-ivory); color: var(--f-ink); }
+.F .serif { font-family: "Fraunces", serif; font-variation-settings: "opsz" 120, "SOFT" 100; letter-spacing: -.01em; }
+.F .top { display: grid; grid-template-columns: auto 1fr auto; gap: 26px; align-items: center; padding: 16px 32px; }
+.F .logo-ph { color: var(--f-plum); }
+.F .search { background: #fff; border: 1px solid var(--f-line); border-radius: 999px; padding: 11px 18px; color: #8a7a83; font-size: 14px; }
+.F .acts { display: flex; gap: 16px; font-size: 13px; font-weight: 600; white-space: nowrap; }
+.F .acts em { font-style: normal; color: #fff; background: var(--f-plum); border-radius: 999px; padding: 0 7px; margin-left: 4px; }
+.F .year { display: grid; grid-template-columns: repeat(12, 1fr); border-top: 1px solid var(--f-line); border-bottom: 1px solid var(--f-line); background: #fff; }
+.F .year div { padding: 9px 8px 10px; border-right: 1px solid var(--f-line); font-size: 11px; color: #8a7a83; min-height: 58px; position: relative; }
+.F .year div:last-child { border-right: 0; }
+.F .year div b { display: block; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: #a6969f; margin-bottom: 3px; }
+.F .year div span { display: block; font-weight: 600; color: var(--f-ink); font-size: 12px; line-height: 1.2; }
+.F .year div.now { background: var(--f-blush); }
+.F .year div.now::after { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 3px; background: var(--f-plum); }
+.F .year div.next { background: var(--f-plum); color: #f3dbe6; }
+.F .year div.next b { color: #e6bfd2; } .F .year div.next span { color: #fff; }
+.F .hero { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; padding: 30px 32px; align-items: center; }
+.F .count { display: inline-flex; gap: 10px; align-items: baseline; background: #fff; border: 1px solid var(--f-line); border-radius: 999px; padding: 6px 14px; font-size: 13px; }
+.F .count b { font: 600 20px "Fraunces", serif; color: var(--f-plum); }
+.F .hero h1 { font-size: 60px; line-height: .98; margin: 14px 0 12px; font-weight: 600; color: var(--f-plum); }
+.F .hero p { font-size: 16px; color: #5d4c56; max-width: 44ch; }
+.F .deadline { margin-top: 16px; border-left: 3px solid var(--f-honey); padding: 4px 0 4px 12px; font-size: 14px; }
+.F .deadline b { color: var(--f-ink); }
+.F .btn { display: inline-block; background: var(--f-plum); color: #fff; border-radius: 999px; padding: 12px 22px; font-weight: 600; font-size: 14px; margin-top: 18px; }
+.F .arches { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; align-items: end; }
+.F .arch { display: grid; gap: 8px; text-align: center; font-size: 13px; font-weight: 600; }
+.F .arch .ph { border-radius: 999px 999px 10px 10px; background: var(--f-blush); color: var(--f-plum-2); aspect-ratio: 3/4; }
+.F .arch:nth-child(2) .ph { aspect-ratio: 3/4.6; background: #f1e6d4; color: #8a5b12; }
+.F .sec { padding: 26px 32px; }
+.F .sec-h { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 16px; gap: 16px; }
+.F .sec-h h2 { font: 600 32px "Fraunces", serif; margin: 0; color: var(--f-ink); }
+.F .sec-h p { margin: 0; color: #7a6a73; font-size: 14px; }
+.F .sec-h a { font-size: 13px; font-weight: 600; color: var(--f-plum); white-space: nowrap; }
+.F .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; }
+.F .pc { display: flex; flex-direction: column; gap: 6px; }
+.F .pc .ph { border-radius: 999px 999px 8px 8px; background: #fff; border: 1px solid var(--f-line); color: #a07d8f; aspect-ratio: 4/5; }
+.F .pc h3 { font: 500 14px/1.3 "Work Sans", sans-serif; margin: 4px 0 0; min-height: 36px; }
+.F .pc .pack { font-size: 12px; color: #8a7a83; }
+.F .pc .price { font: 600 22px "Fraunces", serif; color: var(--f-plum); }
+.F .pc .price small { font: 400 12px "Work Sans", sans-serif; color: #8a7a83; margin-left: 6px; }
+.F .pc .tier { font-size: 12px; color: #8a5b12; font-weight: 600; }
+.F .pc .st { font-size: 12px; color: #4f7a4a; font-weight: 600; }
+.F .pc .st.order { color: #9a5b00; }
+.F .pc .add { border: 1.5px solid var(--f-plum); color: var(--f-plum); border-radius: 999px; text-align: center; padding: 8px; font-weight: 600; font-size: 13px; margin-top: 2px; }
+.F .always { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; }
+.F .always a { background: #fff; border: 1px solid var(--f-line); border-radius: 10px; padding: 12px; display: grid; gap: 8px; font-size: 13px; font-weight: 600; }
+.F .always .ph { aspect-ratio: 1; color: var(--f-plum-2); }
+.F .always .ph em { display: none; }
+.F .next3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.F .next3 div { background: #fff; border: 1px solid var(--f-line); border-radius: 12px; padding: 16px 18px; font-size: 13px; color: #6d5c66; }
+.F .next3 b { display: block; font: 600 22px "Fraunces", serif; color: var(--f-ink); margin: 2px 0 4px; }
+.F .next3 small { color: var(--f-plum); font-weight: 600; font-size: 12px; }
+.F .trust { display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; font-size: 13px; color: #6d5c66; }
+.F .trust b { display: block; color: var(--f-ink); font-size: 15px; margin-bottom: 2px; }
+.F .foot { background: var(--f-plum); color: #ecd3df; padding: 26px 32px; display: grid; grid-template-columns: 1.4fr 1fr 1fr 1fr; gap: 20px; font-size: 13px; margin-top: 10px; }
+.F .foot b { color: #fff; display: block; margin-bottom: 6px; }
+.F .crumbs { font-size: 12px; color: #8a7a83; padding: 18px 32px 0; }
+.F .pdp { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; padding: 16px 32px 32px; }
+.F .pdp .main { border-radius: 999px 999px 14px 14px; background: #fff; border: 1px solid var(--f-line); color: #a07d8f; aspect-ratio: 1; }
+.F .pdp h1 { font: 600 40px/1.04 "Fraunces", serif; margin: 10px 0 10px; color: var(--f-ink); }
+.F .dates { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 4px; }
+.F .dates span { background: var(--f-blush); color: var(--f-plum); border-radius: 999px; padding: 4px 10px; font-size: 12px; font-weight: 600; }
+.F .bigprice { font: 600 40px "Fraunces", serif; color: var(--f-plum); margin: 10px 0 2px; }
+.F .tiers { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--f-line); border-radius: 12px; background: #fff; margin: 12px 0; }
+.F .tiers div { padding: 10px 14px; border-right: 1px solid var(--f-line); font-size: 12px; color: #7a6a73; }
+.F .tiers div:last-child { border: 0; }
+.F .tiers b { display: block; font-size: 17px; color: var(--f-ink); }
+.F .warn { background: #fff; border: 1px solid var(--f-line); border-left: 3px solid var(--f-honey); border-radius: 8px; padding: 10px 14px; font-size: 13px; margin: 12px 0; }
+.F .buy { display: grid; grid-template-columns: 140px 1fr; gap: 10px; }
+.F .qty { border: 1.5px solid var(--f-ink); border-radius: 999px; display: flex; justify-content: space-around; align-items: center; font-weight: 600; height: 46px; }
+.F .bbtn { background: var(--f-plum); color: #fff; border-radius: 999px; display: grid; place-items: center; font-weight: 600; height: 46px; }
+/* celular */
+.F.mob .mtop { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; }
+.F.mob .mdates { display: flex; gap: 8px; padding: 0 16px 10px; overflow: hidden; }
+.F.mob .mdates span { flex: none; border: 1px solid var(--f-line); background: #fff; border-radius: 999px; padding: 6px 12px; font-size: 12px; font-weight: 600; }
+.F.mob .mdates span.on { background: var(--f-plum); color: #fff; border-color: var(--f-plum); }
+.F.mob .mhero { padding: 16px; }
+.F.mob .mhero h1 { font-size: 40px; line-height: 1; margin: 10px 0 8px; color: var(--f-plum); font-weight: 600; }
+.F.mob .sec { padding: 14px 16px; }
+.F.mob .sec-h h2 { font-size: 24px; }
+.F.mob .grid { grid-template-columns: 1fr 1fr; gap: 12px; }
+.F.mob .pc .price { font-size: 19px; }
+</style>
+
+<div class="wrap">
+  <p class="eyebrow">Direção visual · segunda rodada</p>
+  <h1>Mais três direções visuais para a loja</h1>
+  <p class="lead">Três caminhos novos, diferentes da Gôndola, do Ateliê e do Catálogo técnico (<a href="direcoes-visuais.html">primeira rodada</a>). Cada um parte de algo que as lojas mais bem colocadas no Google fazem bem e leva para o jeito desta loja. Cada direção mostra a página inicial no computador e no celular e a página de produto.</p>
+  <div class="note"><b>Tudo nestas telas é provisório:</b> marca (caixa tracejada), fotos (desenhos marcados como "foto"), preços, prazos, horários e CNPJ. Nenhum produto, avaliação ou selo é real, e nada das lojas pesquisadas foi copiado (nem marca, nem cor, nem texto).</div>
+
+  <div class="tabs" role="tablist" aria-label="Direções">
+    <button class="tab" role="tab" id="t-pesquisa" aria-controls="p-pesquisa" data-k="pesquisa">O que a pesquisa mostrou</button>
+    <button class="tab" role="tab" id="t-d" aria-controls="p-d" data-k="d">D · Balcão</button>
+    <button class="tab" role="tab" id="t-e" aria-controls="p-e" data-k="e">E · Monte seu kit</button>
+    <button class="tab" role="tab" id="t-f" aria-controls="p-f" data-k="f">F · Calendário</button>
+    <button class="tab" role="tab" id="t-decidir" aria-controls="p-decidir" data-k="decidir">Comparar e decidir</button>
+  </div>
+
+  <!-- ================= Pesquisa ================= -->
+  <section id="p-pesquisa" role="tabpanel" aria-labelledby="t-pesquisa">
+    <h2>O que a pesquisa mostrou</h2>
+    <p class="lead">Busquei no Google (Brasil, 13/11/2026) por "loja de embalagens para confeitaria", "embalagens para bolo e doces comprar online" e "loja de confeitaria online utensílios e insumos", e abri as lojas especializadas que apareceram no topo. Marketplaces ficaram de fora.</p>
+    <div class="scroll">
+      <table class="cmp">
+        <thead><tr><th>Loja (posição na busca)</th><th>O que faz bem</th><th>O que evitar</th><th>Virou ideia para</th></tr></thead>
+        <tbody>
+          <tr><th>Loja Santo Antonio (aparece nas três buscas)</th><td>Menu por departamento com ícone; atalho "Por época"; buscas populares em linha logo abaixo do menu.</td><td>Contador regressivo e carrossel de promoção ocupando a primeira tela.</td><td>D (ícones) e F (época)</td></tr>
+          <tr><th>Shopping do Confeiteiro (1º em utensílios)</th><td>"Compre pelo site e retire no mesmo dia" como mensagem principal; faixa de vantagens com ícones.</td><td>Muitos banners com preço em destaque competindo entre si.</td><td>D (retirada no balcão)</td></tr>
+          <tr><th>BarraDoce</th><td>Fundo claro, foto grande do produto ao lado do texto, "Retire grátis na loja física" logo na faixa de vantagens.</td><td>Menu em caixa alta muito longo, difícil no celular.</td><td>D e E (foto de produto real ao lado do texto)</td></tr>
+          <tr><th>Jango Embalagens (1º em embalagens para bolo)</th><td>Menu pelas datas que vendem: Natal, Dia a dia, Dia dos Professores, Páscoa, Datas especiais.</td><td>Foto de fundo carregada atrás dos botões de categoria.</td><td>F (calendário)</td></tr>
+          <tr><th>Rizzo Confeitaria</th><td>Coleção sazonal com nome próprio na primeira tela; vantagens (frete, retirada, cartão) logo abaixo.</td><td>Menu com nove grupos e submenus.</td><td>F (coleção da próxima data)</td></tr>
+          <tr><th>Confeitar</th><td>Cursos e conteúdo junto da loja: quem confeita compra o que vai produzir.</td><td>Faixas promocionais empilhadas no topo.</td><td>E (comprar pelo que vai produzir)</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="grid2" style="margin-top:16px">
+      <div class="card"><h3>Padrões que se repetem</h3><ul class="plain"><li>Faixa de vantagens com 4 ícones logo abaixo da primeira tela (frete, retirada, pagamento, segurança).</li><li>Retirada na loja física como vantagem de destaque.</li><li>Navegação por data comemorativa, além do departamento.</li><li>Busca larga no topo, sempre visível.</li></ul></div>
+      <div class="card"><h3>O que nenhuma das três novas usa</h3><ul class="plain"><li>Contagem regressiva, "últimas unidades" ou outra urgência falsa.</li><li>Carrossel automático de banners na primeira tela.</li><li>Selo, nota ou depoimento inventado.</li></ul></div>
+    </div>
+  </section>
+
+  <!-- ================= D ================= -->
+  <section id="p-d" role="tabpanel" aria-labelledby="t-d" hidden>
+    <h2>D · Balcão</h2>
+    <p class="lead">A loja de Canoinhas na internet: comprar pelo site e retirar no balcão (ou receber) é a primeira mensagem. Departamentos por ícone grande, quantidade escolhida direto no card e um atalho para repetir o último pedido. Feita para quem compra rápido, no celular, perto da loja.</p>
+    <div class="grid2">
+      <div class="card">
+        <h3>Paleta</h3>
+        <div class="swatches">
+          <div class="sw"><i style="background:#d4401c"></i><span><b>Tomate</b><code>#D4401C</code> ação, marca</span></div>
+          <div class="sw"><i style="background:#231f1c"></i><span><b>Carvão</b><code>#231F1C</code> texto, rodapé</span></div>
+          <div class="sw"><i style="background:#fff4e6"></i><span><b>Creme</b><code>#FFF4E6</code> fundos, fotos</span></div>
+          <div class="sw"><i style="background:#2e7d4f"></i><span><b>Verde pronto</b><code>#2E7D4F</code> retirada, estoque</span></div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Tipografia e forma</h3>
+        <ul class="plain">
+          <li><b>Bricolage Grotesque</b> pesada nos títulos e preços; <b>DM Sans</b> no resto.</li>
+          <li>Cantos arredondados médios (12 a 20 px), sem sombra; blocos de creme em vez de linhas.</li>
+          <li>Assinatura: o <b>cartão de retirada</b> no topo (horário e prazo vêm do cadastro da loja) e o <b>seletor de quantidade dentro do card</b>.</li>
+          <li>No celular, barra de navegação embaixo (Início, Departamentos, Buscar, Pedidos, Carrinho).</li>
+        </ul>
+      </div>
+    </div>
+    <div data-dir="D"></div>
+    <div class="grid2" style="margin-top:22px">
+      <div class="card"><h3>Precisa de</h3><ul class="plain"><li>Decisão: haverá retirada no balcão em Canoinhas? Sem ela, esta direção perde a assinatura.</li><li>Horário de funcionamento e prazo de separação no painel (o cartão de retirada só mostra o que estiver cadastrado).</li><li>"Repetir último pedido" é função nova (pequena): usa os pedidos que já existem.</li></ul></div>
+      <div class="card"><h3>Hierarquia da página inicial</h3><ol class="hier"><li>Busca e cartão de retirada: o que procuro e quando pego.</li><li>Departamentos em ícones grandes, um toque.</li><li>Retirar ou receber, com o custo de cada um.</li><li>Repetir o último pedido (cliente identificado).</li><li>Mais pedidos com quantidade no card.</li></ol></div>
+    </div>
+  </section>
+
+  <!-- ================= E ================= -->
+  <section id="p-e" role="tabpanel" aria-labelledby="t-e" hidden>
+    <h2>E · Monte seu kit</h2>
+    <p class="lead">Quem confeita para vender pensa em produção, não em departamento: "vou fazer 100 brigadeiros para uma festa". A página inicial pergunta o que a pessoa vai produzir e quanto, e monta a lista de compras com as embalagens certas, já arredondada para os pacotes que a loja vende.</p>
+    <div class="grid2">
+      <div class="card">
+        <h3>Paleta</h3>
+        <div class="swatches">
+          <div class="sw"><i style="background:#16233f"></i><span><b>Azul-noite</b><code>#16233F</code> topo, texto</span></div>
+          <div class="sw"><i style="background:#f6f2ea"></i><span><b>Papel</b><code>#F6F2EA</code> fundo</span></div>
+          <div class="sw"><i style="background:#6f58cf"></i><span><b>Lilás</b><code>#6F58CF</code> ligação produto ↔ kit</span></div>
+          <div class="sw"><i style="background:#d8f06a"></i><span><b>Limão</b><code>#D8F06A</code> só total e carrinho</span></div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Tipografia e forma</h3>
+        <ul class="plain">
+          <li><b>Instrument Serif</b> grande nos títulos (tom de caderno de receitas); <b>Manrope</b> no texto, preços e listas.</li>
+          <li>Topo azul-noite, conteúdo em papel; produtos em linhas (não em cartões), com "usado em" ligando ao kit.</li>
+          <li>Assinatura: a <b>calculadora de lista de compras</b>: projeto + quantidade → itens, pacotes e total, com um botão para pôr tudo no carrinho.</li>
+        </ul>
+      </div>
+    </div>
+    <div data-dir="E"></div>
+    <div class="grid2" style="margin-top:22px">
+      <div class="card"><h3>Precisa de</h3><ul class="plain"><li>Função nova: <b>kits/projetos</b> cadastrados no painel (quais produtos, quantos por doce). A loja não inventa a receita: quem define é você.</li><li>Fotos de produção (o doce pronto na embalagem) para os cartões de projeto.</li><li>O arredondamento para pacotes usa as embalagens de venda que já existem no sistema.</li></ul></div>
+      <div class="card"><h3>Hierarquia da página inicial</h3><ol class="hier"><li>"O que você vai produzir?" com a calculadora aberta.</li><li>Projetos prontos (bolo no pote, caixa de doces, cupcake).</li><li>Produtos em lista, com "usado em" e preço por unidade.</li><li>Vantagens e rodapé.</li></ol></div>
+    </div>
+  </section>
+
+  <!-- ================= F ================= -->
+  <section id="p-f" role="tabpanel" aria-labelledby="t-f" hidden>
+    <h2>F · Calendário</h2>
+    <p class="lead">O ano de quem confeita gira em torno das datas que vendem. O topo da loja é uma régua do ano: a próxima data puxa a vitrine, com quantos dias faltam e até quando pedir para chegar a tempo (contas feitas com a data de hoje e o prazo real de cada produto, nunca contagem falsa).</p>
+    <div class="grid2">
+      <div class="card">
+        <h3>Paleta</h3>
+        <div class="swatches">
+          <div class="sw"><i style="background:#5b1f45"></i><span><b>Ameixa</b><code>#5B1F45</code> marca, ação, preço</span></div>
+          <div class="sw"><i style="background:#fbf6ef"></i><span><b>Marfim</b><code>#FBF6EF</code> fundo</span></div>
+          <div class="sw"><i style="background:#c98a1c"></i><span><b>Mel</b><code>#C98A1C</code> prazos</span></div>
+          <div class="sw"><i style="background:#f3e2e8"></i><span><b>Rosa-pó</b><code>#F3E2E8</code> mês atual, etiquetas</span></div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Tipografia e forma</h3>
+        <ul class="plain">
+          <li><b>Fraunces</b> (serifa macia) nos títulos e preços; <b>Work Sans</b> no texto.</li>
+          <li>Fotos em <b>arco</b> (topo arredondado, como vitrine de confeitaria); botões arredondados.</li>
+          <li>Assinatura: a <b>régua do ano</b> no topo e o aviso "peça até" calculado pelo prazo de cada produto.</li>
+          <li>Fora de época, a vitrine mostra "Dia a dia" (as categorias de sempre).</li>
+        </ul>
+      </div>
+    </div>
+    <div data-dir="F"></div>
+    <div class="grid2" style="margin-top:22px">
+      <div class="card"><h3>Precisa de</h3><ul class="plain"><li>Função nova (pequena): <b>coleções por data</b> no painel (quais produtos, de quando a quando aparecem).</li><li>As datas da régua são suas: a loja não supõe quais datas vendem para você.</li><li>Fotos de época por coleção (troca algumas vezes por ano).</li></ul></div>
+      <div class="card"><h3>Hierarquia da página inicial</h3><ol class="hier"><li>Régua do ano: onde estamos e qual a próxima data.</li><li>Coleção da próxima data, com "peça até".</li><li>Produtos da coleção.</li><li>Dia a dia: categorias de sempre.</li><li>As datas seguintes, para se planejar.</li></ol></div>
+    </div>
+  </section>
+
+  <!-- ================= Decidir ================= -->
+  <section id="p-decidir" role="tabpanel" aria-labelledby="t-decidir" hidden>
+    <h2>Comparar e decidir</h2>
+    <div class="scroll">
+      <table class="cmp">
+        <thead><tr><th></th><th>D · Balcão</th><th>E · Monte seu kit</th><th>F · Calendário</th></tr></thead>
+        <tbody>
+          <tr><th>Parece</th><td>A loja do bairro, rápida, no celular</td><td>Ferramenta de quem produz para vender</td><td>Confeitaria de vitrine, sazonal</td></tr>
+          <tr><th>Cliente de varejo</th><td>Ótimo: simples e direto</td><td>Médio: precisa entender o kit</td><td>Ótimo: inspiração pela data</td></tr>
+          <tr><th>Confeiteira que compra todo mês</th><td>Ótimo: repetir pedido, quantidade no card</td><td>Ótimo: lista calculada</td><td>Bom: planeja a próxima data</td></tr>
+          <tr><th>Funções novas</th><td>Repetir pedido (pequena)</td><td>Kits/projetos e calculadora (média)</td><td>Coleções por data (pequena)</td></tr>
+          <tr><th>Depende de</th><td>Retirada no balcão e horário cadastrado</td><td>Você definir os kits</td><td>Fotos de época e manutenção da coleção</td></tr>
+          <tr><th>Envelhece</th><td>Devagar</td><td>Devagar</td><td>Precisa de troca a cada data</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="grid2" style="margin-top:16px">
+      <div class="card">
+        <h3>Recomendação</h3>
+        <p>Se houver retirada em Canoinhas, a <b>D · Balcão</b> é a que mais vende para quem está perto e a mais barata de manter. A <b>F · Calendário</b> funciona melhor como uma linha da página inicial (a régua e a coleção da próxima data) do que como identidade inteira. A calculadora da <b>E</b> é forte para quem produz para vender e pode entrar depois, em qualquer direção.</p>
+        <p>As seis direções (A a F) continuam valendo: dá para escolher uma e pedir funções de outra.</p>
+      </div>
+      <div class="card">
+        <h3>Para decidir</h3>
+        <ul class="plain">
+          <li>Responda com a letra (A a F) e os ajustes ("D com a régua de datas da F").</li>
+          <li>Diga se haverá retirada no balcão e o horário.</li>
+          <li>Depois da escolha, aplico a direção na loja inteira; o painel não muda.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+(() => {
+  const brl = (c) => (c / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  const P = [
+    { kind: 'box', name: 'Caixa para bolo com visor 25 × 25 × 12 cm', sku: 'CXB-2525-VIS', pack: 'Unidade', price: 390, per: 'R$ 3,90 a unidade', tier: '10+ un: R$ 3,50', st: 'in' },
+    { kind: 'liner', name: 'Forminha de papel nº 5 marrom', sku: 'FPN5-MAR', pack: 'Pacote com 100', price: 690, per: 'R$ 0,069 cada', tier: '10+ pct: R$ 6,20', st: 'in' },
+    { kind: 'pot', name: 'Pote para bolo no pote 250 ml com tampa', sku: 'PBP-250', pack: 'Pacote com 25', price: 2250, per: 'R$ 0,90 cada', tier: '4+ pct: R$ 20,90', st: 'in' },
+    { kind: 'bag', name: 'Saco de celofane transparente 10 × 20 cm', sku: 'SCT-1020', pack: 'Pacote com 100', price: 780, per: 'R$ 0,078 cada', tier: '10+ pct: R$ 7,10', st: 'in' },
+    { kind: 'nozzle', name: 'Bico de confeitar pitanga 1M inox', sku: 'BCP-1M', pack: 'Unidade', price: 990, per: 'R$ 9,90 a unidade', tier: '', st: 'in' },
+    { kind: 'jar', name: 'Granulado de chocolate macio 1 kg', sku: 'GRC-1KG', pack: 'Pacote de 1 kg', price: 2490, per: 'R$ 24,90 o kg', tier: '5+ pct: R$ 22,90', st: 'in' },
+    { kind: 'ribbon', name: 'Fita de cetim 10 mm × 10 m rosa', sku: 'FCT-10-RS', pack: 'Rolo', price: 450, per: 'R$ 0,45 o metro', tier: '', st: 'in' },
+    { kind: 'cupbox', name: 'Caixa para 4 cupcakes com berço', sku: 'CXC-4', pack: 'Unidade · mínimo 50', price: 280, per: 'R$ 2,80 a unidade', tier: '', st: 'order', lead: 'Sob encomenda · 7 dias úteis' },
+  ];
+  const XMAS = [
+    { kind: 'jar', name: 'Lata redonda para panetone 500 g', pack: 'Unidade', price: 890, per: 'R$ 8,90 a unidade', tier: '10+ un: R$ 7,90', st: 'in' },
+    { kind: 'liner', name: 'Forma de papel para panetone 500 g', pack: 'Pacote com 10', price: 1290, per: 'R$ 1,29 cada', tier: '5+ pct: R$ 11,90', st: 'in' },
+    { kind: 'cupbox', name: 'Caixa para 6 doces com visor (estampa natalina)', pack: 'Pacote com 10', price: 1590, per: 'R$ 1,59 cada', tier: '', st: 'order', lead: 'Sob encomenda · 5 dias úteis' },
+    { kind: 'bag', name: 'Saco de celofane estampado 15 × 25 cm', pack: 'Pacote com 50', price: 990, per: 'R$ 0,20 cada', tier: '', st: 'in' },
+  ];
+  const S = 'fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"';
+  const ICON = {
+    box: `<svg viewBox="0 0 64 64" ${S}><path d="M10 22 32 12l22 10v24L32 56 10 46z"/><path d="M10 22l22 10 22-10M32 32v24"/><path d="M16 29l10 4.5v10L16 39z" stroke-dasharray="2 2"/></svg>`,
+    liner: `<svg viewBox="0 0 64 64" ${S}><ellipse cx="32" cy="20" rx="20" ry="5"/><path d="M12 20l6 30h28l6-30"/><path d="M19 22l3 28M26 24l1.5 26M32 25v25M38 24l-1.5 26M45 22l-3 28"/></svg>`,
+    pot: `<svg viewBox="0 0 64 64" ${S}><rect x="18" y="10" width="28" height="7" rx="2"/><path d="M20 17h24l-2 37H22z"/><path d="M22 30h20" stroke-dasharray="2 2"/></svg>`,
+    bag: `<svg viewBox="0 0 64 64" ${S}><path d="M20 10h24v44H20z"/><path d="M20 16h24M24 13h16" stroke-dasharray="2 2"/><path d="M28 26l8 8" opacity=".5"/></svg>`,
+    nozzle: `<svg viewBox="0 0 64 64" ${S}><path d="M22 14h20l-6 34h-8z"/><path d="M28 48l-2 6h12l-2-6M30 54v-6M34 54v-6"/></svg>`,
+    jar: `<svg viewBox="0 0 64 64" ${S}><path d="M18 14h28v8l4 6v26H14V28l4-6z"/><path d="M18 22h28"/><path d="M22 36h2M30 40h2M38 35h2M26 46h2M36 46h2" stroke-width="2.4"/></svg>`,
+    ribbon: `<svg viewBox="0 0 64 64" ${S}><ellipse cx="32" cy="32" rx="18" ry="18"/><ellipse cx="32" cy="32" rx="7" ry="7"/><path d="M48 40l10 10-6 2 2 6-10-10"/></svg>`,
+    cupbox: `<svg viewBox="0 0 64 64" ${S}><path d="M8 26h48v24H8z"/><path d="M8 26l6-10h36l6 10"/><circle cx="20" cy="38" r="5"/><circle cx="32" cy="38" r="5"/><circle cx="44" cy="38" r="5"/></svg>`,
+    store: `<svg viewBox="0 0 64 64" ${S}><path d="M8 24l4-12h40l4 12"/><path d="M8 24h48v4a6 6 0 0 1-12 0 6 6 0 0 1-12 0 6 6 0 0 1-12 0 6 6 0 0 1-12 0z"/><path d="M12 34v20h40V34"/><path d="M26 54V42h12v12"/></svg>`,
+    tools: `<svg viewBox="0 0 64 64" ${S}><path d="M18 52l20-20M38 32l8-14 6 6-14 8"/><path d="M44 52L24 32M24 32l-6-12a6 6 0 0 1 8-8l12 6"/></svg>`,
+    cutlery: `<svg viewBox="0 0 64 64" ${S}><path d="M22 10v18a4 4 0 0 1-8 0V10M18 10v44"/><path d="M44 10c-6 4-6 16 0 20v24"/></svg>`,
+  };
+  const ph = (k, label = 'foto') => `<div class="ph">${ICON[k]}<em>${label}</em></div>`;
+  const sIco = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>';
+  const ico = {
+    pix: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3l9 9-9 9-9-9z"/><path d="M8 12h8"/></svg>',
+    truck: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 6h12v10H2zM14 10h4l3 3v3h-7"/><circle cx="6" cy="18" r="2"/><circle cx="17" cy="18" r="2"/></svg>',
+    doc: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 3h9l4 4v14H6z"/><path d="M9 11h7M9 15h7"/></svg>',
+    store: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 9l2-5h14l2 5M3 9h18v2a3 3 0 0 1-6 0 3 3 0 0 1-6 0 3 3 0 0 1-6 0zM5 13v7h14v-7"/></svg>',
+  };
+  const TRUST = [['store', 'Retire na loja', 'Sem frete, em Canoinhas, no horário do balcão.'], ['truck', 'Entrega', 'Frete calculado pelo CEP no carrinho.'], ['pix', 'Pix e cartão', 'A loja não guarda dados do cartão.'], ['doc', 'Nota fiscal', 'NF-e em todas as compras.']];
+  const foot = (name) => `<div class="foot"><div><b>Sua marca</b>Embalagens, utensílios e confeitos para confeitaria. Canoinhas · SC<br>CNPJ 00.000.000/0000-00 (exemplo)</div><div><b>Comprar</b>${name}<br>Comprar em quantidade<br>Sob encomenda</div><div><b>Ajuda</b>Entrega e retirada<br>Trocas e devoluções<br>Pagamento</div><div><b>Atendimento</b>WhatsApp (00) 00000-0000<br>Horário do balcão (exemplo)</div></div>`;
+
+  // ---------- D ----------
+  const DEPTS = [['store', 'Ofertas da loja'], ['box', 'Caixas'], ['liner', 'Forminhas'], ['pot', 'Potes'], ['bag', 'Sacos'], ['ribbon', 'Fitas e tags'], ['jar', 'Confeitos'], ['nozzle', 'Utensílios']];
+  const dCard = (p, i) => `<div class="pc">${ph(p.kind)}<div class="${p.st === 'order' ? 'st order' : 'st'}">${p.st === 'order' ? p.lead : 'Em estoque · retire hoje'}</div><h3>${p.name}</h3><div class="pack">${p.pack}</div><div class="price"><b>${brl(p.price)}</b><small>${p.per}</small></div>${p.tier ? `<div class="tier">${p.tier}</div>` : ''}<div class="${i === 1 ? 'step' : 'step add'}">${i === 1 ? '<span>−</span><span>3 pct</span><span>+</span>' : '<span>Adicionar</span>'}</div></div>`;
+  const dTop = () => `<div class="top"><span class="logo-ph">SUA MARCA</span><div class="search">${sIco}<span>O que você procura? Caixa, forminha, código…</span></div><div class="pickup"><i></i><span><b>Retirada em Canoinhas</b>Separamos em até 2 h no horário do balcão (exemplo)</span></div><div class="acts"><span>Entrar</span><span>Pedidos</span><span>Carrinho<em>3</em></span></div></div>`;
+  const D = {
+    home: () => `<div class="m D">${dTop()}
+      <nav class="rail">${DEPTS.map(([k, n]) => `<a><span class="ico">${ICON[k]}</span>${n}</a>`).join('')}</nav>
+      <div class="hero"><div class="hero-l"><h1 class="disp">Compre pelo site,<br><span>retire no balcão.</span></h1><p>Embalagens, forminhas, potes e confeitos em Canoinhas. Escolha no celular, a gente separa e você só passa para pegar. Ou receba em casa.</p>
+        <div class="ways"><div class="way on"><b>Retirar na loja</b><small>Grátis · pronto em até 2 h (exemplo)</small></div><div class="way"><b>Receber em casa</b><small>Frete pelo CEP no carrinho</small></div></div></div>
+        <div class="hero-r">${ph('store', 'foto da loja / balcão')}<div class="cap"><span><b>Rua Exemplo, 000 · Centro</b>Canoinhas · SC</span><span>Seg. a sex. 8h–18h · Sáb. 8h–12h<br>(horários de exemplo)</span></div></div></div>
+      <div class="sec" style="padding-top:4px"><div class="again"><div><b style="font-size:16px">Seu último pedido</b> <span style="color:#776a5f;font-size:13px">· 12/10 · 6 itens · R$ 187,40</span><div class="mini">${['box', 'liner', 'pot', 'bag', 'ribbon', 'jar'].map((k) => ph(k)).join('')}</div></div><div class="step add" style="padding:0 22px"><span>Repetir pedido</span></div></div></div>
+      <div class="sec"><div class="sec-h"><h2 class="disp">Mais pedidos</h2><a>Ver todos ›</a></div><div class="grid">${P.map(dCard).join('')}</div></div>
+      <div class="sec"><div class="trust">${TRUST.map(([i, t, d]) => `<div>${ico[i]}<b>${t}</b>${d}</div>`).join('')}</div></div>${foot('Departamentos')}</div>`,
+    mobile: () => `<div class="m D mob"><div class="mtop"><span class="logo-ph" style="font-size:11px">SUA MARCA</span><span style="font-weight:700;font-size:13px">Entrar</span></div>
+      <div class="search msearch">${sIco}<span>Buscar produto ou código</span></div>
+      <div class="mpick"><i></i><span><b>Retirada em Canoinhas</b> · pronto em até 2 h (exemplo)</span></div>
+      <nav class="rail">${DEPTS.slice(0, 8).map(([k, n]) => `<a><span class="ico">${ICON[k]}</span>${n}</a>`).join('')}</nav>
+      <div class="mhero"><h1 class="disp">Compre pelo site, <span>retire no balcão.</span></h1><div class="ways" style="margin-top:10px"><div class="way on"><b>Retirar</b><small>Grátis</small></div><div class="way"><b>Receber</b><small>Frete pelo CEP</small></div></div></div>
+      <div class="sec"><div class="sec-h"><h2 class="disp">Mais pedidos</h2><a>Ver todos</a></div><div class="grid">${P.slice(0, 4).map(dCard).join('')}</div></div>
+      <div class="btab"><span class="on">Início</span><span>Departamentos</span><span>Buscar</span><span>Pedidos</span><span>Carrinho</span></div></div>`,
+    product: () => `<div class="m D">${dTop()}<div class="crumbs">Início › Caixas › Caixas para bolo</div>
+      <div class="pdp"><div>${ph('box').replace('class="ph"', 'class="ph main"')}<div class="thumbs">${ph('box')}${ph('box')}${ph('box')}${ph('box')}</div></div>
+      <div><div class="st" style="font-size:13px;font-weight:700;color:#2e7d4f">Em estoque · 140 unidades</div><h1 class="disp">Caixa para bolo com visor 25 × 25 × 12 cm</h1><div style="font-size:13px;color:#776a5f">Vendida por unidade · código CXB-2525-VIS</div>
+        <div class="ladder"><div><small>1 a 9 un</small><b>R$ 3,90</b>cada</div><div class="on"><small>10 a 49 un</small><b>R$ 3,50</b>cada · −10%</div><div><small>50 un ou mais</small><b>R$ 3,20</b>cada · −18%</div></div>
+        <div class="choose"><div class="on"><b>Retirar na loja</b>Grátis · pronto em até 2 h (exemplo)</div><div><b>Receber em casa</b>Frete pelo CEP</div></div>
+        <div class="buy"><div class="step"><span>−</span><span>20</span><span>+</span></div><div class="bigbtn">Adicionar · R$ 70,00</div></div>
+        <div class="specs"><div><span>Medidas internas</span><span>25 × 25 × 12 cm</span></div><div><span>Material</span><span>Papel cartão com visor de PET (exemplo)</span></div><div><span>Bom para</span><span>Bolos de até 22 cm de diâmetro</span></div></div></div></div>${foot('Departamentos')}</div>`,
+  };
+
+  // ---------- E ----------
+  const KIT = [
+    ['liner', 'Forminha nº 4 marrom', 'Pacote com 100', '1 pacote', '100 doces', 690],
+    ['cupbox', 'Caixa para 6 doces com berço', 'Pacote com 10', '2 pacotes', '17 caixas', 2380],
+    ['ribbon', 'Fita de cetim 10 mm rosa', 'Rolo com 10 m', '1 rolo', '17 laços', 450],
+    ['jar', 'Granulado de chocolate macio', 'Pacote de 1 kg', '1 pacote', '≈ 2 g por doce', 2490],
+  ];
+  const eLine = ([k, n, pk, q, why, c]) => `<div class="line">${ph(k)}<span><b>${n}</b><small>${pk} · ${q}</small></span><span class="why">${why}</span><span class="v">${brl(c)}</span></div>`;
+  const eCalc = (full = true) => `<div class="calc"><div class="calc-h"><h3>Lista para 100 brigadeiros</h3><div class="qtyin">Quantos doces? <b>100</b></div></div>${(full ? KIT : KIT.slice(0, 3)).map(eLine).join('')}<div class="total"><div class="n">Total da lista${full ? ' · 4 itens' : ''}<b>${brl(6010)}</b></div><div class="btn lime">Pôr tudo no carrinho</div></div></div>`;
+  const PROJ = ['Doces para festa', 'Bolo no pote', 'Cupcakes', 'Bolo de aniversário', 'Lembrancinhas'];
+  const eTop = () => `<div class="top"><span class="logo-ph">SUA MARCA</span><nav class="nav"><a>Monte seu kit</a><a>Embalagens</a><a>Utensílios</a><a>Confeitos</a></nav><div class="search">Buscar produto ou código</div><div class="acts"><span>Entrar</span><span>Carrinho<em>3</em></span></div></div>`;
+  const eRow = (p, i) => `<div class="row-p">${ph(p.kind)}<div><h3>${p.name}</h3><div class="pk">${p.pack} · ${p.sku}</div></div><div class="used">${['Bolo de aniversário', 'Doces para festa', 'Bolo no pote', 'Lembrancinhas', 'Cupcakes'][i % 5]}</div><div class="pr">${brl(p.price)}<small>${p.per}</small></div><div class="btn">Adicionar</div></div>`;
+  const E = {
+    home: () => `<div class="m E">${eTop()}
+      <div class="hero"><div><h1 class="serif">O que você vai <i>produzir</i> esta semana?</h1><p>Escolha o projeto e a quantidade. A lista sai com as embalagens certas, arredondada para os pacotes da loja, e vai inteira para o carrinho. Dá para tirar ou trocar qualquer item.</p><div class="projs">${PROJ.map((p, i) => `<span class="${i === 0 ? 'on' : ''}">${p}</span>`).join('')}</div></div>${eCalc()}</div>
+      <div class="sec"><div class="sec-h"><h2>Projetos prontos</h2><a>Todos os projetos ›</a></div><div class="kits">${[['Bolo no pote para vender', '25 potes 250 ml, colheres, adesivo de tampa.', 'a partir de R$ 31,40', ['pot', 'cutlery', 'bag']], ['Caixa com 6 doces', 'Caixa com berço, forminhas, fita e tag.', 'a partir de R$ 18,30', ['cupbox', 'liner', 'ribbon']], ['Cupcakes de aniversário', 'Forminhas, caixa para 4, bico 1M e confeitos.', 'a partir de R$ 42,10', ['liner', 'nozzle', 'jar']]].map(([t, d, v, ks]) => `<div class="kit"><div class="row">${ks.map((k) => ph(k)).join('')}</div><div class="b"><h3>${t}</h3><p>${d}</p><div class="f"><span>${v}</span><span style="color:#6f58cf">Calcular ›</span></div></div></div>`).join('')}</div></div>
+      <div class="sec" style="padding-top:0"><div class="sec-h"><h2>Mais comprados</h2><a>Ver todos ›</a></div><div class="list">${P.slice(0, 5).map(eRow).join('')}</div></div>
+      <div class="sec" style="padding-top:0"><div class="trust">${TRUST.map(([, t, d]) => `<div><b>${t}</b>${d}</div>`).join('')}</div></div>${foot('Monte seu kit')}</div>`,
+    mobile: () => `<div class="m E mob"><div class="mtop"><span class="logo-ph" style="font-size:11px">SUA MARCA</span><span style="font-size:13px;font-weight:700">Carrinho 3</span></div>
+      <div class="mhero"><h1 class="serif">O que você vai <i>produzir</i>?</h1><div class="projs">${PROJ.slice(0, 4).map((p, i) => `<span class="${i === 0 ? 'on' : ''}">${p}</span>`).join('')}</div></div>${eCalc()}
+      <div class="sec"><div class="sec-h"><h2>Projetos prontos</h2></div><div class="kits"><div class="kit"><div class="row">${['pot', 'cutlery', 'bag'].map((k) => ph(k)).join('')}</div><div class="b"><h3>Bolo no pote para vender</h3><p>25 potes, colheres e adesivo de tampa.</p><div class="f"><span>a partir de R$ 31,40</span><span style="color:#6f58cf">Calcular ›</span></div></div></div></div></div></div>`,
+    product: () => `<div class="m E">${eTop()}<div class="crumbs">Embalagens › Caixas › Caixas para bolo</div>
+      <div class="pdp"><div>${ph('box').replace('class="ph"', 'class="ph main"')}</div>
+      <div><span style="font-size:12px;font-weight:700;color:#2e7d4f">Em estoque</span><h1 class="serif">Caixa para bolo com visor 25 × 25 × 12 cm</h1><div style="font-size:13px;color:#66708a">Vendida por unidade · CXB-2525-VIS</div>
+        <div class="facts"><div>1 a 9 un<b>R$ 3,90</b></div><div>10 a 49 un<b>R$ 3,50</b></div><div>50 ou mais<b>R$ 3,20</b></div></div>
+        <div class="howmany"><h3>Quantos bolos você vai entregar?</h3><div class="q"><span>12 bolos → 12 caixas · faixa de 10 a 49 un · R$ 3,50 cada</span><b>R$ 42,00</b></div><div class="btn lime" style="margin-top:12px">Adicionar 12 caixas</div></div>
+        <div class="inkits">Faz parte dos projetos: <span>Bolo de aniversário</span><span>Bolo de festa para vender</span></div>
+        <p style="font-size:13px;color:#66708a;margin-top:14px">Medidas internas 25 × 25 × 12 cm · para bolos de até 22 cm · papel cartão com visor de PET (exemplo).</p></div></div>${foot('Monte seu kit')}</div>`,
+  };
+
+  // ---------- F ----------
+  const MONTHS = [['jan', ''], ['fev', 'Carnaval'], ['mar', ''], ['abr', 'Páscoa'], ['mai', 'Dia das Mães'], ['jun', 'Festa Junina'], ['jul', ''], ['ago', 'Dia dos Pais'], ['set', ''], ['out', 'Dia das Crianças · Professores'], ['nov', 'Você está aqui'], ['dez', 'Natal']];
+  const fTop = () => `<div class="top"><span class="logo-ph">SUA MARCA</span><div class="search">Buscar produto, data ou código</div><div class="acts"><span>Entrar</span><span>Pedidos</span><span>Carrinho<em>3</em></span></div></div><div class="year">${MONTHS.map(([m, d], i) => `<div class="${i === 10 ? 'now' : i === 11 ? 'next' : ''}"><b>${m}</b><span>${d}</span></div>`).join('')}</div>`;
+  const fCard = (p) => `<div class="pc">${ph(p.kind)}<div class="${p.st === 'order' ? 'st order' : 'st'}">${p.st === 'order' ? p.lead : 'Em estoque'}</div><h3>${p.name}</h3><div class="pack">${p.pack}</div><div class="price">${brl(p.price)}<small>${p.per}</small></div><div class="tier">${p.tier || '&nbsp;'}</div><div class="add">Adicionar</div></div>`;
+  const F = {
+    home: () => `<div class="m F">${fTop()}
+      <div class="hero"><div><span class="count"><b>42 dias</b> até o Natal</span><h1 class="serif">Natal: latas, formas de panetone e caixas de doces</h1><p>Tudo para a produção de fim de ano, separado por tipo: panetone, biscoitos, doces finos e lembrancinhas.</p><div class="deadline"><b>Itens sob encomenda: peça até 05/12</b> para chegar antes do dia 20. Em estoque: até 18/12.</div><span class="btn">Ver a coleção de Natal</span></div>
+        <div class="arches"><div class="arch">${ph('jar', 'foto de época')}Panetone</div><div class="arch">${ph('cupbox', 'foto de época')}Doces finos</div><div class="arch">${ph('bag', 'foto de época')}Lembrancinhas</div></div></div>
+      <div class="sec"><div class="sec-h"><div><h2>Coleção de Natal</h2><p>Da coleção cadastrada no painel; some depois da data.</p></div><a>Ver os 48 itens ›</a></div><div class="grid">${XMAS.map(fCard).join('')}</div></div>
+      <div class="sec"><div class="sec-h"><h2>Dia a dia</h2><a>Todos os departamentos ›</a></div><div class="always">${[['box', 'Caixas'], ['liner', 'Forminhas'], ['pot', 'Potes'], ['bag', 'Sacos'], ['ribbon', 'Fitas'], ['nozzle', 'Utensílios']].map(([k, n]) => `<a>${ph(k)}${n}</a>`).join('')}</div></div>
+      <div class="sec"><div class="sec-h"><h2>Para se planejar</h2></div><div class="next3"><div><small>fev</small><b>Carnaval</b>Saquinhos, potes e confeitos coloridos.</div><div><small>abr</small><b>Páscoa</b>Formas de ovo, caixas e papel chumbo.</div><div><small>mai</small><b>Dia das Mães</b>Caixas presenteáveis e fitas.</div></div></div>
+      <div class="sec"><div class="trust">${TRUST.map(([, t, d]) => `<div><b>${t}</b>${d}</div>`).join('')}</div></div>${foot('Coleções por data')}</div>`,
+    mobile: () => `<div class="m F mob"><div class="mtop"><span class="logo-ph" style="font-size:11px">SUA MARCA</span><span style="font-size:13px;font-weight:600">Carrinho 3</span></div>
+      <div class="mdates"><span class="on">Natal · 42 dias</span><span>Dia a dia</span><span>Carnaval</span><span>Páscoa</span></div>
+      <div class="mhero"><h1 class="serif">Natal: latas, panetone e doces</h1><div class="deadline" style="margin-top:8px"><b>Sob encomenda: peça até 05/12.</b></div></div>
+      <div class="sec"><div class="grid">${XMAS.map(fCard).join('')}</div></div></div>`,
+    product: () => `<div class="m F">${fTop()}<div class="crumbs">Natal › Panetone</div>
+      <div class="pdp"><div>${ph('jar').replace('class="ph"', 'class="ph main"')}</div>
+      <div><div class="dates"><span>Natal</span><span>Páscoa</span><span>Dia das Mães</span></div><h1>Lata redonda para panetone 500 g</h1><div style="font-size:13px;color:#8a7a83">Vendida por unidade · LTP-500</div>
+        <div class="bigprice">R$ 8,90 <span style="font:400 14px Work Sans,sans-serif;color:#8a7a83">a unidade</span></div>
+        <div class="tiers"><div>1 a 9 un<b>R$ 8,90</b></div><div>10 a 49 un<b>R$ 7,90</b></div><div>50 ou mais<b>R$ 7,40</b></div></div>
+        <div class="warn"><b>Em estoque.</b> Pedindo até 18/12, chega antes do Natal (prazo de entrega calculado pelo CEP).</div>
+        <div class="buy"><div class="qty"><span>−</span><span>12</span><span>+</span></div><div class="bbtn">Adicionar · R$ 94,80</div></div>
+        <p style="font-size:13px;color:#6d5c66;margin-top:16px">ø 16 × 12 cm · cabe a forma de papel de 500 g · lata com tampa (exemplo).</p></div></div>${foot('Coleções por data')}</div>`,
+  };
+
+  const DIRS = { D, E, F };
+  const frame = (html, w, url) => `<div class="frame"><div class="bar"><i></i><i></i><i></i><small>${url}</small></div><div class="viewport" data-w="${w}"><div class="screen" style="width:${w}px">${html}</div></div></div>`;
+  for (const host of document.querySelectorAll('[data-dir]')) {
+    const d = DIRS[host.dataset.dir];
+    host.innerHTML = `
+      <div class="frames-label"><h3>Página inicial</h3><span>computador (1280 px) e celular (375 px), reduzidos</span></div>
+      <div class="duo"><div>${frame(d.home(), 1280, 'sualoja.com.br')}</div><div class="phone">${frame(d.mobile(), 375, '')}</div></div>
+      <div class="frames-label"><h3>Produto</h3><span>computador</span></div>${frame(d.product(), 1280, 'sualoja.com.br/p/produto')}`;
+  }
+
+  const fit = () => {
+    for (const vp of document.querySelectorAll('.viewport')) {
+      if (!vp.offsetParent) continue;
+      const w = Number(vp.dataset.w);
+      const scr = vp.firstElementChild;
+      const s = Math.min(1, vp.clientWidth / w);
+      scr.style.transform = `scale(${s})`;
+      vp.style.height = `${Math.ceil(scr.offsetHeight * s)}px`;
+    }
+  };
+  const ro = new ResizeObserver(fit);
+  document.querySelectorAll('.viewport').forEach((v) => ro.observe(v));
+  document.fonts?.ready.then(fit);
+
+  const tabs = [...document.querySelectorAll('.tab')];
+  const show = (k) => {
+    const key = tabs.some((t) => t.dataset.k === k) ? k : 'pesquisa';
+    for (const t of tabs) {
+      const on = t.dataset.k === key;
+      t.setAttribute('aria-selected', on);
+      t.tabIndex = on ? 0 : -1;
+      document.getElementById(t.getAttribute('aria-controls')).hidden = !on;
+    }
+    fit();
+    setTimeout(fit, 60);
+  };
+  tabs.forEach((t) => t.addEventListener('click', () => { history.replaceState(null, '', `#${t.dataset.k}`); show(t.dataset.k); }));
+  window.addEventListener('hashchange', () => show(location.hash.slice(1)));
+  show(location.hash.slice(1));
+})();
+</script>

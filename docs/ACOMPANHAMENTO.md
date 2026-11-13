@@ -119,6 +119,13 @@ C · Catálogo técnico. Sem resposta no prazo, a loja foi construída na **A ·
 os tokens da loja ficam separados (`--color-g-*` em `globals.css`). Da C veio o pedido rápido por código (SKU).
 A linha de "ocasiões" da B ficou de fora: depende de curadoria real de produtos.
 
+Segunda rodada (13/11/2026), a pedido: [design/direcoes-visuais-2.html](design/direcoes-visuais-2.html) com três
+direções novas, a partir das lojas especializadas mais bem colocadas no Google (pesquisa e o que cada uma inspirou na
+primeira aba do arquivo): **D · Balcão** (comprar pelo site e retirar em Canoinhas, departamentos por ícone, quantidade
+no card, repetir pedido), **E · Monte seu kit** (calculadora: o que vai produzir e quanto → lista de compras em
+pacotes) e **F · Calendário** (régua do ano, coleção da próxima data com "peça até"). Nada copiado das lojas
+pesquisadas. A loja continua na A até a sua escolha (A a F).
+
 ### Pronto
 
 - **Faixas de preço por quantidade** por embalagem de venda (até 6). Alterar exige permissão de preços + MFA,

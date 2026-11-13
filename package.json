@@ -15,6 +15,9 @@
     "dev:api": "npm run dev -w apps/api",
     "dev:web": "npm run dev -w apps/web",
     "test": "npm test -w apps/api",
-    "typecheck": "npm run typecheck --workspaces --if-present"
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "backup": "node scripts/backup.mjs backup",
+    "backup:verify": "node scripts/backup.mjs verify",
+    "backup:restore-test": "node scripts/backup.mjs restore-test"
   }
 }

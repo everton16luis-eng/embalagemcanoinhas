@@ -11,7 +11,10 @@ Legenda: **HTTPS** = precisa da API publicada com certificado · **Você** = dep
 
 - [ ] **HTTPS** Publicar API e site em servidor com domínio e certificado; medir memória livre no VPS.
 - [ ] **HTTPS** `next build` e implantação; conferir cookies `Secure`, cabeçalhos de segurança e `TRUST_PROXY`.
-- [ ] **HTTPS** Backup do banco e dos arquivos (`storage/`, inclui XML fiscais) e **restauração testada**.
+- [x] Backup e teste de restauração **local** (13/11/2026): `npm run backup` e `backup:restore-test` OK; arquivo
+      adulterado detectado pelo `backup:verify`. Ver [BACKUP.md](BACKUP.md).
+- [ ] **HTTPS** Backup agendado no servidor, cópia para fora dele e teste de restauração lá.
+- [ ] **Você** Onde guardar as cópias fora do servidor e por quanto tempo (retenção).
 - [ ] **Você** Provedor de e-mail transacional; testar a recuperação de senha chegando de verdade.
 - [ ] Inspeção visual por captura de tela (painel e loja, desktop e celular): até aqui a verificação foi por texto e
       medidas.

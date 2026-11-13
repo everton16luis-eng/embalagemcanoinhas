@@ -271,3 +271,14 @@ Critério do plano: **orçamento → pedido sem redigitar**. Testes externos des
 - Pagamento "na loja" (dinheiro, maquininha) para pedidos do balcão não existe: hoje o pedido do balcão é pago por
   Pix ou cartão online. Se quiser receber no balcão, é uma decisão sua (e do contador, para a nota).
 
+---
+
+## Preparação do lançamento (V1)
+
+- **Backup e restauração** (critério do plano): `scripts/backup.mjs` com `backup`, `verify` e `restore-test`.
+  Testado localmente: restauração num banco temporário com contagens e migrations iguais ao manifesto e o XML de
+  compra conferido pelo hash; um arquivo adulterado de propósito foi detectado. O teste de restauração encontrou e
+  levou à correção do caminho dos arquivos fiscais (`storage/fiscal/<chave>`). Procedimento em [BACKUP.md](BACKUP.md).
+- A cópia `backups/20261113-125357` do banco local ficou com um arquivo alterado de propósito (teste do `verify`);
+  pode ser apagada.
+

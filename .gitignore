@@ -8,3 +8,6 @@ next-env.d.ts
 *.tsbuildinfo
 test-results/
 playwright-report/
+
+# Copias de seguranca (dados reais de clientes e notas): nunca no git.
+backups/

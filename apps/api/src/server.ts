@@ -2,6 +2,7 @@ import { buildApp } from './app.js';
 import { config } from './config.js';
 import { pool, tx } from './db/pool.js';
 import { expireReservations } from './lib/stock.js';
+import { expireOrders } from './modules/orders.js';
 
 const app = await buildApp({
   // Sem provedor de e-mail configurado o link nao e entregue. O token nunca vai para o log.
@@ -15,6 +16,10 @@ const expiry = setInterval(() => {
   tx(null, (db) => expireReservations(db))
     .then((n) => n && app.log.info(`${n} reserva(s) vencida(s) liberada(s)`))
     .catch((err) => app.log.error(err, 'falha ao liberar reservas vencidas'));
+  // Pedido sem pagamento no prazo: cancela e devolve o estoque reservado.
+  expireOrders(app.payments)
+    .then((n) => n && app.log.info(`${n} pedido(s) sem pagamento cancelado(s)`))
+    .catch((err) => app.log.error(err, 'falha ao cancelar pedidos vencidos'));
 }, 60_000);
 expiry.unref();
 

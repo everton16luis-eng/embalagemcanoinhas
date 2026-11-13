@@ -22,7 +22,10 @@ const PUBLIC = new Set(['/health', '/ready', '/api/v1/auth/login', '/api/v1/auth
 
 describe('varredura de rotas', () => {
   it('toda rota administrativa exige sessão', async () => {
-    const admin = routes.filter((r) => !PUBLIC.has(r.url));
+    // Loja publica (catalogo, carrinho, checkout, link do pedido) e o aviso do provedor ficam de fora;
+    // a area do cliente exige a sessao do cliente.
+    const open = (u: string) => PUBLIC.has(u) || u.startsWith('/api/v1/public/') || u.startsWith('/api/v1/webhooks/') || /^\/api\/v1\/customer\/(register|login|logout)$/.test(u);
+    const admin = routes.filter((r) => !open(r.url));
     expect(admin.length).toBeGreaterThan(25);
     for (const r of admin) {
       const res = await client(app).send(r.method as never, fill(r.url), r.method === 'GET' || r.method === 'DELETE' ? undefined : {});

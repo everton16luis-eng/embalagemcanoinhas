@@ -4,6 +4,7 @@ import { generate, generateSecret } from 'otplib';
 import pg from 'pg';
 import { buildApp } from '../src/app.js';
 import { encrypt } from '../src/lib/crypto.js';
+import type { PaymentProvider } from '../src/lib/payments.js';
 import { hashPassword } from '../src/modules/auth.js';
 
 export const ORIGIN = process.env.APP_ORIGIN!;
@@ -35,8 +36,8 @@ export const uid = () => randomBytes(5).toString('hex');
 export const randomIp = () => `10.${randomInt(255)}.${randomInt(255)}.${randomInt(255)}`;
 
 export const sentResets: { email: string; token: string }[] = [];
-export const makeApp = (routes?: { method: string; url: string }[]) =>
-  buildApp({ notifier: async (email, token) => void sentResets.push({ email, token }), routes });
+export const makeApp = (routes?: { method: string; url: string }[], payments: PaymentProvider | null = null) =>
+  buildApp({ notifier: async (email, token) => void sentResets.push({ email, token }), routes, payments });
 
 export async function createUser(role: string, opts: { mfa?: boolean } = {}) {
   const email = `${role}-${uid()}@teste.local`;
@@ -97,7 +98,7 @@ export async function loggedAs(app: FastifyInstance, role: string, opts: { mfa?:
 export async function resetCatalog() {
   // Movimentos e recebimentos sao imutaveis (gatilho por linha); no banco de teste o dono limpa com TRUNCATE.
   await owner.query(
-    'TRUNCATE inventory_count_items, inventory_counts, purchase_receipt_items, purchase_receipts, purchase_order_items, purchase_orders, supplier_products, supplier_contacts, suppliers, stock_reservations, stock_movements, stock_balances',
+    'TRUNCATE shipments, payment_notifications, payments, order_events, order_items, orders, cart_items, carts, customer_addresses, customer_sessions, customers, shipping_options, price_tiers, inventory_count_items, inventory_counts, purchase_receipt_items, purchase_receipts, purchase_order_items, purchase_orders, supplier_products, supplier_contacts, suppliers, stock_reservations, stock_movements, stock_balances',
   );
   await owner.query('DELETE FROM product_images; DELETE FROM packagings; DELETE FROM product_variants; DELETE FROM products; DELETE FROM categories');
 }

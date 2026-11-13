@@ -21,7 +21,18 @@ const schema = z.object({
   LOGIN_RATE_LIMIT: z.coerce.number().int().positive().default(20),
   RATE_LIMIT_STORE: blankAsMissing(z.enum(['memory', 'postgres']).optional()),
   STORAGE_DIR: z.string().min(1).default('../../storage'),
+  // Mercado Pago (credenciais da conta da loja; vazias = pagamento online desligado).
+  MP_ACCESS_TOKEN: blankAsMissing(z.string().min(20).optional()),
+  MP_PUBLIC_KEY: blankAsMissing(z.string().min(20).optional()),
+  MP_WEBHOOK_SECRET: blankAsMissing(z.string().min(16).optional()),
+  // Endereco publico que o Mercado Pago chama (https em producao).
+  PUBLIC_API_URL: blankAsMissing(z.url().optional()),
+  PIX_EXPIRATION_MINUTES: z.coerce.number().int().min(30).max(1440).default(60),
+  CARD_PAYMENT_WINDOW_MINUTES: z.coerce.number().int().min(10).max(1440).default(30),
+  // Somente desenvolvimento: provedor simulado para testar a loja sem conta no Mercado Pago.
+  PAYMENT_FAKE: blankAsMissing(z.enum(['true', 'false']).optional()).transform((v) => v === 'true'),
 });
 
 export const config = schema.parse(process.env);
 export const isProduction = config.NODE_ENV === 'production';
+if (isProduction && config.PAYMENT_FAKE) throw new Error('PAYMENT_FAKE nao pode ser usado em producao');

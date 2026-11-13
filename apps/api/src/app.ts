@@ -7,10 +7,14 @@ import { ZodError } from 'zod';
 import { config, isProduction } from './config.js';
 import { pool } from './db/pool.js';
 import { AppError } from './lib/errors.js';
+import { FakeProvider, providerFromConfig, type PaymentProvider } from './lib/payments.js';
 import { PostgresRateLimitStore } from './lib/rate-limit-store.js';
 import { auditRoutes } from './modules/audit.js';
 import { authRoutes, COOKIE, loadAuth, type ResetNotifier } from './modules/auth.js';
 import { categoryRoutes } from './modules/categories.js';
+import { CUSTOMER_COOKIE, customerRoutes, loadCustomer } from './modules/customers.js';
+import { adminOrderRoutes, checkoutRoutes, customerOrderRoutes, fakePaymentRoutes, publicOrderRoutes, shippingOptionRoutes, webhookRoutes } from './modules/orders.js';
+import { CART_COOKIE, cartRoutes, catalogRoutes, shippingQuoteRoutes } from './modules/storefront.js';
 import { companyRoutes, fiscalSettingsRoutes, storeSettingsRoutes } from './modules/company.js';
 import { productImageRoutes, publicImageRoutes } from './modules/images.js';
 import { productRoutes } from './modules/products.js';
@@ -29,7 +33,15 @@ const isDbDown = (err: Error & { code?: string }) => DB_DOWN_CODES.has(err.code 
 /** Confia so nos ultimos proxies: o que o cliente escreveu no X-Forwarded-For fica de fora. */
 const trustedHops = (hops: number) => (hops ? (_addr: string, hop: number) => hop < hops : false);
 
-export async function buildApp(opts: { notifier: ResetNotifier; routes?: { method: string; url: string }[]; rateLimitStore?: 'memory' | 'postgres' }) {
+/** Provedor de pagamento: o configurado (Mercado Pago), o simulado so fora de producao, ou nenhum. */
+export const defaultPaymentProvider = () => providerFromConfig() ?? (config.PAYMENT_FAKE && !isProduction ? new FakeProvider() : null);
+
+export async function buildApp(opts: {
+  notifier: ResetNotifier;
+  routes?: { method: string; url: string }[];
+  rateLimitStore?: 'memory' | 'postgres';
+  payments?: PaymentProvider | null;
+}) {
   const app = Fastify({
     logger: config.NODE_ENV === 'test' ? false : { redact: ['req.headers.cookie', 'req.headers.authorization', 'res.headers["set-cookie"]'] },
     trustProxy: trustedHops(config.TRUST_PROXY),
@@ -51,15 +63,21 @@ export async function buildApp(opts: { notifier: ResetNotifier; routes?: { metho
   await app.register(rateLimit, { global: false, ...(shared ? { store: PostgresRateLimitStore as never, skipOnError: true } : {}) });
 
   app.decorateRequest('auth', null);
+  app.decorateRequest('customer', null);
+  app.decorate('payments', opts.payments === undefined ? defaultPaymentProvider() : opts.payments);
 
   app.addHook('onRequest', async (req, reply) => {
     reply.header('Cache-Control', 'no-store');
     if (SAFE_METHODS.has(req.method)) return;
     // CSRF: complementa o SameSite. Requisicao que altera dados precisa vir da origem da aplicacao.
+    // O aviso do provedor de pagamento vem de fora e e conferido pela assinatura.
+    if (req.url.startsWith('/api/v1/webhooks/')) return;
     const origin = req.headers.origin;
-    if (origin ? origin !== config.APP_ORIGIN : Boolean(req.cookies[COOKIE])) throw new AppError(403, 'INVALID_ORIGIN', 'Origem da requisição não permitida.');
+    const hasSession = Boolean(req.cookies[COOKIE] || req.cookies[CUSTOMER_COOKIE] || req.cookies[CART_COOKIE]);
+    if (origin ? origin !== config.APP_ORIGIN : hasSession) throw new AppError(403, 'INVALID_ORIGIN', 'Origem da requisição não permitida.');
   });
   app.addHook('preHandler', loadAuth);
+  app.addHook('preHandler', loadCustomer);
 
   app.setErrorHandler((err: Error & { statusCode?: number; code?: string }, req, reply) => {
     if (err instanceof AppError) {
@@ -103,5 +121,16 @@ export async function buildApp(opts: { notifier: ResetNotifier; routes?: { metho
   await app.register(supplierRoutes, { prefix: '/api/v1/admin/suppliers' });
   await app.register(purchaseRoutes, { prefix: '/api/v1/admin/purchase-orders' });
   await app.register(publicImageRoutes, { prefix: '/api/v1/public' });
+  await app.register(catalogRoutes, { prefix: '/api/v1/public/catalog' });
+  await app.register(cartRoutes, { prefix: '/api/v1/public/cart' });
+  await app.register(shippingQuoteRoutes, { prefix: '/api/v1/public/shipping' });
+  await app.register(checkoutRoutes, { prefix: '/api/v1/public/checkout' });
+  await app.register(publicOrderRoutes, { prefix: '/api/v1/public/orders' });
+  await app.register(fakePaymentRoutes, { prefix: '/api/v1/public/dev-payments' });
+  await app.register(customerRoutes, { prefix: '/api/v1/customer' });
+  await app.register(customerOrderRoutes, { prefix: '/api/v1/customer/orders' });
+  await app.register(webhookRoutes, { prefix: '/api/v1/webhooks' });
+  await app.register(adminOrderRoutes, { prefix: '/api/v1/admin/orders' });
+  await app.register(shippingOptionRoutes, { prefix: '/api/v1/admin/shipping-options' });
   return app;
 }

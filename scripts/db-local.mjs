@@ -108,6 +108,13 @@ function init() {
       'PORT=4010',
       'TRUST_PROXY=0',
       'STORAGE_DIR=../../storage',
+      '# Pagamento: credenciais de TESTE do Mercado Pago (Suas integracoes > Credenciais de teste).',
+      '# Vazio = pagamento online desligado. PAYMENT_FAKE=true simula o provedor (so desenvolvimento).',
+      'MP_ACCESS_TOKEN=',
+      'MP_PUBLIC_KEY=',
+      'MP_WEBHOOK_SECRET=',
+      'PUBLIC_API_URL=',
+      'PAYMENT_FAKE=true',
       '',
     ].join('\n');
     writeFileSync(envFile, env, { mode: 0o600 });

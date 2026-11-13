@@ -20,6 +20,8 @@ const packagingSchema = z.strictObject({
   priceCents: z.number().int().positive().max(100_000_000).nullable().optional(),
   barcode: gtin.nullable().optional(),
   isDefault: z.boolean().optional(),
+  // Preco por embalagem a partir de N embalagens (venda em quantidade).
+  tiers: z.array(z.strictObject({ minPacks: z.number().int().min(2).max(100_000), priceCents: z.number().int().positive().max(100_000_000) })).max(6).default([]),
 });
 
 const variantSchema = z.strictObject({
@@ -84,6 +86,14 @@ async function checkRules(db: Db, p: ProductInput) {
       if (!fractional && hasFraction(k.baseQty)) throw new AppError(422, 'FRACTION_NOT_ALLOWED', `A unidade base ${p.baseUnit} não aceita fração: "${k.label}" precisa conter um número inteiro de unidades.`);
       if (k.kind === 'sale' && !k.priceCents) throw new AppError(422, 'PRICE_REQUIRED', `Informe o preço de "${k.label}" (${v.sku}).`);
       if (k.kind === 'purchase' && k.priceCents) throw new AppError(422, 'PURCHASE_PRICE', 'Embalagem de compra não tem preço de venda; o custo é registrado por fornecedor.');
+      if (k.kind === 'purchase' && k.tiers.length) throw new AppError(422, 'PURCHASE_TIERS', 'Faixa de quantidade só vale para embalagem de venda.');
+      // Faixas em ordem de quantidade, cada uma mais barata que a anterior e que o preço cheio.
+      let last = { min: 1, price: k.priceCents ?? 0 };
+      for (const t of [...k.tiers].sort((a, b) => a.minPacks - b.minPacks)) {
+        if (t.minPacks === last.min) throw new AppError(422, 'DUPLICATE_TIER', `"${k.label}": duas faixas com a mesma quantidade.`);
+        if (t.priceCents >= last.price) throw new AppError(422, 'TIER_NOT_DECREASING', `"${k.label}": o preço da faixa a partir de ${t.minPacks} precisa ser menor que o da faixa anterior.`);
+        last = { min: t.minPacks, price: t.priceCents };
+      }
     }
     for (const code of [v.barcode, ...v.packagings.map((k) => k.barcode)]) {
       if (!code) continue;
@@ -139,6 +149,14 @@ async function saveVariants(db: Db, auth: Auth, productId: string, variants: Pro
           ? (await db.query(`UPDATE packagings SET label = $2, unit_code = $3, base_qty = $4, price_cents = $5, barcode = $6, is_default = $7, position = $8, active = true, updated_at = now() WHERE id = $1 RETURNING id`, [old.id, ...vals])).rows[0].id
           : (await db.query(`INSERT INTO packagings (variant_id, kind, label, unit_code, base_qty, price_cents, barcode, is_default, position) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`, [variantId, kind, ...vals])).rows[0].id;
         keptPack.add(id);
+        const oldTiers = (await db.query<{ min_packs: number; price_cents: string }>('SELECT min_packs, price_cents FROM price_tiers WHERE packaging_id = $1 ORDER BY min_packs', [id])).rows;
+        const sig = (t: { m: number; p: string }[]) => t.map((x) => `${x.m}:${x.p}`).join(',');
+        const newTiers = [...k.tiers].sort((a, b) => a.minPacks - b.minPacks);
+        if (sig(oldTiers.map((t) => ({ m: t.min_packs, p: String(t.price_cents) }))) !== sig(newTiers.map((t) => ({ m: t.minPacks, p: String(t.priceCents) })))) {
+          if ((old || oldTiers.length) && !canPrice) throw new AppError(403, 'PRICE_FORBIDDEN', 'Alterar preço exige a permissão de preços e a verificação em duas etapas.');
+          await db.query('DELETE FROM price_tiers WHERE packaging_id = $1', [id]);
+          for (const t of newTiers) await db.query('INSERT INTO price_tiers (packaging_id, min_packs, price_cents) VALUES ($1, $2, $3)', [id, t.minPacks, t.priceCents]);
+        }
       }
     }
   }
@@ -162,7 +180,8 @@ export async function loadProduct(db: Db | typeof pool, id: string) {
   ).rows;
   const packagings = (
     await db.query(
-      `SELECT k.id, k.variant_id, k.kind, k.label, k.unit_code, k.base_qty, k.price_cents, k.barcode, k.is_default, k.position
+      `SELECT k.id, k.variant_id, k.kind, k.label, k.unit_code, k.base_qty, k.price_cents, k.barcode, k.is_default, k.position,
+              coalesce((SELECT json_agg(json_build_object('minPacks', t.min_packs, 'priceCents', t.price_cents) ORDER BY t.min_packs) FROM price_tiers t WHERE t.packaging_id = k.id), '[]') AS tiers
        FROM packagings k JOIN product_variants v ON v.id = k.variant_id WHERE v.product_id = $1 AND k.active ORDER BY k.kind DESC, k.position`,
       [id],
     )

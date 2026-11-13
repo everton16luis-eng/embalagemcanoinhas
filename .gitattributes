@@ -1,0 +1,3 @@
+# Arquivos usados no servidor Ubuntu: sempre LF (systemd e nginx nao aceitam CRLF).
+deploy/** text eol=lf
+scripts/*.mjs text eol=lf

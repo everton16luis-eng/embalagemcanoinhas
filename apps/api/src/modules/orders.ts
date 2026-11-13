@@ -10,10 +10,12 @@ import { invoiceSummary, sendOrderInvoice } from '../lib/fiscal-files.js';
 import { idParams, likePattern, pageQuery } from '../lib/http.js';
 import type { PaymentProvider, ProviderPayment } from '../lib/payments.js';
 import { consumeReservation, releaseReservation, reserve } from '../lib/stock.js';
+import { currentOptinText, queueOrderMessage } from './whatsapp.js';
+import { carrierProvider, originCep } from '../lib/carriers.js';
 import { requirePermission } from './auth.js';
 import { addressSchema, documentFor, personSchema, requireCustomer } from './customers.js';
 import type { CartLine } from '../lib/pricing.js';
-import { CART_COOKIE, cartLines, quoteShipping, summarize } from './storefront.js';
+import { CART_COOKIE, cartLines, parcelsOf, quoteShipping, summarize } from './storefront.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -131,6 +133,7 @@ export async function applyPayment(db: Db, paymentId: string, p: ProviderPayment
     if (order.status === 'pending_payment') {
       await db.query(`UPDATE orders SET status = 'paid', paid_at = now(), updated_at = now(), version = version + 1 WHERE id = $1`, [order.id]);
       await addEvent(db, order.id, 'paid', pay.method === 'pix' ? 'Pix confirmado' : 'Cartão aprovado');
+      await queueOrderMessage(db, order.id, 'order_paid');
       return { orderStatus: 'paid', paymentStatus: status };
     }
     if (order.status === 'canceled') await addEvent(db, order.id, 'canceled', 'Pagamento aprovado depois do cancelamento: devolver o valor pelo painel do Mercado Pago.');
@@ -207,6 +210,8 @@ export type NewOrder = {
   paymentMethod: 'pix' | 'card' | 'marketplace';
   /** Venda ja paga fora da loja (marketplace): o pedido nasce pago. */
   paid?: boolean;
+  /** Texto do consentimento aceito pelo cliente para avisos pelo WhatsApp (null = nao aceitou). */
+  whatsappOptinText?: string | null;
   subtotalCents: number;
   discountCents: number;
   freightCents: number;
@@ -220,9 +225,11 @@ export async function insertOrder(db: Db, o: NewOrder, lines: OrderLine[]) {
   const total = o.subtotalCents - o.discountCents + o.freightCents;
   const { rows } = await db.query<{ id: string; number: number }>(
     `INSERT INTO orders (public_token_hash, request_key, customer_id, channel, buyer, ship_to, shipping_option_id, shipping_snapshot, payment_method,
-                         subtotal_cents, discount_cents, freight_cents, total_cents, notes, has_backorder, payment_due_at, status, paid_at)
+                         subtotal_cents, discount_cents, freight_cents, total_cents, notes, has_backorder, payment_due_at, status, paid_at,
+                         whatsapp_optin_text, whatsapp_optin_at)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, false, now() + make_interval(mins => $15),
-             CASE WHEN $16 THEN 'paid' ELSE 'pending_payment' END, CASE WHEN $16 THEN now() END) RETURNING id, number`,
+             CASE WHEN $16 THEN 'paid' ELSE 'pending_payment' END, CASE WHEN $16 THEN now() END,
+             $17::text, CASE WHEN $17::text IS NOT NULL THEN now() END) RETURNING id, number`,
     [
       sha256(publicToken(o.requestKey)),
       o.requestKey,
@@ -240,6 +247,7 @@ export async function insertOrder(db: Db, o: NewOrder, lines: OrderLine[]) {
       o.notes,
       o.dueMinutes,
       Boolean(o.paid),
+      o.whatsappOptinText ?? null,
     ],
   );
   const order = rows[0]!;
@@ -276,6 +284,8 @@ const checkoutSchema = z.strictObject({
   address: addressSchema.optional().nullable(),
   paymentMethod: z.enum(['pix', 'card']),
   notes: z.string().trim().max(500).optional().nullable(),
+  // Consentimento para avisos do pedido pelo WhatsApp (caixa desmarcada por padrao).
+  whatsappOptin: z.boolean().default(false),
   // Total que o cliente viu. Se o preco mudou nesse meio tempo, o pedido nao e criado.
   expectedTotalCents: z.number().int().positive(),
 });
@@ -315,7 +325,7 @@ export async function checkoutRoutes(app: FastifyInstance) {
       if (!lines.length) throw new AppError(422, 'CART_EMPTY', 'Seu carrinho está vazio.');
       if (sum.blocking.length) throw new AppError(409, 'CART_BLOCKED', 'Alguns itens mudaram de disponibilidade. Revise o carrinho.', { blocking: sum.blocking });
 
-      const options = await quoteShipping(db, b.address?.cep ?? null, sum.subtotalCents, sum.weightG, sum.weightMissing.length > 0);
+      const options = await quoteShipping(db, b.address?.cep ?? null, sum.subtotalCents, sum.weightG, sum.weightMissing.length > 0, parcelsOf(lines));
       const ship = options.find((o) => o.id === b.shippingOptionId);
       if (!ship) throw new AppError(422, 'SHIPPING_UNAVAILABLE', 'Esta forma de entrega não atende o endereço informado.');
       if (ship.kind === 'delivery' && !b.address) throw new AppError(400, 'ADDRESS_REQUIRED', 'Informe o endereço de entrega.');
@@ -334,6 +344,7 @@ export async function checkoutRoutes(app: FastifyInstance) {
           customerId: req.customer?.id ?? null,
           channel: 'store',
           buyer,
+          whatsappOptinText: b.whatsappOptin ? await currentOptinText(db) : null,
           shipTo: ship.kind === 'delivery' ? (b.address ?? null) : null,
           shipping: ship,
           paymentMethod: b.paymentMethod,
@@ -639,6 +650,10 @@ export async function adminOrderRoutes(app: FastifyInstance) {
       if (!NEXT[o.status]?.includes(b.to)) throw new AppError(409, 'INVALID_TRANSITION', 'Esta mudança de situação não é permitida agora.');
       await db.query('UPDATE orders SET status = $2, updated_at = now(), version = version + 1 WHERE id = $1', [id, b.to]);
       await addEvent(db, id, b.to, b.note || null, auth.userId);
+      // Pronto para retirar: avisa o cliente (so retirada; entrega avisa no despacho).
+      if (b.to === 'ready' && (await db.query(`SELECT 1 FROM orders WHERE id = $1 AND shipping_snapshot->>'kind' = 'pickup'`, [id])).rows[0]) {
+        await queueOrderMessage(db, id, 'order_ready');
+      }
       await audit(db, { actorId: auth.userId, action: 'order.status', entity: 'order', entityId: id, before: { status: o.status }, after: { status: b.to }, ip: auth.ip });
       return { order: await orderView(db, id, { staff: true }) };
     });
@@ -697,6 +712,7 @@ export async function adminOrderRoutes(app: FastifyInstance) {
       );
       await db.query(`UPDATE orders SET status = 'shipped', updated_at = now(), version = version + 1 WHERE id = $1`, [id]);
       await addEvent(db, id, 'shipped', b.trackingCode ? `Código de rastreio ${b.trackingCode}` : null, auth.userId);
+      await queueOrderMessage(db, id, 'order_shipped');
       await audit(db, { actorId: auth.userId, action: 'order.dispatch', entity: 'order', entityId: id, after: { carrier: b.carrier, trackingCode: b.trackingCode }, ip: auth.ip });
       return { order: await orderView(db, id, { staff: true }) };
     });
@@ -737,8 +753,11 @@ const cepRange = z
 const shippingSchema = z
   .strictObject({
     name: z.string().trim().min(2).max(80),
-    kind: z.enum(['pickup', 'delivery']),
+    kind: z.enum(['pickup', 'delivery', 'carrier']),
     description: z.string().trim().max(300).optional().nullable(),
+    // Transportadora: codigo do servico no provedor e dias de separacao somados ao prazo cotado.
+    carrierService: z.string().trim().regex(/^[0-9]{1,10}$/, 'Código do serviço: só números.').optional().nullable(),
+    handlingDays: z.number().int().min(0).max(30).default(0),
     cepRanges: z.array(cepRange).max(200).default([]),
     baseCents: z.number().int().min(0).max(100_000_000),
     perKgCents: z.number().int().min(0).max(10_000_000).default(0),
@@ -750,20 +769,40 @@ const shippingSchema = z
     position: z.number().int().min(0).max(1000).default(0),
   })
   .refine((v) => v.maxDays >= v.minDays, { message: 'Prazo máximo menor que o mínimo.', path: ['maxDays'] })
-  .refine((v) => v.kind === 'pickup' || v.cepRanges.length > 0, { message: 'Entrega precisa de ao menos uma faixa de CEP.', path: ['cepRanges'] });
+  .refine((v) => v.kind !== 'delivery' || v.cepRanges.length > 0, { message: 'Entrega precisa de ao menos uma faixa de CEP.', path: ['cepRanges'] })
+  .refine((v) => (v.kind === 'carrier') === Boolean(v.carrierService), { message: 'Transportadora precisa do código do serviço (e só ela).', path: ['carrierService'] });
 
-const SHIP_COLS = `id, name, kind, description, cep_ranges, base_cents, per_kg_cents, free_above_cents, max_weight_g, min_days, max_days, active, position`;
+const SHIP_COLS = `id, name, kind, description, cep_ranges, base_cents, per_kg_cents, free_above_cents, max_weight_g, min_days, max_days, active, position, carrier_service, handling_days`;
 
 export async function shippingOptionRoutes(app: FastifyInstance) {
   app.get('/', async (req) => {
     requirePermission(req, 'orders.view');
-    return { options: (await pool.query(`SELECT ${SHIP_COLS} FROM shipping_options ORDER BY position, name`)).rows };
+    const carrier = carrierProvider();
+    return {
+      options: (await pool.query(`SELECT ${SHIP_COLS} FROM shipping_options ORDER BY position, name`)).rows,
+      carrier: { configured: Boolean(carrier), fake: carrier?.name === 'fake', originCep: await originCep(pool) },
+    };
   });
 
   const save = async (req: FastifyRequest, id: string | null) => {
     const auth = requirePermission(req, 'settings.manage');
     const s = shippingSchema.parse(req.body);
-    const params = [s.name, s.kind, s.description || null, s.kind === 'pickup' ? [] : s.cepRanges, s.baseCents, s.kind === 'pickup' ? 0 : s.perKgCents, s.freeAboveCents ?? null, s.maxWeightG ?? null, s.minDays, s.maxDays, s.active, s.position];
+    const params = [
+      s.name,
+      s.kind,
+      s.description || null,
+      s.kind === 'delivery' ? s.cepRanges : [],
+      s.baseCents,
+      s.kind === 'delivery' ? s.perKgCents : 0,
+      s.freeAboveCents ?? null,
+      s.maxWeightG ?? null,
+      s.minDays,
+      s.maxDays,
+      s.active,
+      s.position,
+      s.kind === 'carrier' ? s.carrierService : null,
+      s.kind === 'carrier' ? s.handlingDays : 0,
+    ];
     return tx(auth.userId, async (db) => {
       const before = id ? (await db.query(`SELECT ${SHIP_COLS} FROM shipping_options WHERE id = $1 FOR UPDATE`, [id])).rows[0] : null;
       if (id && !before) throw notFound();
@@ -771,14 +810,14 @@ export async function shippingOptionRoutes(app: FastifyInstance) {
         ? (
             await db.query(
               `UPDATE shipping_options SET name = $2, kind = $3, description = $4, cep_ranges = $5, base_cents = $6, per_kg_cents = $7, free_above_cents = $8,
-                 max_weight_g = $9, min_days = $10, max_days = $11, active = $12, position = $13 WHERE id = $1 RETURNING ${SHIP_COLS}`,
+                 max_weight_g = $9, min_days = $10, max_days = $11, active = $12, position = $13, carrier_service = $14, handling_days = $15 WHERE id = $1 RETURNING ${SHIP_COLS}`,
               [id, ...params],
             )
           ).rows[0]
         : (
             await db.query(
-              `INSERT INTO shipping_options (name, kind, description, cep_ranges, base_cents, per_kg_cents, free_above_cents, max_weight_g, min_days, max_days, active, position)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING ${SHIP_COLS}`,
+              `INSERT INTO shipping_options (name, kind, description, cep_ranges, base_cents, per_kg_cents, free_above_cents, max_weight_g, min_days, max_days, active, position, carrier_service, handling_days)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING ${SHIP_COLS}`,
               params,
             )
           ).rows[0];

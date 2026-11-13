@@ -1,0 +1,11 @@
+DROP TABLE IF EXISTS shipping_quote_cache;
+ALTER TABLE shipping_options DROP CONSTRAINT IF EXISTS shipping_options_carrier;
+ALTER TABLE shipping_options DROP COLUMN IF EXISTS carrier_service, DROP COLUMN IF EXISTS handling_days;
+DELETE FROM shipping_options WHERE kind = 'carrier';
+ALTER TABLE shipping_options DROP CONSTRAINT shipping_options_kind_check;
+ALTER TABLE shipping_options ADD CONSTRAINT shipping_options_kind_check CHECK (kind IN ('pickup', 'delivery'));
+DROP TABLE IF EXISTS whatsapp_optouts;
+DROP TABLE IF EXISTS whatsapp_inbound;
+DROP TABLE IF EXISTS whatsapp_messages;
+DROP TABLE IF EXISTS whatsapp_templates;
+ALTER TABLE orders DROP COLUMN IF EXISTS whatsapp_optin_text, DROP COLUMN IF EXISTS whatsapp_optin_at;

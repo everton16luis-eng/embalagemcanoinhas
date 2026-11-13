@@ -4,6 +4,7 @@ import { pool, tx } from './db/pool.js';
 import { expireReservations } from './lib/stock.js';
 import { fiscalTick } from './modules/fiscal.js';
 import { marketplaceTick } from './modules/marketplaces.js';
+import { whatsappTick } from './modules/whatsapp.js';
 import { expireOrders } from './modules/orders.js';
 
 const app = await buildApp({
@@ -30,6 +31,10 @@ const expiry = setInterval(() => {
   marketplaceTick(app.marketplaces)
     .then((r) => (r.refreshed || Object.keys(r.sales).length || r.stock.pushed || r.stock.failed) && app.log.info({ marketplaces: r }, 'rotina de marketplaces'))
     .catch((err) => app.log.error(err, 'falha na rotina de marketplaces'));
+  // WhatsApp: envia os avisos de pedido da fila.
+  whatsappTick(app.whatsapp)
+    .then((r) => (r.sent || r.failed) && app.log.info(`whatsapp: ${r.sent} aviso(s) enviado(s), ${r.failed} com falha`))
+    .catch((err) => app.log.error(err, 'falha na rotina do WhatsApp'));
 }, 60_000);
 expiry.unref();
 

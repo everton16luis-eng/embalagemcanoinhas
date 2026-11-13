@@ -50,6 +50,20 @@ const schema = z.object({
   SHOPEE_AUTH_HOST: z.url().default('https://open.shopee.com.br'),
   // URL exata cadastrada para o push da Shopee (entra na assinatura). Padrao: PUBLIC_API_URL + /api/v1/webhooks/marketplaces/shopee.
   SHOPEE_PUSH_URL: blankAsMissing(z.url().optional()),
+  // WhatsApp Cloud API (docs/08). Numero, token de usuario do sistema, segredo do app e token de verificacao do webhook.
+  WA_PHONE_NUMBER_ID: blankAsMissing(z.string().regex(/^[0-9]{5,30}$/).optional()),
+  WA_ACCESS_TOKEN: blankAsMissing(z.string().min(20).optional()),
+  WA_APP_SECRET: blankAsMissing(z.string().min(16).optional()),
+  WA_VERIFY_TOKEN: blankAsMissing(z.string().min(16).optional()),
+  WA_GRAPH_VERSION: z.string().regex(/^v[0-9]{1,3}[.][0-9]$/).default('v27.0'),
+  WHATSAPP_FAKE: blankAsMissing(z.enum(['true', 'false']).optional()).transform((v) => v === 'true'),
+  // Transportadoras (docs/08 §2): Melhor Envio. Token do aplicativo; User-Agent com nome do app e e-mail tecnico (obrigatorio).
+  MELHOR_ENVIO_TOKEN: blankAsMissing(z.string().min(20).optional()),
+  MELHOR_ENVIO_USER_AGENT: blankAsMissing(z.string().min(5).max(200).optional()),
+  MELHOR_ENVIO_SANDBOX: blankAsMissing(z.enum(['true', 'false']).optional()).transform((v) => v !== 'false'),
+  // CEP de onde sai a mercadoria (cotacao).
+  SHIP_FROM_CEP: blankAsMissing(z.string().regex(/^[0-9]{8}$/).optional()),
+  CARRIER_FAKE: blankAsMissing(z.enum(['true', 'false']).optional()).transform((v) => v === 'true'),
   // Somente desenvolvimento: marketplaces simulados.
   MARKETPLACE_FAKE: blankAsMissing(z.enum(['true', 'false']).optional()).transform((v) => v === 'true'),
 });
@@ -59,3 +73,5 @@ export const isProduction = config.NODE_ENV === 'production';
 if (isProduction && config.PAYMENT_FAKE) throw new Error('PAYMENT_FAKE nao pode ser usado em producao');
 if (isProduction && config.FISCAL_FAKE) throw new Error('FISCAL_FAKE nao pode ser usado em producao');
 if (isProduction && config.MARKETPLACE_FAKE) throw new Error('MARKETPLACE_FAKE nao pode ser usado em producao');
+if (isProduction && config.WHATSAPP_FAKE) throw new Error('WHATSAPP_FAKE nao pode ser usado em producao');
+if (isProduction && config.CARRIER_FAKE) throw new Error('CARRIER_FAKE nao pode ser usado em producao');

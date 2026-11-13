@@ -5,6 +5,7 @@ import { pool, tx, type Db } from '../db/pool.js';
 import { randomToken, sha256 } from '../lib/crypto.js';
 import { AppError, notFound } from '../lib/errors.js';
 import { likePattern, pageQuery } from '../lib/http.js';
+import { cachedCarrierQuotes, type Parcel } from '../lib/carriers.js';
 import { cartWeight, priceLines, type CartLine } from '../lib/pricing.js';
 
 export const CART_COOKIE = isProduction ? '__Host-loja_cart' : 'loja_cart';
@@ -245,7 +246,17 @@ export async function cartRoutes(app: FastifyInstance) {
 
 // ---------------- frete ----------------
 
-export type ShippingQuote = { id: string; name: string; kind: 'pickup' | 'delivery'; description: string | null; priceCents: number; minDays: number; maxDays: number };
+export type ShippingQuote = {
+  id: string;
+  name: string;
+  kind: 'pickup' | 'delivery';
+  description: string | null;
+  priceCents: number;
+  minDays: number;
+  maxDays: number;
+  /** Entrega por transportadora cotada no provedor (docs/08 §2). */
+  carrier?: { service: string; company: string | null; serviceName: string };
+};
 
 const inRanges = (cep: string, ranges: string[]) =>
   ranges.some((r) => {
@@ -253,29 +264,59 @@ const inRanges = (cep: string, ranges: string[]) =>
     return a !== undefined && cep >= a && cep <= (b ?? a);
   });
 
-/** Opcoes de entrega para o CEP e o carrinho. Retirada sempre aparece se estiver ativa. */
-export async function quoteShipping(db: Db | typeof pool, cep: string | null, subtotalCents: number, weightG: number, weightMissing: boolean): Promise<ShippingQuote[]> {
-  const { rows } = await db.query<{
-    id: string;
-    name: string;
-    kind: 'pickup' | 'delivery';
-    description: string | null;
-    cep_ranges: string[];
-    base_cents: string;
-    per_kg_cents: string;
-    free_above_cents: string | null;
-    max_weight_g: number | null;
-    min_days: number;
-    max_days: number;
-  }>('SELECT * FROM shipping_options WHERE active ORDER BY position, name');
-  return rows.flatMap((o) => {
+/** Itens do carrinho/orcamento como volumes para a cotacao da transportadora. */
+export const parcelsOf = (lines: CartLine[]): Parcel[] =>
+  lines.filter((l) => l.status !== 'unavailable').map((l) => ({ variantId: l.variantId, units: String(Number(l.baseQty) * l.packs), valueCents: l.totalCents }));
+
+type OptionRow = {
+  id: string;
+  name: string;
+  kind: 'pickup' | 'delivery' | 'carrier';
+  description: string | null;
+  cep_ranges: string[];
+  base_cents: string;
+  per_kg_cents: string;
+  free_above_cents: string | null;
+  max_weight_g: number | null;
+  min_days: number;
+  max_days: number;
+  carrier_service: string | null;
+  handling_days: number;
+};
+
+/**
+ * Opcoes de entrega para o CEP e os itens. Retirada sempre aparece se estiver ativa. Transportadora aparece com CEP,
+ * itens com peso e medidas e provedor respondendo; para o resto do sistema ela e uma entrega (precisa de endereco).
+ */
+export async function quoteShipping(db: Db | typeof pool, cep: string | null, subtotalCents: number, weightG: number, weightMissing: boolean, parcels: Parcel[] = []): Promise<ShippingQuote[]> {
+  const { rows } = await db.query<OptionRow>('SELECT * FROM shipping_options WHERE active ORDER BY position, name');
+  const carrierRows = rows.filter((o) => o.kind === 'carrier' && o.carrier_service);
+  const quotes = cep && carrierRows.length ? await cachedCarrierQuotes(db, cep, carrierRows.map((o) => o.carrier_service!), parcels) : [];
+  return rows.flatMap((o): ShippingQuote[] => {
+    const free = o.free_above_cents !== null && subtotalCents >= Number(o.free_above_cents);
+    if (o.kind === 'carrier') {
+      const q = quotes.find((x) => x.service === o.carrier_service);
+      if (!q) return [];
+      const days = o.handling_days + q.days;
+      return [
+        {
+          id: o.id,
+          name: o.name,
+          kind: 'delivery',
+          description: o.description,
+          priceCents: free ? 0 : q.priceCents + Number(o.base_cents),
+          minDays: days,
+          maxDays: days,
+          carrier: { service: q.service, company: q.company, serviceName: q.name },
+        },
+      ];
+    }
     if (o.kind === 'delivery') {
       if (!cep || !inRanges(cep, o.cep_ranges)) return [];
       if (o.max_weight_g && weightG > o.max_weight_g) return [];
       // Sem peso cadastrado nao ha como cobrar por quilo: a opcao so aparece se nao depender do peso.
       if (weightMissing && Number(o.per_kg_cents) > 0) return [];
     }
-    const free = o.free_above_cents !== null && subtotalCents >= Number(o.free_above_cents);
     const price = o.kind === 'pickup' || free ? (o.kind === 'pickup' ? Number(o.base_cents) : 0) : Number(o.base_cents) + Math.ceil(weightG / 1000) * Number(o.per_kg_cents);
     return [{ id: o.id, name: o.name, kind: o.kind, description: o.description, priceCents: price, minDays: o.min_days, maxDays: o.max_days }];
   });
@@ -285,7 +326,7 @@ export async function shippingQuoteRoutes(app: FastifyInstance) {
   app.get('/quote', async (req) => {
     const { cep } = z.object({ cep: z.string().transform((v) => v.replace(/\D/g, '')).pipe(z.string().regex(/^\d{8}$/, 'CEP com 8 números.')) }).parse(req.query);
     const { summary } = await readCart(pool, req);
-    const options = await quoteShipping(pool, cep, summary.subtotalCents, summary.weightG, summary.weightMissing.length > 0);
+    const options = await quoteShipping(pool, cep, summary.subtotalCents, summary.weightG, summary.weightMissing.length > 0, parcelsOf(summary.items));
     return { cep, options, weightMissing: summary.weightMissing.length > 0 };
   });
 }

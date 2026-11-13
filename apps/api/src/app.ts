@@ -9,7 +9,9 @@ import { pool } from './db/pool.js';
 import { AppError } from './lib/errors.js';
 import { fiscalProviderFromConfig, type FiscalProvider } from './lib/fiscal.js';
 import { FakeProvider, providerFromConfig, type PaymentProvider } from './lib/payments.js';
+import { carrierFromConfig, setCarrierProvider, type CarrierProvider } from './lib/carriers.js';
 import { marketplacesFromConfig, type Marketplaces } from './lib/marketplaces.js';
+import { whatsappFromConfig, type WhatsAppProvider } from './lib/whatsapp.js';
 import { PostgresRateLimitStore } from './lib/rate-limit-store.js';
 import { auditRoutes } from './modules/audit.js';
 import { authRoutes, COOKIE, loadAuth, type ResetNotifier } from './modules/auth.js';
@@ -23,6 +25,8 @@ import { productImageRoutes, publicImageRoutes } from './modules/images.js';
 import { productRoutes } from './modules/products.js';
 import { inventoryRoutes } from './modules/inventory.js';
 import { marketplaceAdminRoutes, marketplaceWebhookRoutes } from './modules/marketplaces.js';
+import { salesReportRoutes } from './modules/sales-reports.js';
+import { whatsappAdminRoutes, whatsappWebhookRoutes } from './modules/whatsapp.js';
 import { publicQuoteRoutes, salesDeskRoutes } from './modules/quotes.js';
 import { purchaseInvoiceRoutes } from './modules/purchase-invoices.js';
 import { purchaseRoutes } from './modules/purchases.js';
@@ -49,6 +53,8 @@ export async function buildApp(opts: {
   payments?: PaymentProvider | null;
   fiscal?: FiscalProvider | null;
   marketplaces?: Marketplaces;
+  whatsapp?: WhatsAppProvider | null;
+  carrier?: CarrierProvider | null;
 }) {
   const app = Fastify({
     logger: config.NODE_ENV === 'test' ? false : { redact: ['req.headers.cookie', 'req.headers.authorization', 'res.headers["set-cookie"]'] },
@@ -75,6 +81,9 @@ export async function buildApp(opts: {
   app.decorate('payments', opts.payments === undefined ? defaultPaymentProvider() : opts.payments);
   app.decorate('fiscal', opts.fiscal === undefined ? fiscalProviderFromConfig() : opts.fiscal);
   app.decorate('marketplaces', opts.marketplaces ?? marketplacesFromConfig());
+  app.decorate('whatsapp', opts.whatsapp === undefined ? whatsappFromConfig() : opts.whatsapp);
+  // Cotacao de frete e usada por funcoes fora das rotas (checkout, orcamento): provedor do processo.
+  setCarrierProvider(opts.carrier === undefined ? carrierFromConfig() : opts.carrier);
 
   app.addHook('onRequest', async (req, reply) => {
     reply.header('Cache-Control', 'no-store');
@@ -145,6 +154,9 @@ export async function buildApp(opts: {
   await app.register(customerOrderRoutes, { prefix: '/api/v1/customer/orders' });
   await app.register(webhookRoutes, { prefix: '/api/v1/webhooks' });
   await app.register(fiscalWebhookRoutes, { prefix: '/api/v1/webhooks/fiscal' });
+  await app.register(whatsappWebhookRoutes, { prefix: '/api/v1/webhooks/whatsapp' });
+  await app.register(whatsappAdminRoutes, { prefix: '/api/v1/admin/whatsapp' });
+  await app.register(salesReportRoutes, { prefix: '/api/v1/admin/sales-reports' });
   await app.register(marketplaceWebhookRoutes, { prefix: '/api/v1/webhooks/marketplaces' });
   await app.register(marketplaceAdminRoutes, { prefix: '/api/v1/admin/marketplaces' });
   await app.register(adminOrderRoutes, { prefix: '/api/v1/admin/orders' });

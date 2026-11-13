@@ -11,7 +11,8 @@ import { cartWeight, priceLines, type CartLine } from '../lib/pricing.js';
 import { requirePermission } from './auth.js';
 import { addressSchema, documentFor, personSchema } from './customers.js';
 import { insertOrder, orderView, publicToken as orderToken } from './orders.js';
-import { quoteShipping, type ShippingQuote } from './storefront.js';
+import { currentOptinText } from './whatsapp.js';
+import { parcelsOf, quoteShipping, type ShippingQuote } from './storefront.js';
 
 type Q = Db | typeof pool;
 
@@ -54,6 +55,8 @@ const createSchema = z.strictObject({
 // Ao converter: forma de pagamento e o que faltou no orcamento (documento, e-mail, entrega).
 const convertSchema = z.strictObject({
   paymentMethod: z.enum(['pix', 'card']),
+  // So vale quando o proprio cliente aceita pelo link (o atendente nao consente pelo cliente).
+  whatsappOptin: z.boolean().default(false),
   buyer: z
     .strictObject({
       email: z.email().max(254).optional().nullable(),
@@ -86,11 +89,11 @@ async function pricedItems(db: Q, items: { packagingId: string; packs: number }[
 async function shippingFor(db: Q, lines: CartLine[], subtotal: number, optionId: string | null | undefined, address: z.infer<typeof addressSchema> | null | undefined) {
   if (!optionId) return null;
   const w = cartWeight(lines);
-  const options = await quoteShipping(db, address?.cep ?? null, subtotal, w.grams, w.missing.length > 0);
+  const options = await quoteShipping(db, address?.cep ?? null, subtotal, w.grams, w.missing.length > 0, parcelsOf(lines));
   const ship = options.find((o) => o.id === optionId);
   if (!ship && !address) {
     const kind = (await db.query<{ kind: string }>('SELECT kind FROM shipping_options WHERE id = $1 AND active', [optionId])).rows[0]?.kind;
-    if (kind === 'delivery') throw new AppError(400, 'ADDRESS_REQUIRED', 'Informe o endereço de entrega.');
+    if (kind === 'delivery' || kind === 'carrier') throw new AppError(400, 'ADDRESS_REQUIRED', 'Informe o endereço de entrega.');
   }
   if (!ship) throw new AppError(422, 'SHIPPING_UNAVAILABLE', 'Esta forma de entrega não atende o endereço informado.');
   if (ship.kind === 'delivery' && !address) throw new AppError(400, 'ADDRESS_REQUIRED', 'Informe o endereço de entrega.');
@@ -292,6 +295,7 @@ export async function convertQuote(db: Db, quoteId: string, b: z.infer<typeof co
       customerId: q.customer_id,
       channel: 'sales_desk',
       buyer: { ...parsed.data, document, stateRegistration: parsed.data.stateRegistration || null },
+      whatsappOptinText: actorId === null && b.whatsappOptin ? await currentOptinText(db) : null,
       shipTo,
       shipping: ship,
       paymentMethod: b.paymentMethod,
@@ -479,8 +483,9 @@ export async function publicQuoteRoutes(app: FastifyInstance) {
       .parse(req.query);
     const q = (await pool.query<{ subtotal_cents: string }>('SELECT subtotal_cents FROM quotes WHERE id = $1', [id])).rows[0]!;
     const items = (await pool.query<{ packaging_id: string; packs: number }>('SELECT packaging_id, packs FROM quote_items WHERE quote_id = $1', [id])).rows;
-    const w = cartWeight(await priceLines(pool, items.map((i) => ({ packagingId: i.packaging_id, packs: i.packs }))));
-    return { options: await quoteShipping(pool, cep ?? null, Number(q.subtotal_cents), w.grams, w.missing.length > 0) };
+    const lines = await priceLines(pool, items.map((i) => ({ packagingId: i.packaging_id, packs: i.packs })));
+    const w = cartWeight(lines);
+    return { options: await quoteShipping(pool, cep ?? null, Number(q.subtotal_cents), w.grams, w.missing.length > 0, parcelsOf(lines)) };
   });
 
   app.post('/:token/accept', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req, reply) => {

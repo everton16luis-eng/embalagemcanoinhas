@@ -47,7 +47,10 @@ function start() {
   if (!existsSync(dataDir)) throw new Error('Cluster nao criado. Rode: npm run setup');
   if (isRunning()) return console.log(`PostgreSQL do projeto ja esta rodando na porta ${PORT}`);
   // stdio ignorado: no Windows o postgres herda os handles e prenderia o processo pai.
-  run('pg_ctl', ['start', '-w', '-D', dataDir, '-l', logFile, '-o', `-p ${PORT} -c listen_addresses=127.0.0.1`], { stdio: 'ignore' });
+  // Linux: os binarios do Ubuntu criam o socket em /var/run/postgresql, que so o usuario postgres pode escrever.
+  // A loja so conecta por TCP em 127.0.0.1, entao o socket unix fica desligado.
+  const sock = process.platform === 'win32' ? '' : " -c unix_socket_directories=''";
+  run('pg_ctl', ['start', '-w', '-D', dataDir, '-l', logFile, '-o', `-p ${PORT} -c listen_addresses=127.0.0.1${sock}`], { stdio: 'ignore' });
   console.log(`PostgreSQL do projeto rodando na porta ${PORT}`);
 }
 

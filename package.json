@@ -1,0 +1,20 @@
+{
+  "name": "loja-embalagens",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "workspaces": ["apps/*"],
+  "engines": { "node": ">=22.12" },
+  "scripts": {
+    "setup": "node scripts/db-local.mjs init && npm run migrate && npm run migrate:test",
+    "db:start": "node scripts/db-local.mjs start",
+    "db:stop": "node scripts/db-local.mjs stop",
+    "db:status": "node scripts/db-local.mjs status",
+    "migrate": "npm run migrate -w apps/api",
+    "migrate:test": "npm run migrate -w apps/api -- up --test",
+    "dev:api": "npm run dev -w apps/api",
+    "dev:web": "npm run dev -w apps/web",
+    "test": "npm test -w apps/api",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  }
+}

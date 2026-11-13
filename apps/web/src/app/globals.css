@@ -1,0 +1,60 @@
+@import 'tailwindcss';
+
+/*
+ * Tokens do PAINEL (ERP). A identidade da loja virtual sera definida na rodada de direcao
+ * visual e tera tokens proprios: o painel e a loja precisam ser claramente diferentes.
+ * Painel: papel neutro, tinta grafite, um acento verde-petroleo para acoes.
+ */
+@theme {
+  --font-sans: 'IBM Plex Sans Variable', ui-sans-serif, system-ui, sans-serif;
+  --color-ink: #1b1d20;
+  --color-ink-soft: #50555c;
+  --color-ink-faint: #6b7078;
+  --color-page: #f3f3f0;
+  --color-card: #ffffff;
+  --color-sunken: #ebebe7;
+  --color-line: #dcdcd6;
+  --color-line-strong: #bfc0b8;
+  --color-side: #1b1d20;
+  --color-side-ink: #b9bcc2;
+  --color-side-line: #2e3136;
+  --color-act: #0f6b5c;
+  --color-act-dark: #0a5045;
+  --color-act-tint: #e3f1ee;
+  --color-good: #17724a;
+  --color-good-tint: #e4f3ea;
+  --color-warn: #8a5a00;
+  --color-warn-tint: #fbf0d9;
+  --color-bad: #b42318;
+  --color-bad-tint: #fdeceb;
+  --radius-ctl: 6px;
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    background: var(--color-page);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 1.45;
+    font-feature-settings: 'tnum' 0;
+  }
+  .num {
+    font-variant-numeric: tabular-nums;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-act);
+    outline-offset: 2px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      transition-duration: 0.01ms !important;
+      animation-duration: 0.01ms !important;
+    }
+  }
+}

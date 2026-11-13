@@ -1,0 +1,138 @@
+'use client';
+
+import { Boxes, Building2, ClipboardCheck, FolderTree, History, LogOut, Menu, Settings, Store, UserRound, Users, X } from 'lucide-react';
+import Link from 'next/link';
+import { usePathname, useRouter } from 'next/navigation';
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
+import { api, ApiError } from '@/lib/api';
+import { ROLE_LABELS } from '@/lib/format';
+
+export type Me = { user: { id: string; name: string; email: string; role: string; mfaEnabled: boolean }; permissions: string[] };
+const MeContext = createContext<{ me: Me; can: (p: string) => boolean; reload: () => Promise<void> } | null>(null);
+
+export function useMe() {
+  const ctx = useContext(MeContext);
+  if (!ctx) throw new Error('useMe fora do painel');
+  return ctx;
+}
+
+// Itens das fases seguintes nao aparecem: o menu mostra so o que ja funciona.
+const NAV = [
+  { href: '/painel', label: 'Configuração inicial', icon: ClipboardCheck, perm: null },
+  { href: '/painel/produtos', label: 'Produtos', icon: Boxes, perm: 'catalog.view' },
+  { href: '/painel/categorias', label: 'Categorias', icon: FolderTree, perm: 'catalog.view' },
+  { href: '/painel/empresa', label: 'Empresa e fiscal', icon: Building2, perm: 'company.view' },
+  { href: '/painel/loja', label: 'Marca da loja', icon: Store, perm: 'settings.manage' },
+  { href: '/painel/usuarios', label: 'Usuários', icon: Users, perm: 'users.view' },
+  { href: '/painel/auditoria', label: 'Auditoria', icon: History, perm: 'audit.view' },
+] as const;
+
+export function AdminShell({ children }: { children: ReactNode }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const [me, setMe] = useState<Me | null>(null);
+  const [open, setOpen] = useState(false);
+
+  const reload = useCallback(async () => {
+    try {
+      setMe(await api<Me>('/auth/me'));
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401) router.replace(`/painel/entrar?voltar=${encodeURIComponent(pathname)}`);
+    }
+  }, [router, pathname]);
+
+  useEffect(() => {
+    void reload();
+  }, [reload]);
+  useEffect(() => setOpen(false), [pathname]);
+
+  if (!me) return <div className="grid min-h-dvh place-items-center text-sm text-ink-faint">Carregando…</div>;
+  const can = (p: string) => me.permissions.includes(p);
+  const items = NAV.filter((n) => !n.perm || can(n.perm));
+  const active = (href: string) => (href === '/painel' ? pathname === href : pathname.startsWith(href));
+
+  const logout = async () => {
+    await api('/auth/logout', { method: 'POST' }).catch(() => null);
+    router.replace('/painel/entrar');
+  };
+
+  const nav = (
+    <nav aria-label="Painel" className="flex h-full flex-col">
+      <div className="px-4 pt-5 pb-4">
+        <p className="text-[11px] font-semibold tracking-[0.14em] text-side-ink uppercase">Painel</p>
+        <p className="mt-0.5 text-[15px] font-semibold text-white">Gestão da loja</p>
+      </div>
+      <ul className="flex-1 space-y-0.5 px-2">
+        {items.map(({ href, label, icon: Icon }) => (
+          <li key={href}>
+            <Link
+              href={href}
+              aria-current={active(href) ? 'page' : undefined}
+              className={`flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm ${active(href) ? 'bg-white/10 text-white' : 'text-side-ink hover:bg-white/5 hover:text-white'}`}
+            >
+              <Icon size={17} strokeWidth={1.75} aria-hidden />
+              {label}
+            </Link>
+          </li>
+        ))}
+      </ul>
+      <div className="border-t border-side-line p-2">
+        <Link href="/painel/conta" className={`flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm ${active('/painel/conta') ? 'bg-white/10 text-white' : 'text-side-ink hover:bg-white/5 hover:text-white'}`}>
+          <UserRound size={17} strokeWidth={1.75} aria-hidden />
+          <span className="min-w-0">
+            <span className="block truncate">{me.user.name}</span>
+            <span className="block text-xs text-side-ink/80">{ROLE_LABELS[me.user.role]}</span>
+          </span>
+        </Link>
+        <button onClick={logout} className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-side-ink hover:bg-white/5 hover:text-white">
+          <LogOut size={17} strokeWidth={1.75} aria-hidden />
+          Sair
+        </button>
+      </div>
+    </nav>
+  );
+
+  return (
+    <MeContext.Provider value={{ me, can, reload }}>
+      <div className="min-h-dvh lg:grid lg:grid-cols-[232px_1fr]">
+        <aside className="hidden bg-side lg:sticky lg:top-0 lg:block lg:h-dvh">{nav}</aside>
+        <div className="flex items-center justify-between bg-side px-4 py-2.5 lg:hidden">
+          <span className="text-sm font-semibold text-white">Gestão da loja</span>
+          <button onClick={() => setOpen(true)} aria-label="Abrir menu" className="rounded p-1.5 text-white">
+            <Menu size={20} />
+          </button>
+        </div>
+        {open && (
+          <div className="fixed inset-0 z-40 lg:hidden">
+            <button aria-label="Fechar menu" className="absolute inset-0 bg-black/40" onClick={() => setOpen(false)} />
+            <aside className="absolute inset-y-0 left-0 w-72 bg-side">
+              <button onClick={() => setOpen(false)} aria-label="Fechar menu" className="absolute top-4 right-3 rounded p-1 text-side-ink">
+                <X size={18} />
+              </button>
+              {nav}
+            </aside>
+          </div>
+        )}
+        <main className="min-w-0 px-4 py-5 sm:px-6 lg:px-8 lg:py-7">
+          {!me.user.mfaEnabled && (
+            <div className="mb-5 flex flex-wrap items-center justify-between gap-2 rounded-md border border-warn/25 bg-warn-tint px-3.5 py-2.5 text-sm text-warn">
+              <span>Ative a verificação em duas etapas: sem ela, dados da empresa, fiscal, preços e usuários ficam bloqueados.</span>
+              <Link href="/painel/conta" className="font-medium underline underline-offset-2">
+                Ativar agora
+              </Link>
+            </div>
+          )}
+          <div className="mx-auto max-w-6xl">{children}</div>
+        </main>
+      </div>
+    </MeContext.Provider>
+  );
+}
+
+export function Guard({ perm, children }: { perm: string; children: ReactNode }) {
+  const { can } = useMe();
+  if (!can(perm)) return <p className="text-sm text-ink-soft">Você não tem permissão para esta área.</p>;
+  return <>{children}</>;
+}
+
+export { Settings };

@@ -8,4 +8,5 @@ After=loja-db.service
 Type=oneshot
 User=loja
 WorkingDirectory=/srv/loja-embalagens
+UMask=0077
 ExecStart=/usr/bin/node scripts/backup.mjs backup

@@ -30,7 +30,7 @@ systemctl is-active fail2ban 2>/dev/null | sed 's/^/fail2ban: /'
 
 sec "Servicos em execucao"
 systemctl list-units --type=service --state=running --no-legend | awk '{print $1}' | tr '\n' ' '; echo
-echo "Servicos com falha:"; systemctl --failed --no-legend | awk '{print $1}'
+echo "Servicos com falha:"; systemctl --failed --no-legend --plain | awk '{print $1}'
 
 sec "Servicos da loja"
 for s in loja-db loja-api loja-web loja-backup.timer; do printf '%-20s %s / %s\n' "$s" "$(systemctl is-active $s)" "$(systemctl is-enabled $s 2>/dev/null)"; done
@@ -78,7 +78,7 @@ echo | openssl s_client -connect embalagemcanoinhas.com.br:443 -servername embal
 
 sec "Arquivos que NAO podem abrir pela web (esperado: 404)"
 for p in /.env /.git/config /.local/credentials.json /backups/ /storage/ /package.json /apps/api/.env /api/v1/public/images/..%2F..%2F.env/320.webp; do
-  printf '%-45s %s\n' "$p" "$(curl -sk -o /dev/null -w '%{http_code}' --max-time 10 "$URL_LOCAL$p")"
+  printf '%-45s %s\n' "$p" "$(curl -skL -o /dev/null -w '%{http_code}' --max-time 10 "$URL_LOCAL$p")"
 done
 
 sec "Dependencias (npm audit, so producao)"

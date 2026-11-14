@@ -14,6 +14,10 @@ import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, wri
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+// A copia tem o banco inteiro (clientes, hashes de senha): so o usuario da loja le. Vale tambem para o pg_dump,
+// que herda a mascara. Auditoria 11/2026: no servidor as copias saiam legiveis por qualquer usuario.
+process.umask(0o077);
+
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const envFile = path.join(root, '.env');
 if (existsSync(envFile)) process.loadEnvFile(envFile);

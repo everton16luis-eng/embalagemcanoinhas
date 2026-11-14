@@ -14,6 +14,8 @@ Legenda: **HTTPS** = precisa da API publicada com certificado · **Você** = dep
 - [x] Backup e teste de restauração **local** (13/11/2026): `npm run backup` e `backup:restore-test` OK; arquivo
       adulterado detectado pelo `backup:verify`. Ver [BACKUP.md](BACKUP.md).
 - [ ] **HTTPS** Backup agendado no servidor, cópia para fora dele e teste de restauração lá.
+- [ ] **Servidor** Fotos de produto pelo celular e pelo computador no servidor (nginx com 12 MB): foto de 7–8 MB
+      sobe; acima de 8 MB aparece a mensagem do sistema; depois de `systemctl restart loja-api` as fotos continuam.
 - [ ] **Você** Onde guardar as cópias fora do servidor e por quanto tempo (retenção).
 - [ ] **Você** Provedor de e-mail transacional; testar a recuperação de senha chegando de verdade.
 - [ ] Inspeção visual por captura de tela (painel e loja, desktop e celular): até aqui a verificação foi por texto e

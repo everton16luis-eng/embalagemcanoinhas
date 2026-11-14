@@ -150,6 +150,82 @@ describe('produtos, variações e embalagens', () => {
     const bad = await manager.send('POST', `${P}/${created.id}/images`, fake as never, { 'content-type': `multipart/form-data; boundary=${boundary}` });
     expect(bad.json().error.code).toBe('INVALID_IMAGE');
   });
+
+  const multipart = (data: Buffer, name = 'a.png', type = 'image/png') => {
+    const boundary = '----y';
+    return {
+      body: Buffer.concat([Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${name}"\r\nContent-Type: ${type}\r\n\r\n`), data, Buffer.from(`\r\n--${boundary}--\r\n`)]),
+      headers: { 'content-type': `multipart/form-data; boundary=${boundary}` },
+    };
+  };
+  const sendImage = async (productId: string, data: Buffer, path = 'images', name?: string, type?: string) => {
+    const m = multipart(data, name, type);
+    return manager.send('POST', `${P}/${productId}/${path}`, m.body as never, m.headers);
+  };
+  const solid = (color: string, format: 'png' | 'jpeg' | 'webp' = 'png') => sharp({ create: { width: 500, height: 500, channels: 3, background: color } })[format]().toBuffer();
+
+  it('organiza a galeria: ordem nova define a principal, troca o arquivo e remove só a escolhida', async () => {
+    const created = (await manager.post(P, productPayload())).json().product;
+    const ids: string[] = [];
+    for (const [c, f] of [['#ff0000', 'png'], ['#00ff00', 'jpeg'], ['#0000ff', 'webp']] as const) {
+      const r = await sendImage(created.id, await solid(c, f));
+      expect(r.statusCode).toBe(201);
+      ids.push(r.json().image.id);
+    }
+    const [a, b, c] = ids as [string, string, string];
+
+    const ordered = await manager.put(`${P}/${created.id}/images/order`, { ids: [c, a, b] });
+    expect(ordered.statusCode).toBe(200);
+    expect(ordered.json().images.map((i: { id: string; is_primary: boolean; position: number }) => [i.id, i.is_primary, i.position])).toEqual([
+      [c, true, 0],
+      [a, false, 1],
+      [b, false, 2],
+    ]);
+    // lista incompleta ou com foto de outro produto e recusada
+    expect((await manager.put(`${P}/${created.id}/images/order`, { ids: [c, a] })).json().error.code).toBe('IMAGES_CHANGED');
+    expect((await manager.put(`${P}/${created.id}/images/order`, { ids: [c, a, a] })).json().error.code).toBe('IMAGES_CHANGED');
+
+    // trocar o arquivo da principal: mesma posicao, chave nova, arquivo antigo sai do disco
+    const oldKey = ordered.json().images[0].file_key;
+    const replaced = await sendImage(created.id, await solid('#ffff00'), `images/${c}/file`);
+    expect(replaced.statusCode).toBe(200);
+    expect(replaced.json().image).toMatchObject({ id: c, is_primary: true, position: 0 });
+    expect(replaced.json().image.file_key).not.toBe(oldKey);
+    expect((await app.inject({ method: 'GET', url: `/api/v1/public/images/${oldKey}/320.webp` })).statusCode).toBe(404);
+    const novo = await app.inject({ method: 'GET', url: `/api/v1/public/images/${replaced.json().image.file_key}/320.webp` });
+    expect((await sharp(novo.rawPayload).stats()).channels[2]!.mean).toBeLessThan(10); // amarelo: sem azul
+    // troca com arquivo invalido nao mexe na foto
+    expect((await sendImage(created.id, Buffer.from('GIF89a falso'), `images/${c}/file`)).json().error.code).toBe('INVALID_IMAGE');
+
+    // remover a principal: as outras ficam, a proxima vira principal
+    expect((await manager.send('DELETE', `${P}/${created.id}/images/${c}`)).statusCode).toBe(200);
+    const left = (await manager.get(`${P}/${created.id}`)).json().product.images;
+    expect(left.map((i: { id: string; is_primary: boolean }) => [i.id, i.is_primary])).toEqual([
+      [a, true],
+      [b, false],
+    ]);
+  });
+
+  it('recusa formato fora da lista (pelo conteúdo, não pela extensão), imagem pequena e arquivo acima de 8 MB', async () => {
+    const created = (await manager.post(P, productPayload())).json().product;
+    const gif = await sharp({ create: { width: 500, height: 500, channels: 3, background: '#000' } }).gif().toBuffer();
+    expect((await sendImage(created.id, gif, 'images', 'foto.png', 'image/png')).json().error.code).toBe('INVALID_IMAGE');
+    const tiny = await sharp({ create: { width: 200, height: 200, channels: 3, background: '#000' } }).png().toBuffer();
+    expect((await sendImage(created.id, tiny)).json().error.code).toBe('IMAGE_TOO_SMALL');
+    const big = await sendImage(created.id, Buffer.alloc(8 * 1024 * 1024 + 10, 1));
+    expect(big.statusCode).toBe(413);
+    expect((await manager.get(`${P}/${created.id}`)).json().product.images).toHaveLength(0);
+  });
+
+  it('só quem gerencia o catálogo envia, ordena ou troca fotos', async () => {
+    const created = (await manager.post(P, productPayload())).json().product;
+    const img = (await sendImage(created.id, await solid('#123456'))).json().image;
+    const seller = await loggedAs(app, 'sales');
+    const m = multipart(await solid('#654321'));
+    expect((await seller.send('POST', `${P}/${created.id}/images`, m.body as never, m.headers)).statusCode).toBe(403);
+    expect((await seller.send('POST', `${P}/${created.id}/images/${img.id}/file`, m.body as never, m.headers)).statusCode).toBe(403);
+    expect((await seller.put(`${P}/${created.id}/images/order`, { ids: [img.id] })).statusCode).toBe(403);
+  });
 });
 
 describe('classificação fiscal do produto', () => {

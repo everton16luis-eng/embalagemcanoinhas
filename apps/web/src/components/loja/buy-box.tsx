@@ -69,8 +69,9 @@ export function BuyBox({ product: p }: { product: ProductDetail }) {
   const tiers = tiersOf(pack);
   const unit = priceFor(Number(pack.price_cents), tiers, n);
   const next = tiers.find((t) => t.minPacks > n);
-  const tooMany = !madeToOrder && n > pack.max_packs;
   const canBuy = madeToOrder || pack.in_stock;
+  // Esgotado ja aparece no botao; o aviso de quantidade e so para quando ha algum estoque.
+  const tooMany = canBuy && !madeToOrder && n > pack.max_packs;
   // Os blocos que dependem da embalagem (tabela de precos e estoque) sao desenhados para todas as embalagens
   // de todas as opcoes, empilhados na mesma celula, e so a escolhida fica visivel. A altura e a da maior:
   // trocar de embalagem troca o conteudo sem mover o que vem abaixo.

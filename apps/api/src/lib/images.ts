@@ -25,7 +25,7 @@ export async function storeImage(buffer: Buffer) {
   } catch {
     throw new AppError(422, 'INVALID_IMAGE', 'Arquivo não é uma imagem válida.');
   }
-  if (!meta.format || !['jpeg', 'png', 'webp', 'avif'].includes(meta.format)) throw new AppError(422, 'INVALID_IMAGE', 'Use JPG, PNG, WebP ou AVIF.');
+  if (!meta.format || !['jpeg', 'png', 'webp'].includes(meta.format)) throw new AppError(422, 'INVALID_IMAGE', 'Use JPG, PNG ou WebP.');
   if (!meta.width || !meta.height || meta.width < 400 || meta.height < 400) throw new AppError(422, 'IMAGE_TOO_SMALL', 'A imagem precisa ter ao menos 400 × 400 pixels.');
 
   const key = randomUUID();

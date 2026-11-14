@@ -450,3 +450,23 @@ Contratos conferidos na documentação oficial e decisões em
 - Medido com script no navegador (posição e tamanho de título, embalagens, preço, quantidade, botão, caixa e
   descrição): 0 px de deslocamento em 375, 768 e 1024 px, em produto com opções, esgotado, sob encomenda e estoque
   limitado. Preços e total conferidos com o carrinho da API.
+
+### Fotos no cadastro de produto (13/11/2026)
+
+- Motivo: a API já recebia fotos (`POST /admin/products/:id/images`), mas exige o produto criado; a tela de novo
+  produto não tinha a seção e dizia "fotos depois de salvar". A edição tinha só enviar, tornar principal e remover.
+- Cadastro: as fotos escolhidas ficam no navegador (prévia, ordem, principal, remover) e sobem logo depois do
+  primeiro "Cadastrar produto", na ordem escolhida, antes de abrir a edição. O servidor nunca guarda arquivo
+  provisório. Se alguma falhar, a edição mostra qual e por quê.
+- Edição: enviar várias (arrastar ou escolher, com barra de progresso), reordenar (arrastar ou setas), tornar
+  principal, trocar o arquivo e remover; prévia "como fica na página do produto". A primeira da lista é a principal.
+- API: `PUT /admin/products/:id/images/order` (ordem numa transação; a primeira vira principal) e
+  `POST /admin/products/:id/images/:imageId/file` (troca o arquivo mantendo posição e principal; o antigo sai do disco
+  depois do banco). Limite de 12 conferido com o produto travado. Formatos: JPEG, PNG e WebP, conferidos pelo
+  conteúdo (AVIF saiu da lista). Sem mudança no banco: a tabela `product_images` já tinha posição, principal e opção.
+- Armazenamento: `storage/images/<uuid>/{320,800,1600}.webp` (no servidor, `/srv/loja-embalagens/storage`, entra no
+  backup). Nome do arquivo é sempre um UUID gerado pelo sistema; o nome enviado não é usado.
+- Opções e embalagens: as fotos são do produto e servem a todas as embalagens (pacote com 100, caixa com 1.000 são
+  o mesmo item físico). A tabela aceita ligar uma foto a uma opção (cor), mas a loja ainda mostra todas juntas:
+  trocar a foto ao escolher a cor fica para quando houver fotos por cor.
+- Loja: setas, contador, teclado e deslizar no celular; miniatura ativa sem mudar de tamanho.

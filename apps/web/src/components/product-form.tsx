@@ -117,7 +117,7 @@ function toPayload(f: ProductForm) {
   };
 }
 
-export function ProductEditor({ initial, onSaved }: { initial: ProductForm; onSaved?: (p: any) => void }) {
+export function ProductEditor({ initial, onSaved, afterCreate }: { initial: ProductForm; onSaved?: (p: any) => void; afterCreate?: (p: any) => Promise<void> }) {
   const router = useRouter();
   const { can, me } = useMe();
   const [f, setF] = useState<ProductForm>(initial);
@@ -172,8 +172,11 @@ export function ProductEditor({ initial, onSaved }: { initial: ProductForm; onSa
       const body = toPayload(f);
       const res = f.id ? await api(`/admin/products/${f.id}`, { method: 'PUT', body }) : await api('/admin/products', { method: 'POST', body });
       setSaved('Produto salvo.');
-      if (!f.id) router.replace(`/painel/produtos/${res.product.id}`);
-      else {
+      if (!f.id) {
+        // Fotos escolhidas antes de salvar sobem agora, com o produto ja criado.
+        await afterCreate?.(res.product);
+        router.replace(`/painel/produtos/${res.product.id}`);
+      } else {
         setF(toForm(res.product));
         onSaved?.(res.product);
       }

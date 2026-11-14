@@ -1,73 +1,33 @@
 'use client';
 
-import { Star, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { ProductEditor, toForm } from '@/components/product-form';
+import { PHOTO_ISSUES_KEY, ProductImages } from '@/components/product-images';
 import { Guard, useMe } from '@/components/shell';
 import { Badge, Button, Field, FISCAL_STATUS, Input, Notice, PageHeader, Panel, PRODUCT_STATUS, Select, Textarea } from '@/components/ui';
-import { api, imageUrl, upload } from '@/lib/api';
+import { api } from '@/lib/api';
 import { money, ORIGINS, when } from '@/lib/format';
 
-function Images({ product, reload }: { product: any; reload: () => void }) {
-  const { can } = useMe();
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  const editable = can('catalog.manage');
-
-  const send = async (files: FileList | null) => {
-    if (!files?.length) return;
-    setBusy(true);
-    setError('');
+function PhotoIssues({ productId }: { productId: string }) {
+  // Fotos escolhidas no cadastro que nao subiram (o produto ja tinha sido criado).
+  const [issues, setIssues] = useState<string[]>([]);
+  useEffect(() => {
     try {
-      for (const file of Array.from(files)) await upload(`/admin/products/${product.id}/images`, file);
-      reload();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Falha no envio.');
-    } finally {
-      setBusy(false);
-    }
-  };
-  const act = async (path: string, method: string, body?: unknown) => {
-    try {
-      await api(path, { method, body });
-      reload();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Falha.');
-    }
-  };
-
+      const key = `${PHOTO_ISSUES_KEY}:${productId}`;
+      const raw = sessionStorage.getItem(key);
+      if (raw) {
+        setIssues(JSON.parse(raw));
+        sessionStorage.removeItem(key);
+      }
+    } catch {}
+  }, [productId]);
+  if (!issues.length) return null;
   return (
-    <Panel title="Fotos" description="JPG, PNG ou WebP de até 8 MB, com no mínimo 400 × 400 px. O sistema remove metadados e gera versões leves.">
-      {error && <div className="mb-3"><Notice tone="bad">{error}</Notice></div>}
-      <div className="grid grid-cols-3 gap-3 sm:grid-cols-6">
-        {product.images.map((img: any) => (
-          <figure key={img.id} className="group relative">
-            <img src={imageUrl(img.file_key, 320)} alt={img.alt ?? ''} className="aspect-square w-full rounded-md border border-line object-cover" />
-            {img.is_primary && <span className="absolute top-1 left-1"><Badge tone="act">Principal</Badge></span>}
-            {editable && (
-              <div className="mt-1 flex justify-between">
-                {!img.is_primary ? (
-                  <button className="rounded p-1 text-ink-soft hover:bg-sunken" title="Tornar principal" aria-label="Tornar principal" onClick={() => act(`/admin/products/${product.id}/images/${img.id}`, 'PATCH', { isPrimary: true })}>
-                    <Star size={15} />
-                  </button>
-                ) : <span />}
-                <button className="rounded p-1 text-bad hover:bg-bad-tint" title="Remover" aria-label="Remover foto" onClick={() => act(`/admin/products/${product.id}/images/${img.id}`, 'DELETE')}>
-                  <Trash2 size={15} />
-                </button>
-              </div>
-            )}
-          </figure>
-        ))}
-        {editable && product.images.length < 12 && (
-          <label className="grid aspect-square cursor-pointer place-items-center rounded-md border border-dashed border-line-strong text-center text-sm text-ink-soft hover:bg-sunken">
-            <span>{busy ? 'Enviando…' : '+ Adicionar'}</span>
-            <input type="file" accept="image/jpeg,image/png,image/webp,image/avif" multiple className="sr-only" disabled={busy} onChange={(e) => void send(e.target.files)} />
-          </label>
-        )}
-      </div>
-    </Panel>
+    <Notice tone="warn">
+      Produto criado, mas {issues.length === 1 ? 'uma foto não foi enviada' : `${issues.length} fotos não foram enviadas`}: {issues.join(' · ')}. Envie de novo abaixo.
+    </Notice>
   );
 }
 
@@ -152,6 +112,8 @@ function Fiscal({ product, reload }: { product: any; reload: () => void }) {
 }
 
 function ProductPage() {
+  const { can } = useMe();
+  const canManage = can('catalog.manage');
   const { id } = useParams<{ id: string }>();
   const [data, setData] = useState<{ product: any; priceHistory: any[] } | null>(null);
   const [error, setError] = useState('');
@@ -170,7 +132,8 @@ function ProductPage() {
       </p>
       <PageHeader title={p.name} actions={<Badge tone={PRODUCT_STATUS[p.status]!.tone}>{PRODUCT_STATUS[p.status]!.label}</Badge>} />
       <div className="space-y-4">
-        <Images product={p} reload={load} />
+        <PhotoIssues productId={p.id} />
+        <ProductImages key={p.id} productId={p.id} images={p.images} editable={canManage} />
         <ProductEditor initial={form} onSaved={() => void load()} />
         <Fiscal key={p.fiscal?.informed_at ?? 'f'} product={p} reload={load} />
         <Panel title="Histórico de preços">

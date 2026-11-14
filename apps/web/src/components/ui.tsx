@@ -20,7 +20,7 @@ export function Button({ variant = 'secondary', busy, className, children, disab
         className,
       )}
     >
-      {busy ? 'Aguarde…' : children}
+      {busy ? <span key="busy">Aguarde…</span> : <span key="idle" className="contents">{children}</span>}
     </button>
   );
 }

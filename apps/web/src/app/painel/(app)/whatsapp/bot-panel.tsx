@@ -274,14 +274,14 @@ function Bubble({ line, onChoose, busy }: { line: ChatLine; onChoose: (id: strin
   const body = r.kind === 'text' ? r.body : r.i.body;
   const options = r.kind === 'interactive' ? (r.i.type === 'button' ? r.i.buttons : r.i.rows) : [];
   return (
-    <li className={line.from === 'you' ? 'ml-8 text-right' : 'mr-8'}>
+    <li className={line.from === 'you' ? 'ml-6 text-right sm:ml-8' : 'mr-6 sm:mr-8'}>
       <div className={`inline-block max-w-full rounded-md px-3 py-2 text-left text-sm ${line.from === 'you' ? 'border border-line bg-card' : 'bg-sunken'}`}>
         {line.from === 'bot' && line.ai && <span className="mb-0.5 block text-[11px] font-medium uppercase tracking-wide text-ink-faint">IA</span>}
-        <p className="whitespace-pre-wrap break-words">{body}</p>
+        <p className="whitespace-pre-wrap [overflow-wrap:anywhere]">{body}</p>
         {options.length > 0 && (
           <div className="mt-2 flex flex-wrap gap-1.5">
             {options.map((o) => (
-              <Button key={o.id} disabled={busy} onClick={() => onChoose(o.id, o.title)} className="h-8 px-2.5 text-[13px]">
+              <Button key={o.id} disabled={busy} onClick={() => onChoose(o.id, o.title)} className="h-auto! min-h-8 max-w-full whitespace-normal! px-2.5 py-1 text-left text-[13px]">
                 {o.title}
               </Button>
             ))}
@@ -337,9 +337,9 @@ function TestChat() {
       actions={<Button onClick={reset}>Recomeçar</Button>}
     >
       <Field label="Telefone simulado" hint="Opcional. O bot só mostra pedidos feitos com este telefone, como faria com o cliente de verdade.">
-        {(id) => <Input id={id} inputMode="numeric" placeholder="5547999998888" value={phone} onChange={(e) => setPhone(e.target.value)} className="max-w-xs font-mono" />}
+        {(id) => <Input id={id} inputMode="numeric" placeholder="5547999998888" value={phone} onChange={(e) => setPhone(e.target.value)} className="font-mono sm:max-w-xs" />}
       </Field>
-      <ol className="mt-3 max-h-[28rem] min-h-32 space-y-2 overflow-y-auto rounded-md border border-line p-3" aria-label="Conversa de teste" aria-live="polite">
+      <ol className="mt-3 max-h-[28rem] min-h-32 space-y-2 overflow-y-auto overscroll-contain rounded-md border border-line p-2.5 sm:p-3" aria-label="Conversa de teste" aria-live="polite">
         {lines.length === 0 && <li className="text-sm text-ink-faint">Escreva “oi” para começar.</li>}
         {lines.map((line, k) => (
           <Bubble key={k} line={line} busy={busy} onChoose={(id, title) => talk({ replyId: id }, title)} />
@@ -356,8 +356,8 @@ function TestChat() {
         }}
         className="mt-2 flex gap-2"
       >
-        <Input aria-label="Mensagem" maxLength={1000} value={text} onChange={(e) => setText(e.target.value)} placeholder="Mensagem do cliente" className="flex-1" />
-        <Button variant="primary" type="submit" busy={busy} disabled={!text.trim()}>
+        <Input aria-label="Mensagem" maxLength={1000} value={text} onChange={(e) => setText(e.target.value)} placeholder="Mensagem do cliente" className="min-w-0 flex-1" />
+        <Button variant="primary" type="submit" busy={busy} disabled={!text.trim()} className="shrink-0">
           Enviar
         </Button>
       </form>
@@ -447,7 +447,7 @@ function SecurityPanel() {
         </Button>
       }
     >
-      <div className="space-y-4 p-4 sm:p-5">
+      <div className="space-y-4">
         {error && <Notice tone="bad">{error}</Notice>}
         {!data && !error && <p className="text-sm text-ink-faint">Carregando…</p>}
         {empty && <p className="text-sm text-ink-soft">Nenhum evento registrado.</p>}

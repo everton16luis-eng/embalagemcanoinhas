@@ -12,7 +12,8 @@ Legenda: **HTTPS** = precisa da API publicada com certificado · **Você** = dep
 - [x] **HTTPS** Domínio no ar com certificado Let's Encrypt por webroot (14/11/2026; vale até 12/02/2027,
       renovação recarrega o nginx). VPS: 7,9 GB, ~5,5 GB disponíveis com tudo rodando. Acesso provisório pelo IP desligado.
 - [x] **Servidor** `certbot renew --dry-run` passou (14/11/2026).
-- [ ] **HTTPS** `next build` e implantação; conferir cookies `Secure`, cabeçalhos de segurança e `TRUST_PROXY`.
+- [x] **HTTPS** `next build` e implantação no domínio, cabeçalhos de segurança conferidos pelo script (14/11/2026).
+- [ ] **HTTPS** Cookie de sessão com `Secure` e `HttpOnly` no navegador (F12 → Aplicativo → Cookies).
 - [x] Backup e teste de restauração **local** (13/11/2026): `npm run backup` e `backup:restore-test` OK; arquivo
       adulterado detectado pelo `backup:verify`. Ver [BACKUP.md](BACKUP.md).
 - [ ] **HTTPS** Backup agendado no servidor, cópia para fora dele e teste de restauração lá.
@@ -116,11 +117,10 @@ feito só com os simulados.
 - [x] **Servidor** Pasta `storage/` em 750, `UMask=0027` na API e reinício com o kernel novo (14/11/2026).
 - [ ] **Você** SSH só com chave e sem senha para o root (testar a chave numa segunda janela antes).
 - [x] **Servidor** Atualizações de segurança aplicadas e servidor reiniciado (14/11/2026).
-- [ ] **Servidor** Instalar `deploy/nginx/00-loja-limites.conf` e os sites da loja atualizados; `nginx -t` antes do
-      reload; conferir que a loja abre e que `curl -I` não mostra a versão do nginx.
+- [x] **Servidor** Limite por IP (`00-loja-limites.conf`) e `server_tokens off` instalados e conferidos (14/11/2026).
 - [ ] **Servidor** Carga no VPS de outra máquina, fora do horário de movimento: `fumaca` e depois `inicial`
       ([tests/carga/README.md](../tests/carga/README.md)), com `vmstat -w 2` aberto no servidor. Anotar p95 e CPU.
-- [ ] **HTTPS** Cabeçalhos pelo nginx: `Content-Security-Policy` no painel e na loja, cookies `Secure`.
+- [x] **HTTPS** CSP no painel e na loja, HSTS e `X-Frame-Options` pelo nginx (14/11/2026).
 - [ ] **Você** Sandbox do Mercado Pago: anotar os domínios que o SDK carrega e então fechar a CSP da loja
       (`script-src`, `connect-src`, `frame-src`).
 - [ ] **Você** Lighthouse de novo com o catálogo e as fotos reais (LCP passa a ser a foto).
@@ -130,10 +130,10 @@ feito só com os simulados.
 
 ## Lançamento
 
-- [ ] **Servidor** Seguir [IMPLANTACAO.md](IMPLANTACAO.md) num servidor Ubuntu: unidades do systemd sobem e
-      voltam depois de reiniciar a máquina (o `loja-db` com `Type=oneshot` foi escrito, não testado).
+- [x] **Servidor** Unidades do systemd (inclusive `loja-db`) voltaram sozinhas depois do reinício do VPS (14/11/2026).
 - [ ] **HTTPS** IP real do cliente na Auditoria (nginx sobrescrevendo `X-Forwarded-For` + `TRUST_PROXY=1`).
-- [ ] **Servidor** `loja-backup.timer` gera a cópia diária; cópia para fora do servidor definida por você.
+- [x] **Servidor** `loja-backup.timer` gerou a cópia da madrugada (14/11/2026, 03:30).
+- [ ] **Você** Cópia dos backups para fora do servidor.
 - [ ] **Servidor** Envio de foto de 8 MB pelo painel passando por nginx e Next.
 - [ ] **Você** Provedor de e-mail (transacional): sem ele a recuperação de senha por e-mail fica desligada e quem
       esquecer a senha do painel depende de alguém com "Gerenciar usuários" gerar uma nova (tela Usuários). Clientes

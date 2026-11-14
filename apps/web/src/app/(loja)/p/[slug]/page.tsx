@@ -39,12 +39,12 @@ export default async function ProductPage({ params }: Props) {
           </span>
         ))}
       </nav>
-      <div className="mx-auto grid max-w-[1240px] gap-8 px-4 pt-4 pb-6 sm:px-8 lg:grid-cols-[1.05fr_1fr] lg:gap-10">
+      <div className="mx-auto grid max-w-[1240px] gap-8 px-4 pt-4 pb-6 sm:px-8 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)] lg:gap-10">
         <Gallery images={p.images} alt={p.name} />
         <BuyBox product={p} />
       </div>
       {(p.description || specs.length > 0) && (
-        <div className="mx-auto grid max-w-[1240px] gap-8 px-4 sm:px-8 lg:grid-cols-[1.05fr_1fr] lg:gap-10">
+        <div className="mx-auto grid max-w-[1240px] gap-8 px-4 sm:px-8 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)] lg:gap-10">
           {p.description && (
             <section>
               <h2 className="cond mb-3 border-b-[3px] border-g-ink pb-2 text-xl font-extrabold uppercase">Descrição</h2>

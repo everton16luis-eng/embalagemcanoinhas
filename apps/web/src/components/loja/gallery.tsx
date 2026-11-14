@@ -8,11 +8,14 @@ type Image = { file_key: string; alt: string | null };
 
 export function Gallery({ images, alt }: { images: Image[]; alt: string }) {
   const [i, setI] = useState(0);
+  // min-w-0: a foto e quadrada (aspect-ratio); sem isso, a altura da linha da grade (que acompanha a caixa
+  // de compra ao lado) vira largura minima da foto, e a coluna da compra muda de largura a cada troca de
+  // embalagem ou de quantidade.
   // Sem foto, no celular o espaco reservado fica baixo para o preco aparecer sem rolar.
-  if (!images.length) return <Photo imageKey={null} alt={alt} size={800} className="max-sm:aspect-[16/7]" />;
+  if (!images.length) return <Photo imageKey={null} alt={alt} size={800} className="min-w-0 max-sm:aspect-[16/7]" />;
   const cur = images[Math.min(i, images.length - 1)]!;
   return (
-    <div className="grid gap-2.5 sm:grid-cols-[72px_1fr]">
+    <div className="grid min-w-0 gap-2.5 sm:grid-cols-[72px_minmax(0,1fr)]">
       {images.length > 1 && (
         <ul className="order-2 flex gap-2 overflow-x-auto sm:order-1 sm:flex-col">
           {images.map((im, n) => (

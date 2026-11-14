@@ -21,7 +21,7 @@ export function PriceTag({ priceCents, baseQty, baseUnit, size = 'md' }: { price
   const per = Number(baseQty) > 1 || baseUnit !== 'UN' ? Number(priceCents) / Number(baseQty) : null;
   return (
     <div className={`grid grid-cols-[auto_1fr] items-end gap-x-3 bg-g-label ${size === 'lg' ? 'px-4 py-3' : 'px-2.5 pt-2 pb-1.5'}`}>
-      <p className={`cond-x leading-none font-extrabold ${size === 'lg' ? 'text-[44px]' : 'text-[27px]'}`}>
+      <p className={`cond-x num leading-none font-extrabold ${size === 'lg' ? 'text-[44px]' : 'text-[27px]'}`}>
         <span className={`align-top font-bold ${size === 'lg' ? 'text-lg' : 'text-sm'}`}>R$&nbsp;</span>
         {int}
         <span className={size === 'lg' ? 'text-2xl' : 'text-base'}>,{dec}</span>

@@ -436,3 +436,17 @@ Contratos conferidos na documentação oficial e decisões em
   aberto com os dados (pedidos, orçamentos, vendas, compras, estoque, inventário, relatórios, WhatsApp, loja). API com
   140 testes passando.
 - Não verificado: rodar no servidor (anotado em TESTES-PENDENTES).
+
+### Estabilidade da página de produto (13/11/2026)
+
+- Causa: na grade foto | compra, a foto quadrada (`aspect-ratio`) ganhava largura mínima igual à altura da linha, e
+  essa altura vinha da caixa de compra. Trocar de embalagem ou passar de faixa de preço mudava a altura da caixa,
+  que mudava a largura da foto, que mudava a largura da caixa (ex.: 1024 px: colunas 677/228 px no pacote e
+  498/407 px na caixa). Correção: `min-w-0` na galeria e colunas `minmax(0, …)`.
+- Blocos que dependem da embalagem (tabela de preço por quantidade, estoque) são desenhados para todas as
+  embalagens na mesma célula, só a escolhida visível: a altura é a da maior. Linha do preço cheio riscado e linha
+  de dica/aviso ficam reservadas. Botão de adicionar com largura do espaço livre e números tabulares.
+- Embalagem esgotada mantém quantidade e botão no lugar, desabilitados ("Esgotado no momento"), em vez de sumir.
+- Medido com script no navegador (posição e tamanho de título, embalagens, preço, quantidade, botão, caixa e
+  descrição): 0 px de deslocamento em 375, 768 e 1024 px, em produto com opções, esgotado, sob encomenda e estoque
+  limitado. Preços e total conferidos com o carrinho da API.

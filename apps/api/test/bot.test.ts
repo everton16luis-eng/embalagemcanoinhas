@@ -313,4 +313,12 @@ describe('painel do bot', () => {
     expect(wa.sent.length).toBe(sentBefore);
     expect((await owner.query(`SELECT count(*)::int AS n FROM whatsapp_messages WHERE source = 'bot'`)).rows[0].n).toBe(botBefore);
   });
+
+  it('configuração apagada por fora (reset): o bot recria a linha com o padrão em vez de quebrar', async () => {
+    await owner.query('DELETE FROM bot_settings');
+    const r = await boss.get('/api/v1/admin/whatsapp/bot');
+    expect(r.statusCode, r.body).toBe(200);
+    expect(r.json().settings).toMatchObject({ audience: 'off', mode: 'menu' });
+    expect((await owner.query('SELECT count(*)::int AS n FROM bot_settings')).rows[0].n).toBe(1);
+  });
 });

@@ -145,7 +145,11 @@ export function hoursText(hours: Record<string, Day>) {
 }
 
 export async function loadSettings(db: Q): Promise<BotSettings> {
-  const r = (await db.query('SELECT audience, mode, test_phones, hours, texts, ai_plan, ai_monthly_limit_usd, ai_daily_per_phone, typebot_public_id FROM bot_settings')).rows[0];
+  const cols = 'audience, mode, test_phones, hours, texts, ai_plan, ai_monthly_limit_usd, ai_daily_per_phone, typebot_public_id';
+  // Linha unica. Se faltar (banco esvaziado por fora), volta com os padroes da migration: bot desligado, so menu.
+  const r =
+    (await db.query(`SELECT ${cols} FROM bot_settings`)).rows[0] ??
+    (await db.query(`INSERT INTO bot_settings DEFAULT VALUES ON CONFLICT (id) DO UPDATE SET id = true RETURNING ${cols}`)).rows[0];
   return {
     audience: r.audience,
     mode: r.mode,

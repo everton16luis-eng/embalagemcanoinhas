@@ -952,6 +952,8 @@ async function seedDemo() {
 
 // Ficam: proprietarios (users), as permissoes e sessoes deles, a auditoria (imutavel), a tabela de unidades
 // (dado de referencia da migration) e o controle de migrations. As linhas de configuracao voltam ao padrao.
+/** Configuracoes de linha unica fora do KEEP: o reset as recria com os valores padrao. */
+const SINGLETONS = ['bot_settings', 'email_settings'];
 const KEEP = new Set(['users', 'user_permissions', 'sessions', 'audit_logs', 'units', 'schema_migrations', 'fiscal_settings', 'store_settings']);
 
 async function resetAll() {
@@ -985,6 +987,9 @@ async function resetAll() {
     for (const t of tables) await db.query(`ALTER TABLE "${t}" DISABLE TRIGGER USER`);
     await db.query(`TRUNCATE ${list} RESTART IDENTITY`);
     for (const t of tables) await db.query(`ALTER TABLE "${t}" ENABLE TRIGGER USER`);
+    // Tabelas de linha unica (criadas com INSERT ... DEFAULT VALUES nas migrations) voltam ao padrao, nunca vazias:
+    // sem a linha, o bot e o painel de e-mail quebram.
+    for (const t of SINGLETONS) if (tables.includes(t)) await db.query(`INSERT INTO "${t}" DEFAULT VALUES ON CONFLICT DO NOTHING`);
 
     await db.query(`UPDATE fiscal_settings SET environment = 'homologacao', nfe_series = NULL, nfe_next_number = NULL, accreditation_status = 'not_started', accreditation_notes = NULL,
       provider = NULL, production_released_by = NULL, production_released_at = NULL, updated_by = NULL, updated_at = now(), emission_policy = 'manual', production_validator_name = NULL`);

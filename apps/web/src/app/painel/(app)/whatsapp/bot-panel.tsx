@@ -306,7 +306,11 @@ function TestChat() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const end = useRef<HTMLLIElement>(null);
-  useEffect(() => end.current?.scrollIntoView({ block: 'nearest' }), [lines]);
+  // Entre chaves de propósito: nos Chromes novos scrollIntoView devolve uma Promise, e o React
+  // chamaria esse valor como função de limpeza do efeito ("i is not a function").
+  useEffect(() => {
+    end.current?.scrollIntoView({ block: 'nearest' });
+  }, [lines]);
 
   async function talk(input: { text?: string; replyId?: string }, shown: string) {
     setBusy(true);

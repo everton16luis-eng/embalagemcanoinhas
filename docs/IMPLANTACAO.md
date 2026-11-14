@@ -56,7 +56,7 @@ npm run migrate
 ```
 
 Preencha no `.env` as credenciais reais conforme forem ficando prontas (pagamento, provedor fiscal, WhatsApp,
-Melhor Envio, marketplaces). Campo vazio deixa a integração desligada. A API não sobe se algum endereço público não
+Melhor Envio, marketplaces, e-mail: ver [EMAIL.md](EMAIL.md)). Campo vazio deixa a integração desligada. A API não sobe se algum endereço público não
 for `https://` ou se algum `*_FAKE=true` estiver no arquivo.
 
 ## 4. Build
@@ -99,6 +99,8 @@ sudo systemctl enable --now loja-db loja-api loja-web loja-backup.timer
 - `loja-web`: loja e painel.
 - `loja-backup.timer`: backup diário às 03:30 em `backups/` (ver [BACKUP.md](BACKUP.md)); a cópia para fora do
   servidor é responsabilidade sua.
+- `loja-contas-email.socket`: caixas de e-mail pelo painel. Tem instalação própria, em [EMAIL.md](EMAIL.md)
+  (passo 4).
 
 Logs:
 
@@ -192,7 +194,8 @@ Com o sistema no ar, como `loja`:
 2. Atualizar o código (`git pull` ou cópia) e `npm ci`.
 3. `npm run migrate` (as migrations só acrescentam; nota autorizada nunca é apagada).
 4. `npm run build -w apps/api` e `npm run build -w apps/web`.
-5. Como administrador: `sudo systemctl restart loja-api loja-web`.
+5. Como administrador: `sudo systemctl restart loja-api loja-web`. Se `deploy/email/loja-contas-email.py` mudou, repita o
+   `install` do passo 4 de [EMAIL.md](EMAIL.md).
 6. Conferir `/ready`, o painel e um pedido de teste.
 
 Se algo der errado depois da migration, não volte o banco sem antes ver o que foi gravado depois do backup

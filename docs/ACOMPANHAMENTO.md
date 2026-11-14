@@ -45,14 +45,14 @@ Ver [00-diagnostico-e-plano.md](00-diagnostico-e-plano.md).
 
 - Inspeção visual por captura de tela: o painel do navegador estava oculto durante a verificação.
 - Build de produção (`next build`) e implantação em servidor.
-- Envio de e-mail (recuperação de senha): não há provedor configurado; o link não é entregue.
+- Envio de e-mail no servidor: o código está pronto (docs/EMAIL.md), falta configurar o servidor e o DNS.
 
 ### Decisões em aberto
 
 | Decisão | Necessária até |
 |---|---|
 | Servidor de produção (mesmo VPS da barbearia?) e medição de memória | Primeira implantação |
-| Provedor de e-mail transacional | Primeira implantação |
+| ~~Provedor de e-mail transacional~~ servidor próprio do VPS (14/11/2026, docs/EMAIL.md) | — |
 | Primeiro gateway de pagamento (sugestão: Mercado Pago) | Fase 4 |
 | Provedor fiscal | Fase 5 |
 

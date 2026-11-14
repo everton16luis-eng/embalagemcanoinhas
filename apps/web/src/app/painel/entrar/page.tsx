@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useState, type FormEvent } from 'react';
 import { Button, Field, Input, Notice } from '@/components/ui';
@@ -48,6 +49,11 @@ function LoginForm() {
       <Button type="submit" variant="primary" busy={busy} className="w-full">
         Entrar
       </Button>
+      <p className="text-center text-sm">
+        <Link href="/painel/esqueci-senha" className="text-act hover:underline">
+          Esqueci minha senha
+        </Link>
+      </p>
     </form>
   );
 }

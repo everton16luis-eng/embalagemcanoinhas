@@ -1,6 +1,6 @@
 'use client';
 
-import { BarChart3, Blocks, MessageCircle, TrendingUp, Boxes, Building2, ClipboardCheck, ClipboardList, FileText, FolderTree, History, LogOut, MapPinned, Menu, Package, ReceiptText, RefreshCw, Search, Settings, ShoppingCart, Store, Truck, UserRound, Users, Warehouse, X } from 'lucide-react';
+import { BarChart3, Blocks, Mail, MessageCircle, TrendingUp, Boxes, Building2, ClipboardCheck, ClipboardList, FileText, FolderTree, History, LogOut, MapPinned, Menu, Package, ReceiptText, RefreshCw, Search, Settings, ShoppingCart, Store, Truck, UserRound, Users, Warehouse, X } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
@@ -38,6 +38,7 @@ const NAV = [
   { href: '/painel/empresa', label: 'Empresa e fiscal', icon: Building2, perm: 'company.view' },
   { href: '/painel/loja', label: 'Marca da loja', icon: Store, perm: 'settings.manage' },
   { href: '/painel/usuarios', label: 'Usuários', icon: Users, perm: 'users.view' },
+  { href: '/painel/email', label: 'E-mails', icon: Mail, perm: 'email.view' },
   { href: '/painel/auditoria', label: 'Auditoria', icon: History, perm: 'audit.view' },
 ] as const;
 

@@ -66,6 +66,20 @@ const schema = z.object({
   CARRIER_FAKE: blankAsMissing(z.enum(['true', 'false']).optional()).transform((v) => v === 'true'),
   // Somente desenvolvimento: marketplaces simulados.
   MARKETPLACE_FAKE: blankAsMissing(z.enum(['true', 'false']).optional()).transform((v) => v === 'true'),
+  // E-mail (docs/EMAIL.md). SMTP do servidor proprio; SMTP_HOST vazio = envio desligado.
+  SMTP_HOST: blankAsMissing(z.string().regex(/^[a-z0-9.-]{3,253}$/i).optional()),
+  SMTP_PORT: z.coerce.number().int().positive().default(587),
+  // false + 587 = STARTTLS obrigatorio; true so para a porta 465.
+  SMTP_SECURE: blankAsMissing(z.enum(['true', 'false']).optional()).transform((v) => v === 'true'),
+  SMTP_USER: blankAsMissing(z.string().max(254).optional()),
+  SMTP_PASS: blankAsMissing(z.string().max(200).optional()),
+  // Mesmo endereco do login SMTP (ou um apelido dele), senao o Postfix recusa ou o DMARC reprova.
+  MAIL_FROM: blankAsMissing(z.string().max(300).optional()),
+  SMTP_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120_000).default(15_000),
+  // Socket do systemd que altera as caixas do dominio da loja (deploy/systemd/loja-contas-email.socket). Vazio = desligado.
+  EMAIL_ACCOUNTS_SOCKET: blankAsMissing(z.string().max(200).optional()),
+  // Opcional: endereco do webmail, mostrado nas instrucoes das caixas.
+  EMAIL_WEBMAIL_URL: blankAsMissing(z.url().optional()),
 });
 
 export type Config = z.infer<typeof schema>;

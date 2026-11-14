@@ -22,7 +22,14 @@ Legenda: **HTTPS** = precisa da API publicada com certificado · **Você** = dep
 - [ ] **Servidor** Foto de produto tirada pelo celular, enviada pelo painel no servidor.
 - [ ] **Servidor** Depois de `systemctl restart loja-api` as fotos continuam aparecendo na loja e no painel.
 - [ ] **Você** Onde guardar as cópias fora do servidor e por quanto tempo (retenção).
-- [ ] **Você** Provedor de e-mail transacional; testar a recuperação de senha chegando de verdade.
+- [ ] **Servidor** E-mail da loja (passos 1 a 6 de [EMAIL.md](EMAIL.md)): domínio no Postfix, DKIM, DNS na Hostinger,
+      script e socket das caixas, `nao-responda@` e `contato@` criadas pelo painel, SMTP no `.env`.
+- [ ] **Servidor** `printf '{"acao":"info"}' | sudo -u loja nc -U -N /run/loja-contas-email.sock` mostra só caixas
+      `@embalagemcanoinhas.com.br` (nenhuma do portal ou do barbasystem).
+- [ ] **Você** E-mail de teste do painel chega no Gmail com SPF, DKIM e DMARC = PASS ("Mostrar original"); depois
+      trocar o DMARC para `p=quarantine`.
+- [ ] **Você** "Esqueci minha senha" no painel: o link chega, troca a senha e não funciona uma segunda vez.
+- [ ] **Você** Caixa criada pelo painel entra no celular (IMAP 993 e SMTP 587 em `mail.portalplanaltonorte.com.br`).
 - [ ] Inspeção visual por captura de tela (painel e loja, desktop e celular): até aqui a verificação foi por texto e
       medidas.
 
@@ -137,9 +144,8 @@ feito só com os simulados.
 - [x] **Servidor** `loja-backup.timer` gerou a cópia da madrugada (14/11/2026, 03:30).
 - [ ] **Você** Cópia dos backups para fora do servidor.
 - [x] **Servidor** Envio de foto de 8 MB pelo painel passando por nginx e Next (14/11/2026).
-- [ ] **Você** Provedor de e-mail (transacional): sem ele a recuperação de senha por e-mail fica desligada e quem
-      esquecer a senha do painel depende de alguém com "Gerenciar usuários" gerar uma nova (tela Usuários). Clientes
-      da loja ainda não têm recuperação de senha: precisa do provedor de e-mail. Decidir o provedor antes do lançamento.
+- [x] **Você** Provedor de e-mail: servidor próprio do VPS, sem custo (14/11/2026). Ver [EMAIL.md](EMAIL.md).
+- [ ] **Você** E-mails para clientes da loja (recuperação de senha do cliente, avisos de pedido): ainda não existem.
 
 - [ ] **Servidor** `demo:seed` e `demo:reset` no banco de produção (ver [DEMONSTRACAO.md](DEMONSTRACAO.md)); a
       reversão roda **antes** da primeira nota de homologação e do catálogo real.

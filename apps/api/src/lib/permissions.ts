@@ -27,6 +27,10 @@ export const PERMISSIONS = [
   'marketplaces.manage',
   'finance.view',
   'reports.view',
+  // E-mail: ver a tela, alterar envio e textos, e criar/alterar caixas do dominio (docs/EMAIL.md).
+  'email.view',
+  'email.manage',
+  'email.accounts',
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
@@ -35,7 +39,7 @@ export type Role = (typeof ROLES)[number];
 
 const ROLE_DEFAULTS: Record<Role, readonly Permission[]> = {
   owner: PERMISSIONS,
-  manager: ['users.view', 'audit.view', 'settings.manage', 'company.view', 'fiscal.view', 'catalog.view', 'catalog.manage', 'prices.manage', 'stock.view', 'stock.manage', 'purchases.view', 'purchases.manage', 'orders.view', 'orders.manage', 'shipping.manage', 'sales_desk.use', 'marketplaces.manage', 'finance.view', 'reports.view'],
+  manager: ['users.view', 'audit.view', 'settings.manage', 'company.view', 'fiscal.view', 'catalog.view', 'catalog.manage', 'prices.manage', 'stock.view', 'stock.manage', 'purchases.view', 'purchases.manage', 'orders.view', 'orders.manage', 'shipping.manage', 'sales_desk.use', 'marketplaces.manage', 'finance.view', 'reports.view', 'email.view'],
   sales: ['catalog.view', 'stock.view', 'orders.view', 'sales_desk.use'],
   stock: ['catalog.view', 'stock.view', 'stock.manage', 'purchases.view', 'purchases.manage'],
   // fiscal.validate fica so com quem o proprietario conceder (o contador ou responsavel tributario).
@@ -44,7 +48,7 @@ const ROLE_DEFAULTS: Record<Role, readonly Permission[]> = {
 };
 
 /** Permissoes que exigem verificacao em duas etapas ativa na conta. */
-export const MFA_REQUIRED: ReadonlySet<Permission> = new Set(['users.manage', 'settings.manage', 'company.manage', 'fiscal.manage', 'fiscal.validate', 'prices.manage', 'marketplaces.manage']);
+export const MFA_REQUIRED: ReadonlySet<Permission> = new Set(['users.manage', 'settings.manage', 'company.manage', 'fiscal.manage', 'fiscal.validate', 'prices.manage', 'marketplaces.manage', 'email.manage', 'email.accounts']);
 
 export const roleDefaults = (role: string) => new Set<Permission>(ROLE_DEFAULTS[role as Role] ?? []);
 

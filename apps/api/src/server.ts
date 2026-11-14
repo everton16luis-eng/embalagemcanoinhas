@@ -7,15 +7,12 @@ import { marketplaceTick } from './modules/marketplaces.js';
 import { whatsappTick } from './modules/whatsapp.js';
 import { expireOrders } from './modules/orders.js';
 
-const app = await buildApp({
-  // Sem provedor de e-mail configurado o link nao e entregue. O token nunca vai para o log.
-  notifier: async () => {
-    app.log.warn('Recuperacao de senha solicitada, mas nenhum provedor de e-mail esta configurado');
-  },
-});
+// Recuperacao de senha pelo SMTP do .env (docs/EMAIL.md). Sem SMTP o link nao e entregue; o token nunca vai para o log.
+const app = await buildApp({});
 
 if (isProduction) for (const w of productionWarnings(config)) app.log.warn(w);
-app.log.warn('Nenhum provedor de e-mail configurado: recuperacao de senha por e-mail fica indisponivel');
+if (!app.mailer.configured) app.log.warn('E-mail nao configurado (SMTP_HOST/MAIL_FROM): recuperacao de senha por e-mail fica indisponivel');
+if (!app.emailAccounts) app.log.info('Caixas de e-mail pelo painel desligadas (EMAIL_ACCOUNTS_SOCKET vazio)');
 
 // Reservas vencidas (carrinho abandonado, pedido sem pagamento) voltam ao disponivel.
 const expiry = setInterval(() => {

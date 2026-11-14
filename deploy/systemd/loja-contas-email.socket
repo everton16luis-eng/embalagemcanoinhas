@@ -1,0 +1,16 @@
+# Caixas de e-mail da loja pelo painel (docs/EMAIL.md). A API da loja conecta neste socket; para cada pedido o
+# systemd roda o script /usr/local/sbin/loja-contas-email como root (loja-contas-email@.service).
+# So o usuario/grupo loja abre o socket: outros sites do servidor nao chegam aqui.
+[Unit]
+Description=Loja de embalagens - socket das caixas de e-mail
+
+[Socket]
+ListenStream=/run/loja-contas-email.sock
+SocketUser=root
+SocketGroup=loja
+SocketMode=0660
+Accept=yes
+MaxConnections=4
+
+[Install]
+WantedBy=sockets.target

@@ -74,6 +74,20 @@ const ACTIONS: Record<string, string> = {
   'marketplace.rename': 'Renomeou conta do marketplace',
   'whatsapp.template': 'Alterou modelo de mensagem do WhatsApp',
   'whatsapp.reply': 'Respondeu pelo WhatsApp',
+  'email.settings_updated': 'Alterou o remetente dos e-mails',
+  'email.template_updated': 'Alterou o texto de um e-mail automático',
+  'email.template_restored': 'Restaurou o texto padrão de um e-mail',
+  'email.connection_tested': 'Testou a conexão do e-mail',
+  'email.test_sent': 'Enviou e-mail de teste',
+  'email.account_created': 'Criou caixa de e-mail',
+  'email.account_updated': 'Alterou o nome de uma caixa de e-mail',
+  'email.account_password_changed': 'Trocou a senha de uma caixa de e-mail',
+  'email.account_suspended': 'Suspendeu caixa de e-mail',
+  'email.account_reactivated': 'Reativou caixa de e-mail',
+  'email.account_deleted': 'Excluiu caixa de e-mail',
+  'email.alias_created': 'Criou apelido de e-mail',
+  'email.alias_updated': 'Alterou apelido de e-mail',
+  'email.alias_deleted': 'Excluiu apelido de e-mail',
 };
 
 function Audit() {

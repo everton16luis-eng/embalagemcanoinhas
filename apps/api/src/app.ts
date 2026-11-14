@@ -12,6 +12,9 @@ import { FakeProvider, providerFromConfig, type PaymentProvider } from './lib/pa
 import { carrierFromConfig, setCarrierProvider, type CarrierProvider } from './lib/carriers.js';
 import { marketplacesFromConfig, type Marketplaces } from './lib/marketplaces.js';
 import { whatsappFromConfig, type WhatsAppProvider } from './lib/whatsapp.js';
+import { mailSettingsFromConfig, Mailer, smtpTransportFromConfig, type MailTransport } from './lib/email.js';
+import { accountsFromConfig, type AccountsRunner } from './lib/email-accounts.js';
+import { emailRoutes, resetNotifier } from './modules/email.js';
 import { PostgresRateLimitStore } from './lib/rate-limit-store.js';
 import { auditRoutes } from './modules/audit.js';
 import { authRoutes, COOKIE, loadAuth, type ResetNotifier } from './modules/auth.js';
@@ -47,7 +50,13 @@ const trustedHops = (hops: number) => (hops ? (_addr: string, hop: number) => ho
 export const defaultPaymentProvider = () => providerFromConfig() ?? (config.PAYMENT_FAKE && !isProduction ? new FakeProvider() : null);
 
 export async function buildApp(opts: {
-  notifier: ResetNotifier;
+  /** Padrao: e-mail de redefinicao pelo SMTP do .env. Os testes capturam o token. */
+  notifier?: ResetNotifier;
+  /** Padrao: SMTP do .env. Os testes usam um transporte simulado (nunca abre conexao). */
+  mailTransport?: MailTransport | null;
+  mailSettings?: ReturnType<typeof mailSettingsFromConfig>;
+  /** Padrao: socket do servidor de e-mail (EMAIL_ACCOUNTS_SOCKET). */
+  emailAccounts?: AccountsRunner | null;
   routes?: { method: string; url: string }[];
   rateLimitStore?: 'memory' | 'postgres';
   payments?: PaymentProvider | null;
@@ -84,6 +93,8 @@ export async function buildApp(opts: {
   app.decorate('whatsapp', opts.whatsapp === undefined ? whatsappFromConfig() : opts.whatsapp);
   // Cotacao de frete e usada por funcoes fora das rotas (checkout, orcamento): provedor do processo.
   setCarrierProvider(opts.carrier === undefined ? carrierFromConfig() : opts.carrier);
+  app.decorate('mailer', new Mailer(opts.mailSettings ?? mailSettingsFromConfig(), opts.mailTransport === undefined ? smtpTransportFromConfig() : opts.mailTransport, app.log));
+  app.decorate('emailAccounts', opts.emailAccounts === undefined ? accountsFromConfig() : opts.emailAccounts);
 
   app.addHook('onRequest', async (req, reply) => {
     reply.header('Cache-Control', 'no-store');
@@ -124,10 +135,11 @@ export async function buildApp(opts: {
     return { ok: true };
   });
 
-  await app.register(authRoutes, { prefix: '/api/v1/auth', notifier: opts.notifier });
+  await app.register(authRoutes, { prefix: '/api/v1/auth', notifier: opts.notifier ?? resetNotifier(app) });
   await app.register(setupRoutes, { prefix: '/api/v1/admin/setup' });
   await app.register(userRoutes, { prefix: '/api/v1/admin/users' });
   await app.register(auditRoutes, { prefix: '/api/v1/admin/audit' });
+  await app.register(emailRoutes, { prefix: '/api/v1/admin/email' });
   await app.register(categoryRoutes, { prefix: '/api/v1/admin/categories' });
   await app.register(productRoutes, { prefix: '/api/v1/admin/products' });
   await app.register(productImageRoutes, { prefix: '/api/v1/admin/products' });

@@ -199,7 +199,8 @@ export async function authRoutes(app: FastifyInstance, opts: { notifier: ResetNo
     const { email } = z.strictObject({ email: z.email().max(254) }).parse(req.body);
     const token = randomToken();
     const { rows } = await pool.query<{ email: string | null }>(`SELECT auth_reset_create($1, $2, '30 minutes') AS email`, [email, sha256(token)]);
-    if (rows[0]?.email) await opts.notifier(rows[0].email, token);
+    // Sem esperar o envio: o tempo de resposta tambem nao revela se o e-mail existe.
+    if (rows[0]?.email) void opts.notifier(rows[0].email, token).catch((err) => req.log.error({ err: (err as Error).message }, 'falha ao enviar a redefinicao de senha'));
     return reply.code(202).send({ ok: true });
   });
 

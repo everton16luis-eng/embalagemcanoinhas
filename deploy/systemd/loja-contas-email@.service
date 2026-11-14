@@ -1,0 +1,22 @@
+# Um pedido do painel sobre as caixas de e-mail (aberto pelo loja-contas-email.socket). Roda como root porque os
+# arquivos do Postfix/Dovecot sao do root; o script so altera enderecos @embalagemcanoinhas.com.br.
+[Unit]
+Description=Loja de embalagens - pedido de caixa de e-mail
+CollectMode=inactive-or-failed
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/loja-contas-email
+StandardInput=socket
+StandardOutput=socket
+StandardError=journal
+RuntimeMaxSec=60
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateNetwork=true
+ProtectHome=true
+# Escrita so onde o script grava: mapas do Postfix, senhas do Dovecot, pastas das caixas e a trava.
+ProtectSystem=strict
+ReadWritePaths=/etc/postfix /etc/dovecot /var/mail /run/lock
+# Igual a um root no terminal: o .db que o postmap recria precisa continuar legivel pelo Postfix.
+UMask=0022

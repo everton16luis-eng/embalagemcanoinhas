@@ -21,6 +21,7 @@
     "argon2": "^0.45.2",
     "fast-xml-parser": "5.12.1",
     "fastify": "^5.12.8",
+    "nodemailer": "10.2.1",
     "otplib": "^13.6.0",
     "pg": "^8.23.1",
     "sharp": "^0.35.5",

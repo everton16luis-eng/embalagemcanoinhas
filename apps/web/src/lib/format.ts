@@ -58,6 +58,9 @@ export const PERMISSION_LABELS: Record<string, string> = {
   'marketplaces.manage': 'Marketplaces (Mercado Livre, Shopee)',
   'finance.view': 'Ver financeiro',
   'reports.view': 'Ver relatórios',
+  'email.view': 'Ver e-mails da loja',
+  'email.manage': 'Configurar envio e textos dos e-mails',
+  'email.accounts': 'Criar e alterar caixas de e-mail',
 };
 
 export const TAX_REGIMES: Record<string, string> = {

@@ -377,8 +377,8 @@ export async function respond(ctx: Ctx, state: BotState, input: BotInput): Promi
 let typebotProvider: TypebotProvider | null = null;
 export const setTypebotProvider = (p: TypebotProvider | null) => void (typebotProvider = p);
 
-/** Valores de botao no fluxo que chamam a loja (docs/11 §9). */
-const TB_RESERVED = ['atendente', 'pedido', 'menu'];
+/** Valores de botao no fluxo que chamam a loja (docs/11 §9): horario e orcamento usam os textos do painel. */
+const TB_RESERVED = ['atendente', 'pedido', 'menu', 'orcamento', 'horario'];
 /** Sessao parada ha mais de 12 h recomeca o fluxo. */
 const TB_STALE_MS = 12 * 3_600_000;
 type TbItems = Record<string, { content: string; value: string | null }>;

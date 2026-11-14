@@ -161,7 +161,14 @@ sudo sed -i 's/^DISABLE_SIGNUP=false$/DISABLE_SIGNUP=true/' /srv/typebot/.env &&
 
 ## 9. Ligar na loja
 
-1. Crie um fluxo no editor e **publique**.
+1. Importe o fluxo pronto da loja ou crie um do zero, e **publique**.
+   - **Fluxo pronto:** baixe [deploy/typebot/fluxo-atendimento.json](../deploy/typebot/fluxo-atendimento.json) para o
+     seu computador. No editor, clique em **Create a typebot** → **Import a file** e escolha o arquivo.
+   - O fluxo tem boas-vindas e um menu com seis opções: procurar produto, acompanhar pedido, orçamento, compras em
+     quantidade, horário e endereço, e atendente. Também pergunta "mais alguma coisa?" e encerra.
+   - Ele não traz preço, prazo, horário nem endereço: esses dados vêm da loja pelos valores dos botões. Revise os
+     textos no editor antes de publicar.
+   - Para mudar o fluxo pelo código, edite `deploy/typebot/gerar-fluxo.py` e rode `python deploy/typebot/gerar-fluxo.py`.
 2. Copie o **ID público** do fluxo: fica em Share, é o final do endereço `bot.embalagemcanoinhas.com.br/<id>`.
 3. No `.env` da loja, coloque `TYPEBOT_API_URL=http://127.0.0.1:3092/api` e reinicie a API (`sudo systemctl restart loja-api`).
 4. No painel, vá em WhatsApp → Bot de atendimento, escolha a forma **Typebot**, cole o ID público e teste pelo chat
@@ -175,6 +182,8 @@ loja:
 | `atendente` | Passa a conversa para um atendente. |
 | `pedido` | Abre a consulta de pedido da loja, com a confirmação por CPF/CNPJ quando o telefone não é o da compra. |
 | `menu` | Mostra o menu da loja. |
+| `orcamento` | Responde com o texto de orçamento do painel (link da loja e oferta de atendente). |
+| `horario` | Responde com o horário e o endereço cadastrados no painel. |
 
 Assim o CPF/CNPJ não passa pelo Typebot. Se o cliente digitar "atendente", a conversa também vai para um atendente.
 

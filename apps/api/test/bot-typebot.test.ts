@@ -68,6 +68,7 @@ beforeEach(async () => {
   tb.calls = [];
   tb.failNext = false;
   tb.sessions.clear();
+  tb.extraChoices = [];
 });
 afterAll(async () => {
   await owner.query(`UPDATE bot_settings SET audience = 'off', mode = 'menu', typebot_public_id = NULL`);
@@ -171,6 +172,21 @@ describe('forma Typebot no WhatsApp', () => {
     await sayText('oi');
     await tap('tb:c3', 'Falar com atendente');
     expect((await owner.query('SELECT state FROM whatsapp_conversations WHERE phone = $1', [PHONE])).rows[0].state).toBe('agent');
+  });
+
+  it('valores horario e orcamento usam os dados e textos da loja', async () => {
+    await setBot({ mode: 'typebot', typebotPublicId: 'fluxo-loja' });
+    tb.extraChoices = [
+      { id: 'c4', content: 'Horário e endereço', value: 'horario' },
+      { id: 'c5', content: 'Pedir orçamento', value: 'orcamento' },
+    ];
+    await sayText('oi');
+    expect((await botMessages()).at(-1).kind).toBe('interactive'); // 5 opcoes: lista
+    await tap('tb:c5', 'Pedir orçamento');
+    expect((await botMessages()).at(-1).body).toContain('Você pode montar o pedido direto na loja');
+    await sayText('oi');
+    await tap('tb:c4', 'Horário e endereço');
+    expect(tb.calls.filter((c) => c.op === 'continue')).toHaveLength(0);
   });
 
   it('sessão perdida recomeça; Typebot fora do ar cai no menu', async () => {

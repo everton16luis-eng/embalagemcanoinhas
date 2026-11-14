@@ -1,0 +1,430 @@
+{
+  "version": "6.1",
+  "name": "Atendimento da loja (WhatsApp)",
+  "icon": null,
+  "folderId": null,
+  "events": [
+    {
+      "id": "ev-inicio",
+      "type": "start",
+      "graphCoordinates": {
+        "x": -300,
+        "y": 0
+      },
+      "outgoingEdgeId": "e-01"
+    }
+  ],
+  "groups": [
+    {
+      "id": "g-boas-vindas",
+      "title": "Boas-vindas",
+      "graphCoordinates": {
+        "x": 0,
+        "y": 0
+      },
+      "blocks": [
+        {
+          "id": "b-boas-vindas-1",
+          "type": "text",
+          "content": {
+            "richText": [
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "Olá! Que bom ter você por aqui."
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "b-boas-vindas-2",
+          "type": "text",
+          "content": {
+            "richText": [
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "Aqui é o atendimento da loja de embalagens e artigos para confeitaria."
+                  }
+                ]
+              }
+            ]
+          },
+          "outgoingEdgeId": "e-02"
+        }
+      ]
+    },
+    {
+      "id": "g-menu",
+      "title": "Menu",
+      "graphCoordinates": {
+        "x": 400,
+        "y": 0
+      },
+      "blocks": [
+        {
+          "id": "b-menu-1",
+          "type": "text",
+          "content": {
+            "richText": [
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "Como posso ajudar? Escolha uma opção:"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "b-menu-2",
+          "type": "choice input",
+          "items": [
+            {
+              "id": "i-menu-produto",
+              "content": "Procurar um produto",
+              "outgoingEdgeId": "e-03"
+            },
+            {
+              "id": "i-menu-pedido",
+              "content": "Acompanhar pedido",
+              "value": "pedido"
+            },
+            {
+              "id": "i-menu-orcamento",
+              "content": "Pedir orçamento",
+              "value": "orcamento"
+            },
+            {
+              "id": "i-menu-quantidade",
+              "content": "Compras em quantidade",
+              "outgoingEdgeId": "e-04"
+            },
+            {
+              "id": "i-menu-horario",
+              "content": "Horário e endereço",
+              "value": "horario"
+            },
+            {
+              "id": "i-menu-atendente",
+              "content": "Falar com atendente",
+              "value": "atendente"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "g-produto",
+      "title": "Procurar um produto",
+      "graphCoordinates": {
+        "x": 800,
+        "y": -250
+      },
+      "blocks": [
+        {
+          "id": "b-produto-1",
+          "type": "text",
+          "content": {
+            "richText": [
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "Qual produto você procura? Escreva o nome, por exemplo: copo 300 ml, forminha nº 5 ou caixa para bolo."
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "b-produto-2",
+          "type": "text input",
+          "options": {
+            "variableId": "v-produto",
+            "labels": {
+              "placeholder": "Nome do produto",
+              "button": "Enviar"
+            }
+          }
+        },
+        {
+          "id": "b-produto-3",
+          "type": "text",
+          "content": {
+            "richText": [
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "Veja fotos, preços e estoque de "
+                  },
+                  {
+                    "text": "{{produto}}",
+                    "bold": true
+                  },
+                  {
+                    "text": " na loja virtual. É só usar a busca no topo da página:"
+                  }
+                ]
+              },
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "https://embalagemcanoinhas.com.br"
+                  }
+                ]
+              }
+            ]
+          },
+          "outgoingEdgeId": "e-05"
+        }
+      ]
+    },
+    {
+      "id": "g-quantidade",
+      "title": "Compras em quantidade",
+      "graphCoordinates": {
+        "x": 800,
+        "y": 150
+      },
+      "blocks": [
+        {
+          "id": "b-quantidade-1",
+          "type": "text",
+          "content": {
+            "richText": [
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "Atendemos confeitarias, padarias e outros negócios. Muitos produtos ficam mais baratos por unidade conforme a quantidade, e as faixas de preço aparecem na página de cada produto."
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "b-quantidade-2",
+          "type": "text",
+          "content": {
+            "richText": [
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "Para pedidos grandes ou itens sob encomenda, peça um orçamento ou fale com um atendente."
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "b-quantidade-3",
+          "type": "choice input",
+          "items": [
+            {
+              "id": "i-qtd-orcamento",
+              "content": "Pedir orçamento",
+              "value": "orcamento"
+            },
+            {
+              "id": "i-qtd-atendente",
+              "content": "Falar com atendente",
+              "value": "atendente"
+            },
+            {
+              "id": "i-qtd-menu",
+              "content": "Voltar ao menu",
+              "outgoingEdgeId": "e-06"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "g-mais",
+      "title": "Mais alguma coisa",
+      "graphCoordinates": {
+        "x": 1200,
+        "y": -250
+      },
+      "blocks": [
+        {
+          "id": "b-mais-1",
+          "type": "text",
+          "content": {
+            "richText": [
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "Posso ajudar em mais alguma coisa?"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "b-mais-2",
+          "type": "choice input",
+          "items": [
+            {
+              "id": "i-mais-menu",
+              "content": "Ver o menu",
+              "outgoingEdgeId": "e-07"
+            },
+            {
+              "id": "i-mais-atendente",
+              "content": "Falar com atendente",
+              "value": "atendente"
+            },
+            {
+              "id": "i-mais-fim",
+              "content": "Encerrar",
+              "outgoingEdgeId": "e-08"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "g-fim",
+      "title": "Fim",
+      "graphCoordinates": {
+        "x": 1600,
+        "y": -250
+      },
+      "blocks": [
+        {
+          "id": "b-fim-1",
+          "type": "text",
+          "content": {
+            "richText": [
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "Obrigado pelo contato! Quando precisar, é só mandar uma mensagem."
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-01",
+      "from": {
+        "eventId": "ev-inicio"
+      },
+      "to": {
+        "groupId": "g-boas-vindas"
+      }
+    },
+    {
+      "id": "e-02",
+      "from": {
+        "blockId": "b-boas-vindas-2"
+      },
+      "to": {
+        "groupId": "g-menu"
+      }
+    },
+    {
+      "id": "e-03",
+      "from": {
+        "blockId": "b-menu-2",
+        "itemId": "i-menu-produto"
+      },
+      "to": {
+        "groupId": "g-produto"
+      }
+    },
+    {
+      "id": "e-04",
+      "from": {
+        "blockId": "b-menu-2",
+        "itemId": "i-menu-quantidade"
+      },
+      "to": {
+        "groupId": "g-quantidade"
+      }
+    },
+    {
+      "id": "e-05",
+      "from": {
+        "blockId": "b-produto-3"
+      },
+      "to": {
+        "groupId": "g-mais"
+      }
+    },
+    {
+      "id": "e-06",
+      "from": {
+        "blockId": "b-quantidade-3",
+        "itemId": "i-qtd-menu"
+      },
+      "to": {
+        "groupId": "g-menu"
+      }
+    },
+    {
+      "id": "e-07",
+      "from": {
+        "blockId": "b-mais-2",
+        "itemId": "i-mais-menu"
+      },
+      "to": {
+        "groupId": "g-menu"
+      }
+    },
+    {
+      "id": "e-08",
+      "from": {
+        "blockId": "b-mais-2",
+        "itemId": "i-mais-fim"
+      },
+      "to": {
+        "groupId": "g-fim"
+      }
+    }
+  ],
+  "variables": [
+    {
+      "id": "v-nome",
+      "name": "nome"
+    },
+    {
+      "id": "v-produto",
+      "name": "produto"
+    }
+  ],
+  "theme": {},
+  "selectedThemeTemplateId": null,
+  "settings": {
+    "general": {
+      "systemMessages": {
+        "invalidMessage": "Não entendi. Toque em uma das opções ou escreva o nome dela."
+      }
+    },
+    "metadata": {
+      "title": "Atendimento da loja"
+    }
+  }
+}

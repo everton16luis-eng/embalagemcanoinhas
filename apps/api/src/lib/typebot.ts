@@ -107,6 +107,8 @@ export class FakeTypebot implements TypebotProvider {
   calls: { op: 'start' | 'continue'; arg: string; extra: unknown }[] = [];
   failNext = false;
   sessions = new Map<string, string>();
+  /** Opcoes a mais no inicio (testes dos valores reservados). */
+  extraChoices: TbChoice[] = [];
   private n = 0;
 
   private check() {
@@ -128,6 +130,7 @@ export class FakeTypebot implements TypebotProvider {
         { id: 'c1', content: 'Ver produtos', value: null },
         { id: 'c2', content: 'Acompanhar pedido', value: 'pedido' },
         { id: 'c3', content: 'Falar com atendente', value: 'atendente' },
+        ...this.extraChoices,
       ],
       ended: false,
     };

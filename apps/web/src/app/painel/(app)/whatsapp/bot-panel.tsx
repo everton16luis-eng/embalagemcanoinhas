@@ -7,8 +7,20 @@ import { api } from '@/lib/api';
 
 type Day = { open: string; close: string } | null;
 type Audience = 'off' | 'test' | 'all';
+type Mode = 'menu' | 'ai' | 'menu_ai';
+type AiPlan = 'free' | 'paid';
 type BotData = {
-  settings: { audience: Audience; mode: string; testPhones: string[]; hours: Record<string, Day>; texts: Record<string, string> };
+  settings: {
+    audience: Audience;
+    mode: Mode;
+    testPhones: string[];
+    hours: Record<string, Day>;
+    texts: Record<string, string>;
+    aiPlan: AiPlan;
+    aiMonthlyLimitUsd: number;
+    aiDailyPerPhone: number;
+  };
+  ai: { configured: boolean; simulated: boolean; model: string | null; month: { usd: number; calls: number; failed: number } };
   defaults: Record<string, string>;
   labels: Record<string, string>;
   variables: string[];
@@ -19,13 +31,20 @@ type Interactive =
   | { type: 'button'; body: string; buttons: { id: string; title: string }[] }
   | { type: 'list'; body: string; button: string; rows: { id: string; title: string; description?: string }[] };
 type Reply = { kind: 'text'; body: string } | { kind: 'interactive'; i: Interactive };
-type ChatLine = { from: 'you' | 'bot'; reply: Reply } | { from: 'note'; text: string };
+type ChatLine = { from: 'you' | 'bot'; reply: Reply; ai?: boolean } | { from: 'note'; text: string };
 
 export const AUDIENCE: Record<Audience, { label: string; tone: 'good' | 'warn' | 'neutral' }> = {
   off: { label: 'Desligado', tone: 'neutral' },
   test: { label: 'Só números de teste', tone: 'warn' },
   all: { label: 'Ligado para todos', tone: 'good' },
 };
+const MODES: Record<Mode, { label: string; hint: string }> = {
+  menu: { label: 'Só menu', hint: 'Respostas fixas: o cliente escolhe uma opção. Sem custo e sem IA.' },
+  menu_ai: { label: 'Menu e IA', hint: 'O menu abre a conversa; quando o cliente escreve algo que o menu não entende, a IA responde.' },
+  ai: { label: 'IA', hint: 'A IA responde o que o cliente escrever. Os botões, a consulta de pedido e a confirmação por CPF/CNPJ continuam com o menu.' },
+};
+const usd = (n: number) => `US$ ${n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: n < 1 ? 4 : 2 })}`;
+
 const DAYS = [
   ['1', 'Segunda'],
   ['2', 'Terça'],
@@ -46,6 +65,10 @@ function Settings({ data, reload }: { data: BotData; reload: () => void }) {
     Object.fromEntries(DAYS.map(([d]) => [d, Object.keys(data.settings.hours).length ? (data.settings.hours[d] ?? null) : d === '0' ? null : { open: '08:00', close: '18:00' }])),
   );
   const [texts, setTexts] = useState<Record<string, string>>(data.settings.texts);
+  const [mode, setMode] = useState<Mode>(data.settings.mode);
+  const [aiPlan, setAiPlan] = useState<AiPlan>(data.settings.aiPlan);
+  const [monthly, setMonthly] = useState(String(data.settings.aiMonthlyLimitUsd));
+  const [daily, setDaily] = useState(String(data.settings.aiDailyPerPhone));
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -66,6 +89,10 @@ function Settings({ data, reload }: { data: BotData; reload: () => void }) {
             .filter(Boolean),
           hours: useHours ? hours : {},
           texts,
+          mode,
+          aiPlan,
+          aiMonthlyLimitUsd: Number(monthly.replace(',', '.')),
+          aiDailyPerPhone: Number(daily),
         },
       });
       setSaved(true);
@@ -80,7 +107,7 @@ function Settings({ data, reload }: { data: BotData; reload: () => void }) {
   return (
     <Panel
       title="Bot de atendimento"
-      description="Responde as mensagens dos clientes com um menu: acompanhar pedido, orçamento, horário e endereço, e falar com um atendente. Não altera pedidos nem dá descontos."
+      description="Responde as mensagens dos clientes com um menu (acompanhar pedido, orçamento, horário e endereço, falar com um atendente) e, se você ligar, com IA. Não altera pedidos nem dá descontos."
       actions={<Badge tone={AUDIENCE[data.settings.audience].tone}>{AUDIENCE[data.settings.audience].label}</Badge>}
     >
       <form onSubmit={save} className="space-y-5">
@@ -101,8 +128,58 @@ function Settings({ data, reload }: { data: BotData; reload: () => void }) {
           ))}
         </fieldset>
 
-        {audience === 'test' && (
-          <Field label="Números de teste" hint="Um por linha, com 55 e DDD, por exemplo 5547999998888. Até 20.">
+        <fieldset disabled={!edit} className="space-y-2">
+          <legend className="text-sm font-medium">Como o bot responde</legend>
+          {(['menu', 'menu_ai', 'ai'] as const).map((m) => (
+            <label key={m} className="flex min-h-9 items-start gap-2 text-sm">
+              <input type="radio" name="mode" className="mt-1" checked={mode === m} onChange={() => setMode(m)} />
+              <span>
+                {MODES[m].label}
+                <span className="block text-[13px] text-ink-faint">{MODES[m].hint}</span>
+              </span>
+            </label>
+          ))}
+        </fieldset>
+
+        {mode !== 'menu' && (
+          <fieldset disabled={!edit} className="space-y-3 rounded-md border border-line p-3">
+            <legend className="px-1 text-sm font-medium">Inteligência artificial (Gemini)</legend>
+            {!data.ai.configured ? (
+              <Notice tone="warn">A chave da IA não está configurada no servidor. Até lá, o bot responde só com o menu.</Notice>
+            ) : (
+              <p className="text-[13px] text-ink-faint">
+                Modelo: {data.ai.simulated ? 'simulado (desenvolvimento)' : data.ai.model}. Neste mês: {data.ai.month.calls} chamada(s), gasto estimado de {usd(data.ai.month.usd)}
+                {data.ai.month.failed > 0 && `, ${data.ai.month.failed} com falha`}.
+              </p>
+            )}
+            <div className="space-y-2">
+              {(['free', 'paid'] as const).map((p) => (
+                <label key={p} className="flex min-h-9 items-start gap-2 text-sm">
+                  <input type="radio" name="aiPlan" className="mt-1" checked={aiPlan === p} onChange={() => setAiPlan(p)} />
+                  <span>
+                    {p === 'free' ? 'Plano gratuito (testes)' : 'Plano pago'}
+                    <span className="block text-[13px] text-ink-faint">
+                      {p === 'free'
+                        ? 'A IA só atende o chat de teste e os números de teste. No plano gratuito o Google pode usar as conversas para melhorar os produtos dele, por isso clientes não falam com a IA.'
+                        : 'A IA atende todos os clientes. Só use depois de ativar o faturamento na conta do Google com a chave do servidor: cada resposta é cobrada.'}
+                    </span>
+                  </span>
+                </label>
+              ))}
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="Limite de gasto no mês (US$)" hint="Atingido o limite, o bot volta ao menu até o mês seguinte. 0 desliga a IA.">
+                {(id) => <Input id={id} inputMode="decimal" value={monthly} onChange={(e) => setMonthly(e.target.value)} className="max-w-32" />}
+              </Field>
+              <Field label="Respostas da IA por cliente em 24 h" hint="Passou disso, a conversa vai para um atendente.">
+                {(id) => <Input id={id} inputMode="numeric" value={daily} onChange={(e) => setDaily(e.target.value)} className="max-w-32" />}
+              </Field>
+            </div>
+          </fieldset>
+        )}
+
+        {(audience === 'test' || (mode !== 'menu' && aiPlan === 'free')) && (
+          <Field label="Números de teste" hint="Um por linha, com 55 e DDD, por exemplo 5547999998888. Até 20. No plano gratuito, só eles falam com a IA.">
             {(id) => <Textarea id={id} disabled={!edit} value={phones} onChange={(e) => setPhones(e.target.value)} className="font-mono" />}
           </Field>
         )}
@@ -176,6 +253,7 @@ function Bubble({ line, onChoose, busy }: { line: ChatLine; onChoose: (id: strin
   return (
     <li className={line.from === 'you' ? 'ml-8 text-right' : 'mr-8'}>
       <div className={`inline-block max-w-full rounded-md px-3 py-2 text-left text-sm ${line.from === 'you' ? 'border border-line bg-card' : 'bg-sunken'}`}>
+        {line.from === 'bot' && line.ai && <span className="mb-0.5 block text-[11px] font-medium uppercase tracking-wide text-ink-faint">IA</span>}
         <p className="whitespace-pre-wrap break-words">{body}</p>
         {options.length > 0 && (
           <div className="mt-2 flex flex-wrap gap-1.5">
@@ -206,10 +284,10 @@ function TestChat() {
     setLines((l) => [...l, { from: 'you', reply: { kind: 'text', body: shown } }]);
     try {
       const digits = phone.replace(/\D/g, '');
-      const r = await api<{ replies: Reply[]; handoff: boolean }>('/admin/whatsapp/bot/test', { method: 'POST', body: { ...input, phone: digits || null } });
+      const r = await api<{ replies: Reply[]; handoff: boolean; ai: boolean }>('/admin/whatsapp/bot/test', { method: 'POST', body: { ...input, phone: digits || null } });
       setLines((l) => [
         ...l,
-        ...r.replies.map((reply): ChatLine => ({ from: 'bot', reply })),
+        ...r.replies.map((reply): ChatLine => ({ from: 'bot', reply, ai: r.ai })),
         ...(r.handoff ? [{ from: 'note' as const, text: 'Aqui a conversa iria para a caixa de entrada, e o bot pararia de responder.' }] : []),
       ]);
     } catch (err) {
@@ -232,7 +310,7 @@ function TestChat() {
   return (
     <Panel
       title="Chat de teste"
-      description="Converse com o bot aqui, sem WhatsApp e sem gastar mensagens. Funciona mesmo com o bot desligado."
+      description="Converse com o bot aqui, sem WhatsApp e sem gastar mensagens. Funciona mesmo com o bot desligado. Com a IA ligada, as respostas dela contam no limite de gasto."
       actions={<Button onClick={reset}>Recomeçar</Button>}
     >
       <Field label="Telefone simulado" hint="Opcional. O bot só mostra pedidos feitos com este telefone, como faria com o cliente de verdade.">

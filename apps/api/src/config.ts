@@ -57,6 +57,13 @@ const schema = z.object({
   WA_VERIFY_TOKEN: blankAsMissing(z.string().min(16).optional()),
   WA_GRAPH_VERSION: z.string().regex(/^v[0-9]{1,3}[.][0-9]$/).default('v27.0'),
   WHATSAPP_FAKE: blankAsMissing(z.enum(['true', 'false']).optional()).transform((v) => v === 'true'),
+  // IA do bot (docs/10 §4.4): Gemini API. Chave so no .env; vazia desliga a IA. Precos em US$ por milhao de tokens,
+  // da tabela oficial (14/11/2026) para gemini-3.5-flash-lite; trocar junto se trocar o modelo.
+  GEMINI_API_KEY: blankAsMissing(z.string().min(20).max(200).optional()),
+  GEMINI_MODEL: z.string().regex(/^[a-z0-9.-]{3,80}$/).default('gemini-3.5-flash-lite'),
+  GEMINI_PRICE_INPUT_PER_M: z.coerce.number().min(0).max(1000).default(0.3),
+  GEMINI_PRICE_OUTPUT_PER_M: z.coerce.number().min(0).max(1000).default(2.5),
+  GEMINI_FAKE: blankAsMissing(z.enum(['true', 'false']).optional()).transform((v) => v === 'true'),
   // Transportadoras (docs/08 §2): Melhor Envio. Token do aplicativo; User-Agent com nome do app e e-mail tecnico (obrigatorio).
   MELHOR_ENVIO_TOKEN: blankAsMissing(z.string().min(20).optional()),
   MELHOR_ENVIO_USER_AGENT: blankAsMissing(z.string().min(5).max(200).optional()),
@@ -112,3 +119,4 @@ if (isProduction && config.FISCAL_FAKE) throw new Error('FISCAL_FAKE nao pode se
 if (isProduction && config.MARKETPLACE_FAKE) throw new Error('MARKETPLACE_FAKE nao pode ser usado em producao');
 if (isProduction && config.WHATSAPP_FAKE) throw new Error('WHATSAPP_FAKE nao pode ser usado em producao');
 if (isProduction && config.CARRIER_FAKE) throw new Error('CARRIER_FAKE nao pode ser usado em producao');
+if (isProduction && config.GEMINI_FAKE) throw new Error('GEMINI_FAKE nao pode ser usado em producao');

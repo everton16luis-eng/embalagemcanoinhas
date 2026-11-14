@@ -30,7 +30,8 @@ import { inventoryRoutes } from './modules/inventory.js';
 import { marketplaceAdminRoutes, marketplaceWebhookRoutes } from './modules/marketplaces.js';
 import { salesReportRoutes } from './modules/sales-reports.js';
 import { whatsappAdminRoutes, whatsappWebhookRoutes } from './modules/whatsapp.js';
-import { botAdminRoutes } from './modules/bot.js';
+import { botAdminRoutes, setAiProvider } from './modules/bot.js';
+import { aiFromConfig, type AiProvider } from './lib/gemini.js';
 import { publicQuoteRoutes, salesDeskRoutes } from './modules/quotes.js';
 import { purchaseInvoiceRoutes } from './modules/purchase-invoices.js';
 import { purchaseRoutes } from './modules/purchases.js';
@@ -65,6 +66,7 @@ export async function buildApp(opts: {
   marketplaces?: Marketplaces;
   whatsapp?: WhatsAppProvider | null;
   carrier?: CarrierProvider | null;
+  ai?: AiProvider | null;
 }) {
   const app = Fastify({
     logger: config.NODE_ENV === 'test' ? false : { redact: ['req.headers.cookie', 'req.headers.authorization', 'res.headers["set-cookie"]'] },
@@ -94,6 +96,7 @@ export async function buildApp(opts: {
   app.decorate('whatsapp', opts.whatsapp === undefined ? whatsappFromConfig() : opts.whatsapp);
   // Cotacao de frete e usada por funcoes fora das rotas (checkout, orcamento): provedor do processo.
   setCarrierProvider(opts.carrier === undefined ? carrierFromConfig() : opts.carrier);
+  setAiProvider(opts.ai === undefined ? aiFromConfig() : opts.ai);
   app.decorate('mailer', new Mailer(opts.mailSettings ?? mailSettingsFromConfig(), opts.mailTransport === undefined ? smtpTransportFromConfig() : opts.mailTransport, app.log));
   app.decorate('emailAccounts', opts.emailAccounts === undefined ? accountsFromConfig() : opts.emailAccounts);
 

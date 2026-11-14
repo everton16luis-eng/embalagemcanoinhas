@@ -5,11 +5,14 @@ import { pool, tx, type Db } from '../db/pool.js';
 import { audit } from '../lib/audit.js';
 import { decrypt, encrypt, keyedHash } from '../lib/crypto.js';
 import { AppError } from '../lib/errors.js';
+import type { AiContent, AiProvider } from '../lib/gemini.js';
 import { interactiveSummary, toWhatsAppNumber, type Interactive, type WhatsAppProvider } from '../lib/whatsapp.js';
 import { requirePermission } from './auth.js';
+import { aiTurn, historyFor } from './bot-ai.js';
 
 /**
- * Bot de atendimento, etapa 1: menu com regras fixas (docs/10-bot-atendimento-proposta.md).
+ * Bot de atendimento (docs/10-bot-atendimento-proposta.md): etapa 1, menu com regras fixas; etapa 2, IA (Gemini)
+ * no texto livre, com o menu como reserva.
  * Nao altera nada na loja: so consulta pedido (do proprio telefone), horario e endereco, e passa para atendente.
  */
 
@@ -19,7 +22,17 @@ export type BotState = { step: string | null; context: Record<string, unknown> }
 /** document: CPF/CNPJ digitado, quando a mensagem guardada esta com o texto oculto. */
 export type BotInput = { text: string | null; replyId: string | null; type: string; name: string | null; document?: string | null };
 type Day = { open: string; close: string } | null;
-export type BotSettings = { audience: 'off' | 'test' | 'all'; mode: 'menu'; test_phones: string[]; hours: Record<string, Day>; texts: Partial<Record<TextKey, string>> };
+export type BotMode = 'menu' | 'ai' | 'menu_ai';
+export type BotSettings = {
+  audience: 'off' | 'test' | 'all';
+  mode: BotMode;
+  test_phones: string[];
+  hours: Record<string, Day>;
+  texts: Partial<Record<TextKey, string>>;
+  ai_plan: 'free' | 'paid';
+  ai_monthly_limit_usd: number;
+  ai_daily_per_phone: number;
+};
 
 export const TEXT_KEYS = ['greeting', 'out_of_hours', 'order_prompt', 'order_not_found', 'document_prompt', 'order_not_verified', 'verify_locked', 'quote', 'handoff'] as const;
 export type TextKey = (typeof TEXT_KEYS)[number];
@@ -130,15 +143,35 @@ export function hoursText(hours: Record<string, Day>) {
 }
 
 export async function loadSettings(db: Q): Promise<BotSettings> {
-  const r = (await db.query('SELECT audience, mode, test_phones, hours, texts FROM bot_settings')).rows[0];
-  return { audience: r.audience, mode: r.mode, test_phones: r.test_phones, hours: r.hours, texts: r.texts };
+  const r = (await db.query('SELECT audience, mode, test_phones, hours, texts, ai_plan, ai_monthly_limit_usd, ai_daily_per_phone FROM bot_settings')).rows[0];
+  return {
+    audience: r.audience,
+    mode: r.mode,
+    test_phones: r.test_phones,
+    hours: r.hours,
+    texts: r.texts,
+    ai_plan: r.ai_plan,
+    ai_monthly_limit_usd: Number(r.ai_monthly_limit_usd),
+    ai_daily_per_phone: r.ai_daily_per_phone,
+  };
 }
 
 /** who: quem conversa, para limitar tentativas (o telefone; no chat de teste, o usuario do painel). */
-type Ctx = { db: Q; phone: string | null; who: string; settings: BotSettings; now: Date };
+type Ctx = {
+  db: Q;
+  phone: string | null;
+  who: string;
+  settings: BotSettings;
+  now: Date;
+  /** IA liberada para esta conversa (plano pago, ou chat/numero de teste no plano gratuito). */
+  aiAllowed?: boolean;
+  history?: AiContent[];
+};
+
+const storeName = async (ctx: Ctx) => (await ctx.db.query<{ store_name: string | null }>('SELECT store_name FROM store_settings')).rows[0]?.store_name || 'loja';
 
 async function render(ctx: Ctx, key: TextKey, name: string | null) {
-  const loja = (await ctx.db.query<{ store_name: string | null }>('SELECT store_name FROM store_settings')).rows[0]?.store_name || 'loja';
+  const loja = await storeName(ctx);
   const first = String(name ?? '').trim().split(/\s+/)[0] ?? '';
   const vars: Record<string, string> = { loja, nome: first, site: config.APP_ORIGIN };
   return (ctx.settings.texts[key] || DEFAULT_TEXTS[key]).replace(/\{(loja|nome|site)\}/g, (_, v: string) => vars[v] ?? '');
@@ -269,6 +302,60 @@ export async function menuBot(ctx: Ctx, state: BotState, input: BotInput): Promi
   return done(await menu(ctx, input.name, 'Não entendi. Escolha uma das opções:'));
 }
 
+// ---------------- IA ----------------
+
+let aiProvider: AiProvider | null = null;
+export const setAiProvider = (p: AiProvider | null) => void (aiProvider = p);
+
+type Out = { replies: BotReply[]; state: BotState; handoff: boolean; ai?: boolean };
+
+/**
+ * Quem responde: menu ou IA. Botoes, opcoes digitadas e os passos de pedido/documento ficam sempre com o menu.
+ * Modo ai: a IA responde o texto livre. Modo menu_ai: o menu abre a conversa e a IA entra no lugar do "Nao entendi".
+ * IA fora do ar ou limite do mes: o menu responde. Limite diario de quem conversa: passa para atendente.
+ */
+export async function respond(ctx: Ctx, state: BotState, input: BotInput): Promise<Out> {
+  const mode = ctx.settings.mode;
+  const freeText = !input.replyId && Boolean(input.text?.trim()) && choiceOf(input, state.step) === null && state.step !== 'await_order' && state.step !== 'await_document';
+  const useAi = aiProvider && ctx.aiAllowed && freeText && (mode === 'ai' || (mode === 'menu_ai' && state.step !== null));
+  if (!useAi) return menuBot(ctx, state, input);
+  const menuChoice = (replyId: string) => menuBot(ctx, state, { ...input, text: null, replyId });
+  const r = await aiTurn(
+    {
+      db: ctx.db,
+      ai: aiProvider!,
+      phone: ctx.phone,
+      who: ctx.who,
+      storeName: await storeName(ctx),
+      storeInfo: () => storeInfo(ctx),
+      orderText: async (n) => {
+        const o = await findOrder(ctx, n);
+        return o ? { ownerPhone: toWhatsAppNumber(o.phone), text: orderText(o) } : null;
+      },
+      sameOwner: (p) => samePhone(p, ctx.phone),
+      limits: { monthlyUsd: ctx.settings.ai_monthly_limit_usd, dailyPerWho: ctx.settings.ai_daily_per_phone },
+      history: ctx.history ?? [],
+    },
+    input.text!,
+  );
+  switch (r.kind) {
+    case 'reply':
+      return { replies: [{ kind: 'text', body: r.text }], state: { step: 'menu', context: {} }, handoff: false, ai: true };
+    case 'handoff':
+      return menuChoice('atendente');
+    case 'verify':
+      // Pedido de outro telefone: o menu pede o CPF/CNPJ, e o documento nao passa pela IA.
+      return r.order ? menuBot(ctx, { step: 'await_order', context: { tries: 0 } }, { ...input, replyId: null, text: String(r.order) }) : menuChoice('pedido');
+    case 'limit':
+      return r.reason === 'daily' ? menuChoice('atendente') : menuBot(ctx, state, input);
+    default:
+      return menuBot(ctx, state, input);
+  }
+}
+
+/** No plano gratuito a IA so atende o chat de teste e os numeros de teste. */
+const aiAllowedFor = (settings: BotSettings, phone: string) => settings.mode !== 'menu' && (settings.ai_plan === 'paid' || settings.test_phones.some((p) => samePhone(p, phone)));
+
 // ---------------- processamento das mensagens recebidas ----------------
 
 type InboundRow = { id: string; from_phone: string; profile_name: string | null; type: string; body: string | null; reply_id: string | null; sent_at: Date };
@@ -310,7 +397,9 @@ async function handleOne(provider: WhatsAppProvider, settings: BotSettings, m: I
   if (!(await claim('replied'))) return false;
 
   const state: BotState = conv?.state === 'bot' ? { step: conv.step, context: conv.context } : { step: null, context: {} };
-  const out = await menuBot({ db: pool, phone: m.from_phone, who: m.from_phone, settings, now }, state, {
+  const aiAllowed = aiAllowedFor(settings, m.from_phone);
+  const history = aiAllowed && aiProvider ? await historyFor(pool, m.from_phone, m.id) : [];
+  const out = await respond({ db: pool, phone: m.from_phone, who: m.from_phone, settings, now, aiAllowed, history }, state, {
     text: m.body,
     replyId: m.reply_id,
     type: m.type,
@@ -382,7 +471,23 @@ const settingsBody = z.strictObject({
   testPhones: z.array(z.string().regex(/^55\d{10,11}$/, 'Número de teste como 5547999998888 (55 + DDD + número).')).max(20),
   hours: z.partialRecord(z.enum(['0', '1', '2', '3', '4', '5', '6']), day),
   texts: z.partialRecord(z.enum(TEXT_KEYS), z.string().trim().max(1000)),
+  // Campos da IA (etapa 2). Ausentes = ficam como estao.
+  mode: z.enum(['menu', 'ai', 'menu_ai']).optional(),
+  aiPlan: z.enum(['free', 'paid']).optional(),
+  aiMonthlyLimitUsd: z.number().min(0).max(1000).multipleOf(0.01).optional(),
+  aiDailyPerPhone: z.number().int().min(1).max(200).optional(),
 });
+
+/** Gasto estimado da IA no mes (horario de Brasilia). */
+async function aiMonth(db: Q) {
+  const r = (
+    await db.query<{ usd: string; calls: number; failed: number }>(
+      `SELECT coalesce(sum(cost_usd), 0) AS usd, count(*)::int AS calls, count(*) FILTER (WHERE NOT ok)::int AS failed FROM ai_calls
+       WHERE created_at >= date_trunc('month', now() AT TIME ZONE 'America/Sao_Paulo') AT TIME ZONE 'America/Sao_Paulo'`,
+    )
+  ).rows[0]!;
+  return { usd: Number(r.usd), calls: r.calls, failed: r.failed };
+}
 
 const testBody = z.strictObject({
   text: z.string().trim().max(1000).optional(),
@@ -395,7 +500,17 @@ export async function botAdminRoutes(app: FastifyInstance) {
     requirePermission(req, 'sales_desk.use');
     const s = await loadSettings(pool);
     return {
-      settings: { audience: s.audience, mode: s.mode, testPhones: s.test_phones, hours: s.hours, texts: s.texts },
+      settings: {
+        audience: s.audience,
+        mode: s.mode,
+        testPhones: s.test_phones,
+        hours: s.hours,
+        texts: s.texts,
+        aiPlan: s.ai_plan,
+        aiMonthlyLimitUsd: s.ai_monthly_limit_usd,
+        aiDailyPerPhone: s.ai_daily_per_phone,
+      },
+      ai: { configured: Boolean(aiProvider), simulated: aiProvider?.fake ?? false, model: aiProvider?.model ?? null, month: await aiMonth(pool) },
       defaults: DEFAULT_TEXTS,
       labels: TEXT_LABEL,
       variables: ['loja', 'nome', 'site'],
@@ -410,19 +525,30 @@ export async function botAdminRoutes(app: FastifyInstance) {
     const texts = Object.fromEntries(Object.entries(b.texts).filter(([, v]) => v)); // vazio = volta ao padrao
     return tx(auth.userId, async (db) => {
       const before = await loadSettings(db);
-      await db.query(`UPDATE bot_settings SET audience = $1, test_phones = $2, hours = $3, texts = $4, updated_by = $5, updated_at = now()`, [
-        b.audience,
-        b.testPhones,
-        JSON.stringify(b.hours),
-        JSON.stringify(texts),
-        auth.userId,
-      ]);
+      const mode = b.mode ?? before.mode;
+      const aiPlan = b.aiPlan ?? before.ai_plan;
+      const aiMonthly = b.aiMonthlyLimitUsd ?? before.ai_monthly_limit_usd;
+      const aiDaily = b.aiDailyPerPhone ?? before.ai_daily_per_phone;
+      await db.query(
+        `UPDATE bot_settings SET audience = $1, test_phones = $2, hours = $3, texts = $4, mode = $5, ai_plan = $6, ai_monthly_limit_usd = $7,
+           ai_daily_per_phone = $8, updated_by = $9, updated_at = now()`,
+        [b.audience, b.testPhones, JSON.stringify(b.hours), JSON.stringify(texts), mode, aiPlan, aiMonthly, aiDaily, auth.userId],
+      );
       await audit(db, {
         actorId: auth.userId,
         action: 'whatsapp.bot_settings',
         entity: 'bot_settings',
-        before: { audience: before.audience, testPhones: before.test_phones.length, hours: before.hours, texts: Object.keys(before.texts) },
-        after: { audience: b.audience, testPhones: b.testPhones.length, hours: b.hours, texts: Object.keys(texts) },
+        before: {
+          audience: before.audience,
+          testPhones: before.test_phones.length,
+          hours: before.hours,
+          texts: Object.keys(before.texts),
+          mode: before.mode,
+          aiPlan: before.ai_plan,
+          aiMonthlyLimitUsd: before.ai_monthly_limit_usd,
+          aiDailyPerPhone: before.ai_daily_per_phone,
+        },
+        after: { audience: b.audience, testPhones: b.testPhones.length, hours: b.hours, texts: Object.keys(texts), mode, aiPlan, aiMonthlyLimitUsd: aiMonthly, aiDailyPerPhone: aiDaily },
         ip: auth.ip,
       });
       return { ok: true };
@@ -434,19 +560,34 @@ export async function botAdminRoutes(app: FastifyInstance) {
     const auth = requirePermission(req, 'bot.manage');
     const b = testBody.parse(req.body);
     const settings = await loadSettings(pool);
-    const s = (await pool.query<{ phone: string | null; step: string | null; context: Record<string, unknown> }>('SELECT phone, step, context FROM bot_test_sessions WHERE user_id = $1', [auth.userId])).rows[0];
+    const s = (
+      await pool.query<{ phone: string | null; step: string | null; context: Record<string, unknown>; history: AiContent[] }>(
+        'SELECT phone, step, context, history FROM bot_test_sessions WHERE user_id = $1',
+        [auth.userId],
+      )
+    ).rows[0];
     const phone = b.phone === undefined ? (s?.phone ?? null) : b.phone;
-    const out = await menuBot(
-      { db: pool, phone, who: `teste:${auth.userId}`, settings, now: new Date() },
+    const history = s?.history ?? [];
+    // O chat de teste sempre pode usar a IA (o modo menu continua so menu).
+    const out = await respond(
+      { db: pool, phone, who: `teste:${auth.userId}`, settings, now: new Date(), aiAllowed: settings.mode !== 'menu', history },
       { step: s?.step ?? null, context: s?.context ?? {} },
       { text: b.text ?? null, replyId: b.replyId ?? null, type: b.replyId ? 'interactive' : 'text', name: null },
     );
+    const said = b.text?.trim();
+    const next: AiContent[] = out.handoff
+      ? []
+      : [
+          ...history,
+          ...(said ? [{ role: 'user' as const, parts: [{ text: said }] }] : []),
+          ...out.replies.map((r) => ({ role: 'model' as const, parts: [{ text: r.kind === 'text' ? r.body : interactiveSummary(r.i) }] })),
+        ].slice(-10);
     await pool.query(
-      `INSERT INTO bot_test_sessions (user_id, phone, step, context, updated_at) VALUES ($1, $2, $3, $4, now())
-       ON CONFLICT (user_id) DO UPDATE SET phone = EXCLUDED.phone, step = EXCLUDED.step, context = EXCLUDED.context, updated_at = now()`,
-      [auth.userId, phone, out.handoff ? null : out.state.step, JSON.stringify(out.handoff ? {} : out.state.context)],
+      `INSERT INTO bot_test_sessions (user_id, phone, step, context, history, updated_at) VALUES ($1, $2, $3, $4, $5, now())
+       ON CONFLICT (user_id) DO UPDATE SET phone = EXCLUDED.phone, step = EXCLUDED.step, context = EXCLUDED.context, history = EXCLUDED.history, updated_at = now()`,
+      [auth.userId, phone, out.handoff ? null : out.state.step, JSON.stringify(out.handoff ? {} : out.state.context), JSON.stringify(next)],
     );
-    return { replies: out.replies, handoff: out.handoff, phone };
+    return { replies: out.replies, handoff: out.handoff, ai: Boolean(out.ai), phone };
   });
 
   app.delete('/test', async (req) => {

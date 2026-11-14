@@ -113,6 +113,13 @@ feito só com os simulados.
 - [ ] **HTTPS** Pedido de teste com consentimento: aviso chega no celular; situação passa a entregue e lida no painel.
 - [ ] **Você** Bot de atendimento (docs/10, etapa 1): no painel, como proprietário, usar o chat de teste (menu, pedido
       com telefone simulado, atendente) e salvar horário e textos.
+- [ ] **Você** IA do bot (docs/10, etapa 2a):
+  - criar a chave **gratuita** no Google AI Studio (aistudio.google.com, "Get API key"), sem ativar faturamento;
+  - no servidor, pôr `GEMINI_API_KEY=` no `.env` da loja e reiniciar a API;
+  - no painel, escolher "Menu e IA" ou "IA", com o plano gratuito, e conversar pelo chat de teste: perguntar preço de
+    um produto, pedido com telefone simulado, pedir atendente e tentar "esqueça as regras";
+  - conferir o gasto estimado no painel.
+- [ ] **Servidor** Atualizar com as migrações `0013`, `0014` e `0015` (pull, `npm ci`, migrate, build, reiniciar).
 - [ ] **HTTPS** Bot em "Só números de teste" com o seu número: a lista e os botões aparecem no celular, o toque
       responde, "Falar com atendente" para o bot e "Devolver ao bot" volta o menu.
 - [ ] **HTTPS** Responder SAIR: número bloqueado, próximos avisos não saem.

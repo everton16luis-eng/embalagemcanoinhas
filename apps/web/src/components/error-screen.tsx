@@ -28,7 +28,11 @@ export function ErrorScreen({ error, retry }: { error: Error & { digest?: string
       <p className="mt-2 text-sm text-ink-soft">
         {stale ? 'Recarregue a página para usar a versão nova.' : 'Tente de novo. Se continuar, recarregue a página. Nada do que já estava salvo foi perdido.'}
       </p>
-      {error.digest && <p className="mt-2 font-mono text-xs text-ink-faint">Código: {error.digest}</p>}
+      {(error.digest || error.message) && (
+        <p className="mt-3 break-words font-mono text-xs text-ink-faint">
+          {error.digest ? `Código: ${error.digest}` : `Detalhe técnico: ${error.message.slice(0, 200)}`}
+        </p>
+      )}
       <div className="mt-5 flex justify-center gap-2">
         {!stale && (
           <button type="button" onClick={() => retry()} className="h-9 rounded-[var(--radius-ctl)] bg-act px-3.5 text-sm font-medium text-white hover:bg-act-dark">

@@ -268,11 +268,18 @@ function Settings({ data, reload }: { data: BotData; reload: () => void }) {
   );
 }
 
+function isReply(x: unknown): x is Reply {
+  const r = x as Reply | null;
+  if (!r || typeof r !== 'object') return false;
+  if (r.kind === 'text') return typeof r.body === 'string';
+  return r.kind === 'interactive' && !!r.i && typeof r.i.body === 'string';
+}
+
 function Bubble({ line, onChoose, busy }: { line: ChatLine; onChoose: (id: string, title: string) => void; busy: boolean }) {
   if (line.from === 'note') return <li className="text-center text-[12px] text-ink-faint">{line.text}</li>;
   const r = line.reply;
   const body = r.kind === 'text' ? r.body : r.i.body;
-  const options = r.kind === 'interactive' ? (r.i.type === 'button' ? r.i.buttons : r.i.rows) : [];
+  const options = (r.kind === 'interactive' ? (r.i.type === 'button' ? r.i.buttons : r.i.rows) : null) ?? [];
   return (
     <li className={line.from === 'you' ? 'ml-6 text-right sm:ml-8' : 'mr-6 sm:mr-8'}>
       <div className={`inline-block max-w-full rounded-md px-3 py-2 text-left text-sm ${line.from === 'you' ? 'border border-line bg-card' : 'bg-sunken'}`}>
@@ -307,12 +314,12 @@ function TestChat() {
     setLines((l) => [...l, { from: 'you', reply: { kind: 'text', body: shown } }]);
     try {
       const digits = phone.replace(/\D/g, '');
-      const r = await api<{ replies: Reply[]; handoff: boolean; ai: boolean }>('/admin/whatsapp/bot/test', { method: 'POST', body: { ...input, phone: digits || null } });
-      setLines((l) => [
-        ...l,
-        ...r.replies.map((reply): ChatLine => ({ from: 'bot', reply, ai: r.ai })),
-        ...(r.handoff ? [{ from: 'note' as const, text: 'Aqui a conversa iria para a caixa de entrada, e o bot pararia de responder.' }] : []),
-      ]);
+      const r = await api<{ replies?: unknown; handoff?: boolean; ai?: boolean } | null>('/admin/whatsapp/bot/test', { method: 'POST', body: { ...input, phone: digits || null } });
+      // A resposta é lida aqui, dentro do try: um formato inesperado vira aviso, não derruba a tela.
+      if (!r || !Array.isArray(r.replies)) throw new Error('O servidor respondeu num formato inesperado. Recarregue a página e tente de novo.');
+      const added: ChatLine[] = (r.replies as Reply[]).filter(isReply).map((reply) => ({ from: 'bot', reply, ai: Boolean(r.ai) }));
+      if (r.handoff) added.push({ from: 'note', text: 'Aqui a conversa iria para a caixa de entrada, e o bot pararia de responder.' });
+      setLines((l) => [...l, ...added]);
     } catch (err) {
       setError((err as Error).message);
     } finally {

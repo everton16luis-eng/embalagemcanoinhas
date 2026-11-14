@@ -318,14 +318,15 @@ Ligue a marca ao endereço. Faça um backup e veja a linha do barbasystem:
 cp -a /var/www/roundcube/config/config.inc.php /var/www/roundcube/config/config.inc.php.loja-bak && grep -n "include_host_config" -A6 /var/www/roundcube/config/config.inc.php
 ```
 
-Abra o arquivo e, logo abaixo da linha `'webmail.barbasystem.com.br' => 'barbasystem.inc.php',`, acrescente:
+A linha fica numa só (`$config['include_host_config'] = ['webmail.barbasystem.com.br' => 'barbasystem.inc.php'];`,
+linha 27 em 14/11/2026). Acrescente a loja no fim da lista, usando o número da linha que o `grep` mostrou:
 
-```
-    'webmail.embalagemcanoinhas.com.br' => 'embalagemcanoinhas.inc.php',
+```bash
+sed -i "27s|'barbasystem.inc.php'\];|'barbasystem.inc.php', 'webmail.embalagemcanoinhas.com.br' => 'embalagemcanoinhas.inc.php'];|" /var/www/roundcube/config/config.inc.php
 ```
 
 ```bash
-nano /var/www/roundcube/config/config.inc.php
+sed -n 27p /var/www/roundcube/config/config.inc.php
 ```
 
 ```bash

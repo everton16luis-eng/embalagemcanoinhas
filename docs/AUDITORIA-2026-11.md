@@ -86,7 +86,7 @@ de swap, disco com 14% de uso). O servidor também roda outros sistemas (barbear
 | V1 | Cópias de backup (`db.dump` com o banco inteiro) e a pasta `.local` legíveis por **qualquer usuário** da máquina; um site vizinho comprometido leria clientes e hashes de senha. | Alta | **Corrigido** no código (`umask 077` no backup e `UMask=0077` na unidade); permissões das cópias existentes a corrigir no servidor |
 | V2 | SSH aceita **login do root com senha** (`PermitRootLogin yes`, `PasswordAuthentication yes`). fail2ban ativo reduz, mas não elimina, a força bruta. Vale para o servidor inteiro. | Alta | **Pendente** (decisão sua: exige confirmar o acesso por chave antes) |
 | V3 | 13 atualizações de segurança pendentes (o `unattended-upgrades` está ligado). | Média | **Pendente** (janela de manutenção: afeta todos os sites) |
-| V4 | Duas unidades do systemd com falha; o script antigo não mostrava o nome. | A conferir | **Pendente** (`systemctl --failed`) |
+| V4 | Duas unidades do systemd com falha: `cloud-final` (scripts de primeira inicialização da hospedagem) e `motd-news` (notícias da mensagem de login). Nenhuma é da loja nem afeta segurança. | Informativo | **Atenção** (ver o log do `cloud-final` se quiser; `systemctl reset-failed` limpa o aviso) |
 | V5 | Serviços de outros sistemas ouvindo em todas as interfaces (MySQL 3306/33060, FTP 21, 3000, 3001, 9443, 6081). O firewall bloqueia (padrão negar entrada), mas é uma camada só. Regra `8433:8443` provavelmente devia ser só `8443`. | Baixa | **Atenção** (não são da loja; não mexer sem os responsáveis) |
 | V6 | `/backups/` e `/storage/` respondem 308 (o Next tira a barra final) em vez de 404 direto. | Baixa | **Pendente** (conferir o destino; o script agora segue o redirecionamento) |
 

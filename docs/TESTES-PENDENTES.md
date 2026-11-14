@@ -112,7 +112,7 @@ feito só com os simulados.
 - [x] **Servidor** Auditoria do servidor (14/11/2026): ver seção 3.3 do relatório.
 - [ ] **Servidor** Permissões das cópias de backup existentes (700/600) e da `.local`; conferir de novo com o script.
 - [ ] **Você** SSH só com chave e sem senha para o root (testar a chave numa segunda janela antes).
-- [ ] **Servidor** 13 atualizações de segurança (`apt upgrade`) em horário de pouco movimento; `systemctl --failed`.
+- [ ] **Servidor** 13 atualizações de segurança (`apt upgrade`) em horário de pouco movimento.
 - [ ] **Servidor** Instalar `deploy/nginx/00-loja-limites.conf` e os sites da loja atualizados; `nginx -t` antes do
       reload; conferir que a loja abre e que `curl -I` não mostra a versão do nginx.
 - [ ] **Servidor** Carga no VPS de outra máquina, fora do horário de movimento: `fumaca` e depois `inicial`

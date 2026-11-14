@@ -5,7 +5,9 @@
 # Depois, copie a saida para a conversa. Revise antes: ela mostra nomes de servicos, portas e caminhos.
 set -u
 APP=/srv/loja-embalagens
-URL_LOCAL=${URL_LOCAL:-https://127.0.0.1:8447}
+# Endereco da loja. Com o dominio no ar, as sondas vao direto ao nginx deste servidor (--resolve), sem depender do DNS.
+URL_LOCAL=${URL_LOCAL:-https://embalagemcanoinhas.com.br}
+RESOLVE="--resolve embalagemcanoinhas.com.br:443:127.0.0.1"
 sec() { printf '\n===== %s =====\n' "$1"; }
 
 sec "Sistema"
@@ -72,15 +74,16 @@ for f in /etc/nginx/sites-enabled/*embalagem* /etc/nginx/sites-enabled/loja*; do
 done
 
 sec "HTTPS e cabecalhos"
-for u in "$URL_LOCAL" https://embalagemcanoinhas.com.br; do
+# Loja e painel: o painel tem CSP propria (estrita) e X-Frame-Options.
+for u in "$URL_LOCAL/" "$URL_LOCAL/painel/entrar"; do
   echo "--- $u"
-  curl -skI --max-time 10 "$u/" | grep -Ei '^(HTTP|strict-transport|content-security|x-frame|x-content-type|referrer-policy|permissions-policy|server|x-powered-by)'
+  curl -skI $RESOLVE --max-time 10 "$u" | grep -Ei '^(HTTP|strict-transport|content-security|x-frame|x-content-type|referrer-policy|permissions-policy|server|x-powered-by)'
 done
 echo | openssl s_client -connect embalagemcanoinhas.com.br:443 -servername embalagemcanoinhas.com.br 2>/dev/null | openssl x509 -noout -subject -issuer -enddate 2>/dev/null || echo "certificado do dominio indisponivel"
 
 sec "Arquivos que NAO podem abrir pela web (esperado: 404)"
 for p in /.env /.git/config /.local/credentials.json /backups/ /storage/ /package.json /apps/api/.env /api/v1/public/images/..%2F..%2F.env/320.webp; do
-  printf '%-45s %s\n' "$p" "$(curl -skL -o /dev/null -w '%{http_code}' --max-time 10 "$URL_LOCAL$p")"
+  printf '%-45s %s\n' "$p" "$(curl -skL $RESOLVE -o /dev/null -w '%{http_code}' --max-time 10 "$URL_LOCAL$p")"
 done
 
 sec "Dependencias (npm audit, so producao)"

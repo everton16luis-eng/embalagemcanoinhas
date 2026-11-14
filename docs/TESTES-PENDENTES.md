@@ -19,6 +19,8 @@ Legenda: **HTTPS** = precisa da API publicada com certificado · **Você** = dep
 - [ ] **HTTPS** Backup agendado no servidor, cópia para fora dele e teste de restauração lá.
 - [ ] **Servidor** Fotos de produto pelo celular e pelo computador no servidor (nginx com 12 MB): foto de 7–8 MB
       sobe; acima de 8 MB aparece a mensagem do sistema; depois de `systemctl restart loja-api` as fotos continuam.
+      Fotos prontas para o teste em `.local/fotos-teste/` (7,8 MB deve subir; 8,2 MB deve recusar). Antes de testar,
+      atualizar o servidor com a correcao de 14/11/2026 (acima de 8 MB dava erro 500 em parte das tentativas).
 - [ ] **Você** Onde guardar as cópias fora do servidor e por quanto tempo (retenção).
 - [ ] **Você** Provedor de e-mail transacional; testar a recuperação de senha chegando de verdade.
 - [ ] Inspeção visual por captura de tela (painel e loja, desktop e celular): até aqui a verificação foi por texto e

@@ -130,6 +130,8 @@ export async function purchaseInvoiceRoutes(app: FastifyInstance) {
     const buf = await file.toBuffer().catch(() => {
       throw new AppError(413, 'TOO_LARGE', 'Arquivo grande demais.');
     });
+    // Mesmo cuidado das fotos: o plugin pode devolver o arquivo cortado no limite sem erro.
+    if (file.file.truncated) throw new AppError(413, 'TOO_LARGE', 'Arquivo grande demais.');
     const nfe = parsePurchaseNfe(buf);
     const existing = (await pool.query<{ id: string }>('SELECT id FROM purchase_invoices WHERE access_key = $1', [nfe.accessKey])).rows[0];
     if (existing) return reply.code(200).send({ ...(await view(pool, existing.id)), duplicate: true });

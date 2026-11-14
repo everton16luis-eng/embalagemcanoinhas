@@ -17,9 +17,14 @@ const tooMany = () => new AppError(409, 'TOO_MANY_IMAGES', `No máximo ${MAX_IMA
 async function readUpload(req: FastifyRequest) {
   const file = await req.file({ limits: { fileSize: MAX_IMAGE_BYTES, files: 1 } });
   if (!file) throw new AppError(422, 'NO_FILE', 'Envie um arquivo de imagem.');
-  return file.toBuffer().catch(() => {
-    throw new AppError(413, 'FILE_TOO_LARGE', 'A imagem deve ter no máximo 8 MB.');
+  const tooLarge = () => new AppError(413, 'FILE_TOO_LARGE', 'A imagem deve ter no máximo 8 MB.');
+  const buf = await file.toBuffer().catch(() => {
+    throw tooLarge();
   });
+  // O plugin as vezes devolve o arquivo cortado no limite sem erro (depende de como os pedacos chegam pela rede):
+  // sem esta conferencia, o JPEG cortado ia para o sharp e virava erro 500 (achado em 14/11/2026).
+  if (file.file.truncated) throw tooLarge();
+  return buf;
 }
 
 export async function productImageRoutes(app: FastifyInstance) {

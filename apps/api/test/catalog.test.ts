@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import sharp from 'sharp';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { pool } from '../src/db/pool.js';
-import { appRole, loggedAs, makeApp, owner, productPayload, resetCatalog, uid } from './helpers.js';
+import { appRole, COOKIE, loggedAs, makeApp, ORIGIN, owner, productPayload, resetCatalog, uid } from './helpers.js';
 
 let app: FastifyInstance;
 let manager: Awaited<ReturnType<typeof loggedAs>>;
@@ -214,6 +214,29 @@ describe('produtos, variações e embalagens', () => {
     expect((await sendImage(created.id, tiny)).json().error.code).toBe('IMAGE_TOO_SMALL');
     const big = await sendImage(created.id, Buffer.alloc(8 * 1024 * 1024 + 10, 1));
     expect(big.statusCode).toBe(413);
+    expect((await manager.get(`${P}/${created.id}`)).json().product.images).toHaveLength(0);
+  });
+
+  it('foto JPEG acima de 8 MB chegando em pedaços pela rede: 413 com mensagem, nunca erro interno', async () => {
+    // Pelo inject o corpo chega inteiro e o limite sempre dispara. Pela rede o arquivo chega em pedaços e o
+    // plugin entregava o JPEG cortado em 8 MB sem erro; o sharp falhava e a resposta era 500 (achado em 14/11/2026).
+    const created = (await manager.post(P, productPayload())).json().product;
+    const big = await sharp({ create: { width: 4000, height: 3000, channels: 3, background: '#808080', noise: { type: 'gaussian', mean: 128, sigma: 60 } } })
+      .jpeg({ quality: 95, chromaSubsampling: '4:4:4' })
+      .toBuffer()
+      // Passa do limite por pouco (como a foto real de 8,24 MB): o excesso cabe no ultimo pedaco recebido.
+      .then((b) => b.subarray(0, 8 * 1024 * 1024 + 250_000));
+    expect(big.length).toBeGreaterThan(8 * 1024 * 1024);
+    const address = await app.listen({ port: 0, host: '127.0.0.1' });
+    // A falha era intermitente (dependia da ordem dos pedacos): varias tentativas.
+    const codes: string[] = [];
+    for (let i = 0; i < 8; i++) {
+      const fd = new FormData();
+      fd.append('file', new Blob([big], { type: 'image/jpeg' }), 'grande.jpg');
+      const res = await fetch(`${address}${P}/${created.id}/images`, { method: 'POST', headers: { origin: ORIGIN, cookie: `${COOKIE}=${manager.sid}` }, body: fd });
+      codes.push(`${res.status} ${((await res.json()) as { error?: { code: string } }).error?.code}`);
+    }
+    expect(codes).toEqual(Array(8).fill('413 FILE_TOO_LARGE'));
     expect((await manager.get(`${P}/${created.id}`)).json().product.images).toHaveLength(0);
   });
 

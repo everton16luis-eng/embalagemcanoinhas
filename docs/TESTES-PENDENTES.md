@@ -17,10 +17,10 @@ Legenda: **HTTPS** = precisa da API publicada com certificado · **Você** = dep
 - [x] Backup e teste de restauração **local** (13/11/2026): `npm run backup` e `backup:restore-test` OK; arquivo
       adulterado detectado pelo `backup:verify`. Ver [BACKUP.md](BACKUP.md).
 - [ ] **HTTPS** Backup agendado no servidor, cópia para fora dele e teste de restauração lá.
-- [ ] **Servidor** Fotos de produto pelo celular e pelo computador no servidor (nginx com 12 MB): foto de 7–8 MB
-      sobe; acima de 8 MB aparece a mensagem do sistema; depois de `systemctl restart loja-api` as fotos continuam.
-      Fotos prontas para o teste em `.local/fotos-teste/` (7,8 MB deve subir; 8,2 MB deve recusar). Antes de testar,
-      atualizar o servidor com a correcao de 14/11/2026 (acima de 8 MB dava erro 500 em parte das tentativas).
+- [x] **Servidor** Fotos pelo computador no servidor: 7,8 MB subiu e 8,2 MB foi recusada com a mensagem do sistema,
+      já com a correção do erro 500 acima de 8 MB (14/11/2026). Fotos do teste em `.local/fotos-teste/`.
+- [ ] **Servidor** Foto de produto tirada pelo celular, enviada pelo painel no servidor.
+- [ ] **Servidor** Depois de `systemctl restart loja-api` as fotos continuam aparecendo na loja e no painel.
 - [ ] **Você** Onde guardar as cópias fora do servidor e por quanto tempo (retenção).
 - [ ] **Você** Provedor de e-mail transacional; testar a recuperação de senha chegando de verdade.
 - [ ] Inspeção visual por captura de tela (painel e loja, desktop e celular): até aqui a verificação foi por texto e
@@ -136,7 +136,7 @@ feito só com os simulados.
 - [x] **HTTPS** IP real do cliente na Auditoria (nginx sobrescrevendo `X-Forwarded-For` + `TRUST_PROXY=1`) (14/11/2026).
 - [x] **Servidor** `loja-backup.timer` gerou a cópia da madrugada (14/11/2026, 03:30).
 - [ ] **Você** Cópia dos backups para fora do servidor.
-- [ ] **Servidor** Envio de foto de 8 MB pelo painel passando por nginx e Next.
+- [x] **Servidor** Envio de foto de 8 MB pelo painel passando por nginx e Next (14/11/2026).
 - [ ] **Você** Provedor de e-mail (transacional): sem ele a recuperação de senha por e-mail fica desligada e quem
       esquecer a senha do painel depende de alguém com "Gerenciar usuários" gerar uma nova (tela Usuários). Clientes
       da loja ainda não têm recuperação de senha: precisa do provedor de e-mail. Decidir o provedor antes do lançamento.

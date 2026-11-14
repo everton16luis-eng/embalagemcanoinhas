@@ -244,6 +244,118 @@ No painel, em E-mails → Envio e textos:
 
 Por fim, teste "Esqueci minha senha" na entrada do painel.
 
+### 7. Webmail próprio (`webmail.embalagemcanoinhas.com.br`)
+
+É o mesmo Roundcube do portal e do barbasystem (`/var/www/roundcube`), com o endereço e a marca da loja. Os arquivos
+são copiados dos do barbasystem, que já funcionam, trocando só o domínio. Os arquivos do portal, do barbasystem e do
+CloudPanel não são alterados.
+
+**a) DNS na Hostinger.** Crie um registro A `webmail` com o mesmo IP de `webmail.barbasystem.com.br`:
+
+```bash
+dig +short A webmail.barbasystem.com.br @8.8.8.8
+```
+
+Espere até este comando responder o mesmo IP:
+
+```bash
+dig +short A webmail.embalagemcanoinhas.com.br @8.8.8.8
+```
+
+**b) Certificado.** Primeiro um arquivo nginx só para o desafio do certbot:
+
+```bash
+cp /srv/loja-embalagens/deploy/email/webmail-http-inicial.conf /etc/nginx/sites-available/webmail.embalagemcanoinhas.com.br.conf
+```
+
+```bash
+ln -s /etc/nginx/sites-available/webmail.embalagemcanoinhas.com.br.conf /etc/nginx/sites-enabled/ && nginx -t && systemctl reload nginx
+```
+
+```bash
+certbot certonly --webroot -w /var/www/letsencrypt -d webmail.embalagemcanoinhas.com.br
+```
+
+Nunca use `certbot --nginx`: ele altera os arquivos do CloudPanel.
+
+**c) Arquivo nginx definitivo**, copiado do barbasystem:
+
+```bash
+sed 's/barbasystem\.com\.br/embalagemcanoinhas.com.br/g; s/barbasystem/embalagemcanoinhas/g' /etc/nginx/sites-available/webmail.barbasystem.com.br.conf > /tmp/webmail-loja.conf
+```
+
+Confira a diferença. Só podem mudar nomes de domínio, caminhos do certificado e nomes de log:
+
+```bash
+diff /etc/nginx/sites-available/webmail.barbasystem.com.br.conf /tmp/webmail-loja.conf
+```
+
+```bash
+mv /tmp/webmail-loja.conf /etc/nginx/sites-available/webmail.embalagemcanoinhas.com.br.conf && nginx -t && systemctl reload nginx
+```
+
+Se o `nginx -t` falhar, nada é recarregado. Volte ao arquivo temporário do item b e me mande o erro.
+
+**d) Marca da loja no Roundcube.** Copie a marca do barbasystem:
+
+```bash
+sed 's/barbasystem\.com\.br/embalagemcanoinhas.com.br/g' /var/www/roundcube/config/barbasystem.inc.php > /var/www/roundcube/config/embalagemcanoinhas.inc.php
+```
+
+Abra o arquivo e troque os nomes que ainda forem do barbasystem (por exemplo `product_name`) por `Embalagem Canoinhas`:
+
+```bash
+nano /var/www/roundcube/config/embalagemcanoinhas.inc.php
+```
+
+```bash
+chown --reference=/var/www/roundcube/config/barbasystem.inc.php /var/www/roundcube/config/embalagemcanoinhas.inc.php && chmod --reference=/var/www/roundcube/config/barbasystem.inc.php /var/www/roundcube/config/embalagemcanoinhas.inc.php
+```
+
+Ligue a marca ao endereço. Faça um backup e veja a linha do barbasystem:
+
+```bash
+cp -a /var/www/roundcube/config/config.inc.php /var/www/roundcube/config/config.inc.php.loja-bak && grep -n "include_host_config" -A6 /var/www/roundcube/config/config.inc.php
+```
+
+Abra o arquivo e, logo abaixo da linha `'webmail.barbasystem.com.br' => 'barbasystem.inc.php',`, acrescente:
+
+```
+    'webmail.embalagemcanoinhas.com.br' => 'embalagemcanoinhas.inc.php',
+```
+
+```bash
+nano /var/www/roundcube/config/config.inc.php
+```
+
+```bash
+php -l /var/www/roundcube/config/config.inc.php && php -l /var/www/roundcube/config/embalagemcanoinhas.inc.php
+```
+
+Os dois têm que responder `No syntax errors detected`. Se um deles falhar, volte o backup com
+`cp -a /var/www/roundcube/config/config.inc.php.loja-bak /var/www/roundcube/config/config.inc.php`.
+
+**e) Endereço no painel.** As instruções das caixas passam a mostrar o webmail:
+
+```bash
+grep -q "^EMAIL_WEBMAIL_URL=" /srv/loja-embalagens/.env || echo "EMAIL_WEBMAIL_URL=https://webmail.embalagemcanoinhas.com.br" >> /srv/loja-embalagens/.env
+```
+
+```bash
+systemctl restart loja-api
+```
+
+**Conferir:**
+- abra `https://webmail.embalagemcanoinhas.com.br`: o cadeado aparece e a tela mostra o nome da loja;
+- entre com `contato@embalagemcanoinhas.com.br` e a senha da caixa;
+- `https://webmail.barbasystem.com.br` continua com a marca do barbasystem.
+
+O certificado renova sozinho pelo timer do certbot. Para confirmar:
+
+```bash
+certbot renew --dry-run --cert-name webmail.embalagemcanoinhas.com.br
+```
+
 ### Erros comuns
 
 Erros no log (`journalctl -u loja-api -n 100 --no-pager`) e no Histórico:

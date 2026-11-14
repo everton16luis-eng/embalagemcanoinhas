@@ -5,6 +5,7 @@ import { Guard, useMe } from '@/components/shell';
 import { Badge, Button, Empty, Field, Input, Notice, PageHeader, Panel, Textarea } from '@/components/ui';
 import { api } from '@/lib/api';
 import { when } from '@/lib/format';
+import { BotTab } from './bot-panel';
 
 type Template = { event: string; name: string; language: string; active: boolean; updated_at: string };
 type Overview = {
@@ -14,9 +15,12 @@ type Overview = {
   events: { event: string; label: string; template: Template | null }[];
   counts: { status: string; n: number }[];
 };
-type Conversation = { phone: string; last_at: string; last_dir: 'in' | 'out'; last_body: string | null; name: string | null; window_open: boolean | null };
-type Message = { dir: 'in' | 'out'; id: string; body: string | null; type: string; status: string | null; error: string | null; event: string | null; order_number: number | null; at: string };
-type Thread = { phone: string; messages: Message[]; optedOut: boolean; lastInboundAt: string | null; windowOpenUntil: string | null };
+type ConvState = 'bot' | 'agent' | 'closed' | null;
+type Conversation = { phone: string; last_at: string; last_dir: 'in' | 'out'; last_body: string | null; name: string | null; window_open: boolean | null; state: ConvState; assigned_name: string | null };
+type Message = { dir: 'in' | 'out'; id: string; body: string | null; type: string; status: string | null; error: string | null; event: string | null; order_number: number | null; source: string | null; at: string };
+type Thread = { phone: string; messages: Message[]; optedOut: boolean; state: ConvState; assignedName: string | null; lastInboundAt: string | null; windowOpenUntil: string | null };
+
+const SOURCE: Record<string, string> = { bot: 'Bot', agent: 'Atendente', system: 'Aviso automático' };
 
 const STATUS: Record<string, { label: string; tone: 'good' | 'warn' | 'bad' | 'neutral' | 'act' }> = {
   queued: { label: 'Na fila', tone: 'act' },
@@ -170,10 +174,38 @@ function ThreadView({ phone, onSent }: { phone: string; onSent: () => void }) {
     }
   }
 
+  async function handover(action: 'take' | 'release') {
+    setBusy(true);
+    setError('');
+    try {
+      await api(`/admin/whatsapp/conversations/${action}`, { method: 'POST', body: { phone } });
+      onSent();
+      await load();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (!thread) return error ? <Notice tone="bad">{error}</Notice> : <p className="text-sm text-ink-faint">Carregando…</p>;
   const canReply = !thread.optedOut && Boolean(thread.windowOpenUntil);
   return (
     <div>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md bg-sunken px-3 py-2 text-sm">
+        <span>
+          {thread.state === 'agent' ? `Com atendente${thread.assignedName ? `: ${thread.assignedName}` : ''}. O bot não responde.` : 'Com o bot (quando ligado).'}
+        </span>
+        {thread.state === 'agent' ? (
+          <Button busy={busy} onClick={() => handover('release')}>
+            Devolver ao bot
+          </Button>
+        ) : (
+          <Button busy={busy} onClick={() => handover('take')}>
+            Assumir conversa
+          </Button>
+        )}
+      </div>
       <ol className="max-h-[28rem] space-y-2 overflow-y-auto" aria-label={`Mensagens de ${phoneText(phone)}`}>
         {thread.messages.map((m) => (
           <li key={`${m.dir}-${m.id}`} className={m.dir === 'in' ? 'mr-8' : 'ml-8 text-right'}>
@@ -181,6 +213,7 @@ function ThreadView({ phone, onSent }: { phone: string; onSent: () => void }) {
               <p className="whitespace-pre-wrap break-words">{m.body ?? (m.type === 'text' ? '' : `[${m.type}]`)}</p>
               <p className="mt-1 flex flex-wrap items-center gap-2 text-[12px] text-ink-faint">
                 {when(m.at)}
+                {m.dir === 'out' && m.source && <span>{SOURCE[m.source] ?? m.source}</span>}
                 {m.order_number && <span>Pedido #{m.order_number}</span>}
                 {m.dir === 'out' && m.status && <Badge tone={STATUS[m.status]?.tone ?? 'neutral'}>{STATUS[m.status]?.label ?? m.status}</Badge>}
               </p>
@@ -252,7 +285,10 @@ function Inbox() {
                 >
                   <span className="flex items-center justify-between gap-2">
                     <span className="font-medium">{c.name ?? phoneText(c.phone)}</span>
-                    {c.window_open && <Badge tone="act">Responder</Badge>}
+                    <span className="flex gap-1">
+                      {c.state === 'agent' && <Badge tone="warn">Atendente</Badge>}
+                      {c.window_open && <Badge tone="act">Responder</Badge>}
+                    </span>
                   </span>
                   {c.name && <span className="block text-[12px] text-ink-faint">{phoneText(c.phone)}</span>}
                   <span className="block truncate text-[13px] text-ink-soft">
@@ -271,7 +307,14 @@ function Inbox() {
   );
 }
 
+const TABS = [
+  { id: 'conversas', label: 'Conversas' },
+  { id: 'bot', label: 'Bot de atendimento' },
+  { id: 'avisos', label: 'Avisos do pedido' },
+] as const;
+
 function WhatsAppPage() {
+  const [tab, setTab] = useState<(typeof TABS)[number]['id']>('conversas');
   const [data, setData] = useState<Overview | null>(null);
   const [error, setError] = useState('');
   const load = useCallback(() => api<Overview>('/admin/whatsapp').then(setData, (e) => setError(e.message)), []);
@@ -304,8 +347,22 @@ function WhatsAppPage() {
               </div>
             ))}
           </dl>
-          <Templates data={data} reload={load} />
-          <Inbox />
+          <div role="tablist" aria-label="Seções" className="flex flex-wrap gap-1 border-b border-line">
+            {TABS.map((t) => (
+              <button
+                key={t.id}
+                role="tab"
+                aria-selected={tab === t.id}
+                onClick={() => setTab(t.id)}
+                className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium ${tab === t.id ? 'border-act text-ink' : 'border-transparent text-ink-soft hover:text-ink'}`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+          {tab === 'conversas' && <Inbox />}
+          {tab === 'bot' && <BotTab />}
+          {tab === 'avisos' && <Templates data={data} reload={load} />}
         </div>
       )}
     </>

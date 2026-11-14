@@ -31,6 +31,8 @@ export const PERMISSIONS = [
   'email.view',
   'email.manage',
   'email.accounts',
+  // Bot de atendimento do WhatsApp: ligar, textos, horario, chat de teste (docs/10-bot-atendimento-proposta.md).
+  'bot.manage',
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
@@ -48,7 +50,7 @@ const ROLE_DEFAULTS: Record<Role, readonly Permission[]> = {
 };
 
 /** Permissoes que exigem verificacao em duas etapas ativa na conta. */
-export const MFA_REQUIRED: ReadonlySet<Permission> = new Set(['users.manage', 'settings.manage', 'company.manage', 'fiscal.manage', 'fiscal.validate', 'prices.manage', 'marketplaces.manage', 'email.manage', 'email.accounts']);
+export const MFA_REQUIRED: ReadonlySet<Permission> = new Set(['users.manage', 'settings.manage', 'company.manage', 'fiscal.manage', 'fiscal.validate', 'prices.manage', 'marketplaces.manage', 'email.manage', 'email.accounts', 'bot.manage']);
 
 export const roleDefaults = (role: string) => new Set<Permission>(ROLE_DEFAULTS[role as Role] ?? []);
 

@@ -9,6 +9,47 @@ import { safeEqual } from './fiscal.js';
 export type TemplateSend = { to: string; name: string; language: string; params: Record<string, string> };
 export type SendResult = { wamid: string };
 
+/**
+ * Mensagem interativa. Limites da documentacao oficial (interactive-reply-buttons-messages e
+ * interactive-list-messages, conferidos em 14/11/2026): ate 3 botoes com titulo de 20 caracteres e corpo de 1024;
+ * lista com ate 10 linhas, titulo da linha 24, descricao 72, botao 20, corpo 4096, rodape 60.
+ */
+export type Interactive =
+  | { type: 'button'; body: string; footer?: string; buttons: { id: string; title: string }[] }
+  | { type: 'list'; body: string; footer?: string; button: string; rows: { id: string; title: string; description?: string }[] };
+
+const cut = (s: string, n: number) => (s.length <= n ? s : `${s.slice(0, n - 1)}…`);
+
+/** Objeto "interactive" da Cloud API, cortando cada texto no limite da Meta. */
+export function interactivePayload(i: Interactive): Record<string, unknown> {
+  const footer = i.footer ? { footer: { text: cut(i.footer, 60) } } : {};
+  if (i.type === 'button') {
+    if (i.buttons.length < 1 || i.buttons.length > 3) throw new Error('mensagem com botoes: de 1 a 3 botoes');
+    return {
+      type: 'button',
+      body: { text: cut(i.body, 1024) },
+      ...footer,
+      action: { buttons: i.buttons.map((b) => ({ type: 'reply', reply: { id: b.id.slice(0, 256), title: cut(b.title, 20) } })) },
+    };
+  }
+  if (i.rows.length < 1 || i.rows.length > 10) throw new Error('lista: de 1 a 10 linhas');
+  return {
+    type: 'list',
+    body: { text: cut(i.body, 4096) },
+    ...footer,
+    action: {
+      button: cut(i.button, 20),
+      sections: [{ title: 'Opções', rows: i.rows.map((r) => ({ id: r.id.slice(0, 200), title: cut(r.title, 24), ...(r.description ? { description: cut(r.description, 72) } : {}) })) }],
+    },
+  };
+}
+
+/** Texto legivel da mensagem interativa, para a caixa de entrada do painel. */
+export function interactiveSummary(i: Interactive) {
+  const opts = i.type === 'button' ? i.buttons.map((b) => b.title) : i.rows.map((r) => r.title);
+  return `${i.body}\n${opts.map((o) => `[${o}]`).join(' ')}`.slice(0, 4096);
+}
+
 /** Recusa definitiva (numero invalido, modelo inexistente): nao adianta tentar de novo. */
 export class WhatsAppRejected extends Error {}
 /** Rede, 5xx, limite: tenta de novo mais tarde. */
@@ -18,6 +59,7 @@ export interface WhatsAppProvider {
   readonly fake: boolean;
   sendTemplate(m: TemplateSend): Promise<SendResult>;
   sendText(to: string, body: string): Promise<SendResult>;
+  sendInteractive(to: string, i: Interactive): Promise<SendResult>;
   /** X-Hub-Signature-256 = "sha256=" + HMAC-SHA256(app secret, corpo cru). */
   verifySignature(rawBody: string, header: string | undefined): boolean;
   /** Verificacao do webhook (GET): devolve o challenge se o token confere. */
@@ -97,6 +139,10 @@ export class CloudApiProvider implements WhatsAppProvider {
     return this.post({ to, type: 'text', text: { preview_url: false, body } });
   }
 
+  sendInteractive(to: string, i: Interactive) {
+    return this.post({ to, type: 'interactive', interactive: interactivePayload(i) });
+  }
+
   verifySignature(raw: string, header: string | undefined) {
     return signatureOk(this.c.appSecret, raw, header);
   }
@@ -111,7 +157,7 @@ export class FakeWhatsApp implements WhatsAppProvider {
   readonly fake = true;
   static readonly SECRET = 'segredo-de-teste-do-whatsapp';
   static readonly VERIFY = 'verificacao-de-teste';
-  sent: ({ kind: 'template' } & TemplateSend | { kind: 'text'; to: string; body: string })[] = [];
+  sent: ({ kind: 'template' } & TemplateSend | { kind: 'text'; to: string; body: string } | { kind: 'interactive'; to: string; interactive: Record<string, unknown> })[] = [];
   failNext: 'reject' | 'transient' | null = null;
   private n = 0;
 
@@ -133,6 +179,13 @@ export class FakeWhatsApp implements WhatsAppProvider {
   async sendText(to: string, body: string) {
     const r = this.next();
     this.sent.push({ kind: 'text', to, body });
+    return r;
+  }
+
+  async sendInteractive(to: string, i: Interactive) {
+    const interactive = interactivePayload(i);
+    const r = this.next();
+    this.sent.push({ kind: 'interactive', to, interactive });
     return r;
   }
 

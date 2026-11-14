@@ -61,6 +61,7 @@ export const PERMISSION_LABELS: Record<string, string> = {
   'email.view': 'Ver e-mails da loja',
   'email.manage': 'Configurar envio e textos dos e-mails',
   'email.accounts': 'Criar e alterar caixas de e-mail',
+  'bot.manage': 'Configurar o bot de atendimento do WhatsApp',
 };
 
 export const TAX_REGIMES: Record<string, string> = {

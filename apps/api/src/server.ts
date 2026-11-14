@@ -5,6 +5,7 @@ import { expireReservations } from './lib/stock.js';
 import { fiscalTick } from './modules/fiscal.js';
 import { marketplaceTick } from './modules/marketplaces.js';
 import { whatsappTick } from './modules/whatsapp.js';
+import { botTick } from './modules/bot.js';
 import { expireOrders } from './modules/orders.js';
 
 // Recuperacao de senha pelo SMTP do .env (docs/EMAIL.md). Sem SMTP o link nao e entregue; o token nunca vai para o log.
@@ -35,6 +36,8 @@ const expiry = setInterval(() => {
   whatsappTick(app.whatsapp)
     .then((r) => (r.sent || r.failed) && app.log.info(`whatsapp: ${r.sent} aviso(s) enviado(s), ${r.failed} com falha`))
     .catch((err) => app.log.error(err, 'falha na rotina do WhatsApp'));
+  // Bot: responde o que o webhook nao conseguiu responder na hora.
+  botTick(app.whatsapp).catch((err) => app.log.error(err, 'falha na rotina do bot'));
 }, 60_000);
 expiry.unref();
 

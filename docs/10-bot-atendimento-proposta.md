@@ -236,6 +236,40 @@ chat de teste gasta tokens do Gemini e conta no limite.
 
 As etapas 1 a 3 funcionam com o simulador do WhatsApp. A 4 pode vir antes ou depois.
 
+## 6.1 Etapa 1 entregue (14/11/2026)
+
+- **Banco:** migração `0013_bot`.
+  - Tabelas novas: `whatsapp_conversations`, `bot_runs`, `bot_settings` e `bot_test_sessions`.
+  - Envios ganham `kind = 'interactive'`, o objeto `payload` e a origem `source` (`system`, `agent`, `bot`).
+  - Recebidas ganham `reply_id`, o id da opção tocada.
+- **Envio:** `sendInteractive` na Cloud API e no simulador, com os limites da Meta aplicados (`interactivePayload`).
+  O webhook lê `button_reply` e `list_reply`.
+- **Motor** (`apps/api/src/modules/bot.ts`): menu com as opções de acompanhar pedido, pedir orçamento, horário e
+  endereço, e falar com atendente. O cliente também pode digitar o número da opção (1 a 4).
+  - **Pedido:** só é mostrado se o telefone bater, aceitando o 9 a mais ou a menos. Para outro telefone, a resposta é
+    a mesma de pedido inexistente. Depois de 3 tentativas, oferece o atendente.
+  - **Fora do horário:** avisa, usando o horário de Brasília.
+  - **Atendente:** a conversa vai para atendente e o bot fica em silêncio. Volta ao bot quando alguém clica em
+    "Devolver ao bot" ou depois de 24 h parada.
+  - **Quando o bot não responde:**
+    - mensagem com mais de 1 hora;
+    - número que pediu SAIR;
+    - número fora da lista no modo teste;
+    - mensagem que chegou com o bot desligado (não é respondida depois);
+    - mensagem repetida (cada uma é respondida uma vez só).
+- **Quando roda:** logo depois do 200 do webhook e na rotina de 60 s.
+- **Painel:** WhatsApp → abas Conversas, **Bot de atendimento** e Avisos do pedido.
+  - *Quem o bot atende:* desligado, só números de teste ou todos.
+  - *Horário* por dia da semana e *textos* com prévia do padrão.
+  - *Chat de teste*, com telefone simulado.
+  - Na conversa: "Assumir conversa" e "Devolver ao bot". Responder pelo painel também assume a conversa.
+- **Permissão** nova `bot.manage`, com verificação em duas etapas, só do proprietário por padrão. Ver e atender usam
+  `sales_desk.use`.
+- **Testes:** 11 novos em `test/bot.test.ts`, mais a suíte inteira (177 passando).
+
+**Não verificado:** o envio real dos botões e da lista pela Meta (precisa da conta da etapa 4), o chat de teste no
+navegador com um usuário proprietário com verificação em duas etapas (só pela API nos testes), e o `next build`.
+
 ## 7. Decisões que preciso de você
 
 1. **Aprova o plano e a etapa 1** (menu, sem custo)?

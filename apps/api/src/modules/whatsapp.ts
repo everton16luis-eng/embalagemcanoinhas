@@ -6,6 +6,7 @@ import { keyedHash } from '../lib/crypto.js';
 import { AppError } from '../lib/errors.js';
 import { toWhatsAppNumber, WhatsAppRejected, type WhatsAppProvider } from '../lib/whatsapp.js';
 import { requirePermission } from './auth.js';
+import { botTick, releaseConversation, takeConversation } from './bot.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -110,11 +111,19 @@ async function applyWebhook(body: any) {
       for (const m of Array.isArray(v.messages) ? v.messages : []) {
         const from = typeof m?.from === 'string' && /^\d{6,20}$/.test(m.from) ? m.from : null;
         if (!from || typeof m?.id !== 'string') continue; // usuario sem numero (so username): fora do escopo por enquanto
-        const text = m.type === 'text' && typeof m.text?.body === 'string' ? m.text.body.slice(0, 4096) : null;
+        // Toque em botao ou lista: guarda o titulo como texto e o id da opcao (interactive.button_reply / list_reply).
+        const choice = m.type === 'interactive' ? (m.interactive?.button_reply ?? m.interactive?.list_reply) : null;
+        const text =
+          m.type === 'text' && typeof m.text?.body === 'string'
+            ? m.text.body.slice(0, 4096)
+            : typeof choice?.title === 'string'
+              ? choice.title.slice(0, 4096)
+              : null;
+        const replyId = typeof choice?.id === 'string' ? choice.id.slice(0, 256) : null;
         const ts = Number(m.timestamp);
         const inserted = await pool.query(
-          `INSERT INTO whatsapp_inbound (wamid, from_phone, profile_name, type, body, sent_at) VALUES ($1, $2, $3, $4, $5, to_timestamp($6)) ON CONFLICT (wamid) DO NOTHING`,
-          [m.id.slice(0, 200), from, names.get(from) || null, String(m.type ?? 'unknown').slice(0, 40), text, Number.isFinite(ts) && ts > 0 ? ts : Date.now() / 1000],
+          `INSERT INTO whatsapp_inbound (wamid, from_phone, profile_name, type, body, reply_id, sent_at) VALUES ($1, $2, $3, $4, $5, $6, to_timestamp($7)) ON CONFLICT (wamid) DO NOTHING`,
+          [m.id.slice(0, 200), from, names.get(from) || null, String(m.type ?? 'unknown').slice(0, 40), text, replyId, Number.isFinite(ts) && ts > 0 ? ts : Date.now() / 1000],
         );
         // Pedido de saida: bloqueia o numero e cancela o que estava na fila.
         if (inserted.rowCount && text && STOP_WORDS.has(text.trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''))) {
@@ -155,6 +164,8 @@ export async function whatsappWebhookRoutes(app: FastifyInstance) {
       return reply.code(200).send(); // assinado mas ilegivel: nao adianta reenviar
     }
     await applyWebhook(body);
+    // A resposta do bot sai depois do 200: a Meta nao espera o envio.
+    void botTick(app.whatsapp).catch((err) => app.log.error({ err }, 'bot do WhatsApp'));
     return reply.code(200).send();
   });
 }
@@ -216,8 +227,10 @@ export async function whatsappAdminRoutes(app: FastifyInstance) {
        ), last AS (SELECT DISTINCT ON (phone) phone, at, dir, body FROM ev ORDER BY phone, at DESC)
        SELECT l.phone, l.at AS last_at, l.dir AS last_dir, left(l.body, 120) AS last_body,
               (SELECT profile_name FROM whatsapp_inbound i WHERE i.from_phone = l.phone AND profile_name IS NOT NULL ORDER BY sent_at DESC LIMIT 1) AS name,
-              (SELECT max(sent_at) FROM whatsapp_inbound i WHERE i.from_phone = l.phone) > now() - interval '24 hours' AS window_open
-       FROM last l ORDER BY l.at DESC LIMIT 100`,
+              (SELECT max(sent_at) FROM whatsapp_inbound i WHERE i.from_phone = l.phone) > now() - interval '24 hours' AS window_open,
+              c.state, u.name AS assigned_name
+       FROM last l LEFT JOIN whatsapp_conversations c ON c.phone = l.phone LEFT JOIN users u ON u.id = c.assigned_to
+       ORDER BY l.at DESC LIMIT 100`,
     );
     return { conversations: rows };
   });
@@ -227,15 +240,43 @@ export async function whatsappAdminRoutes(app: FastifyInstance) {
     requirePermission(req, 'sales_desk.use');
     const { phone } = phoneBody.parse(req.body);
     const { rows } = await pool.query(
-      `SELECT 'in' AS dir, wamid AS id, body, type, NULL AS status, NULL AS error, NULL AS event, NULL AS order_number, sent_at AS at FROM whatsapp_inbound WHERE from_phone = $1
+      `SELECT 'in' AS dir, wamid AS id, body, type, NULL AS status, NULL AS error, NULL AS event, NULL AS order_number, NULL AS source, sent_at AS at FROM whatsapp_inbound WHERE from_phone = $1
        UNION ALL
-       SELECT 'out', m.id::text, coalesce(m.body, 'Modelo ' || m.template_name), m.kind, m.status, m.error, m.event, o.number, m.created_at
+       SELECT 'out', m.id::text, coalesce(m.body, 'Modelo ' || m.template_name), m.kind, m.status, m.error, m.event, o.number, m.source, m.created_at
        FROM whatsapp_messages m LEFT JOIN orders o ON o.id = m.order_id WHERE m.to_phone = $1
        ORDER BY at DESC LIMIT 200`,
       [phone],
     );
     const optedOut = Boolean((await pool.query('SELECT 1 FROM whatsapp_optouts WHERE phone_hash = $1', [phoneHash(phone)])).rows[0]);
-    return { phone, messages: rows.reverse(), optedOut, ...(await windowFor(phone)) };
+    const conv = (
+      await pool.query<{ state: string; assigned_name: string | null }>(
+        'SELECT c.state, u.name AS assigned_name FROM whatsapp_conversations c LEFT JOIN users u ON u.id = c.assigned_to WHERE c.phone = $1',
+        [phone],
+      )
+    ).rows[0];
+    return { phone, messages: rows.reverse(), optedOut, state: conv?.state ?? null, assignedName: conv?.assigned_name ?? null, ...(await windowFor(phone)) };
+  });
+
+  /** Atendente assume: o bot para de responder este numero ate a conversa ser devolvida. */
+  app.post('/conversations/take', async (req) => {
+    const auth = requirePermission(req, 'sales_desk.use');
+    const { phone } = phoneBody.parse(req.body);
+    await tx(auth.userId, async (db) => {
+      await takeConversation(db, phone, auth.userId);
+      await audit(db, { actorId: auth.userId, action: 'whatsapp.conversation_taken', entity: 'whatsapp_conversation', ip: auth.ip });
+    });
+    return { ok: true };
+  });
+
+  /** Devolve ao bot: a proxima mensagem do cliente recebe o menu. */
+  app.post('/conversations/release', async (req) => {
+    const auth = requirePermission(req, 'sales_desk.use');
+    const { phone } = phoneBody.parse(req.body);
+    await tx(auth.userId, async (db) => {
+      await releaseConversation(db, phone);
+      await audit(db, { actorId: auth.userId, action: 'whatsapp.conversation_released', entity: 'whatsapp_conversation', ip: auth.ip });
+    });
+    return { ok: true };
   });
 
   /** Resposta em texto livre: so dentro da janela de 24 h aberta pela ultima mensagem do cliente. */
@@ -259,10 +300,12 @@ export async function whatsappAdminRoutes(app: FastifyInstance) {
     await tx(auth.userId, async (db) => {
       const id = (
         await db.query<{ id: string }>(
-          `INSERT INTO whatsapp_messages (kind, to_phone, body, status, wamid, error, attempts, created_by) VALUES ('text', $1, $2, $3, $4, $5, 1, $6) RETURNING id`,
+          `INSERT INTO whatsapp_messages (kind, to_phone, body, status, wamid, error, attempts, created_by, source) VALUES ('text', $1, $2, $3, $4, $5, 1, $6, 'agent') RETURNING id`,
           [b.phone, b.text, wamid ? 'sent' : 'failed', wamid, error, auth.userId],
         )
       ).rows[0]!.id;
+      // Quem responde assume a conversa: o bot nao interrompe o atendente.
+      await takeConversation(db, b.phone, auth.userId);
       await audit(db, { actorId: auth.userId, action: 'whatsapp.reply', entity: 'whatsapp_message', entityId: id, metadata: { sent: Boolean(wamid) }, ip: auth.ip });
     });
     if (error) throw new AppError(502, 'WHATSAPP_SEND_FAILED', `Não foi enviada: ${error}`);

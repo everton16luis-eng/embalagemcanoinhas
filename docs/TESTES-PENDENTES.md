@@ -111,6 +111,10 @@ feito só com os simulados.
 - [ ] **HTTPS** Cadastrar a URL do webhook (`/api/v1/webhooks/whatsapp`) com o token de verificação e assinar o
       campo `messages`; conferir que a verificação responde o `hub.challenge`.
 - [ ] **HTTPS** Pedido de teste com consentimento: aviso chega no celular; situação passa a entregue e lida no painel.
+- [ ] **Você** Bot de atendimento (docs/10, etapa 1): no painel, como proprietário, usar o chat de teste (menu, pedido
+      com telefone simulado, atendente) e salvar horário e textos.
+- [ ] **HTTPS** Bot em "Só números de teste" com o seu número: a lista e os botões aparecem no celular, o toque
+      responde, "Falar com atendente" para o bot e "Devolver ao bot" volta o menu.
 - [ ] **HTTPS** Responder SAIR: número bloqueado, próximos avisos não saem.
 - [ ] **HTTPS** Mensagem do cliente → resposta pelo painel dentro de 24 h; depois de 24 h o painel bloqueia.
 - [ ] Conferir com respostas reais os campos usados do webhook (status, erros) e a recusa de modelo inexistente.

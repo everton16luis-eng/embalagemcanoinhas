@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { config } from '../config.js';
 import { pool, tx, type Db } from '../db/pool.js';
 import { audit } from '../lib/audit.js';
-import { keyedHash } from '../lib/crypto.js';
+import { decrypt, encrypt, keyedHash } from '../lib/crypto.js';
 import { AppError } from '../lib/errors.js';
 import { interactiveSummary, toWhatsAppNumber, type Interactive, type WhatsAppProvider } from '../lib/whatsapp.js';
 import { requirePermission } from './auth.js';
@@ -16,17 +16,21 @@ import { requirePermission } from './auth.js';
 type Q = Db | typeof pool;
 export type BotReply = { kind: 'text'; body: string } | { kind: 'interactive'; i: Interactive };
 export type BotState = { step: string | null; context: Record<string, unknown> };
-export type BotInput = { text: string | null; replyId: string | null; type: string; name: string | null };
+/** document: CPF/CNPJ digitado, quando a mensagem guardada esta com o texto oculto. */
+export type BotInput = { text: string | null; replyId: string | null; type: string; name: string | null; document?: string | null };
 type Day = { open: string; close: string } | null;
 export type BotSettings = { audience: 'off' | 'test' | 'all'; mode: 'menu'; test_phones: string[]; hours: Record<string, Day>; texts: Partial<Record<TextKey, string>> };
 
-export const TEXT_KEYS = ['greeting', 'out_of_hours', 'order_prompt', 'order_not_found', 'quote', 'handoff'] as const;
+export const TEXT_KEYS = ['greeting', 'out_of_hours', 'order_prompt', 'order_not_found', 'document_prompt', 'order_not_verified', 'verify_locked', 'quote', 'handoff'] as const;
 export type TextKey = (typeof TEXT_KEYS)[number];
 export const DEFAULT_TEXTS: Record<TextKey, string> = {
   greeting: 'Olá! Aqui é o atendimento da {loja}. Como podemos ajudar?',
   out_of_hours: 'Estamos fora do horário de atendimento agora. Você pode usar as opções abaixo, e um atendente responde quando voltarmos.',
   order_prompt: 'Digite o número do pedido.',
-  order_not_found: 'Não encontrei um pedido com esse número para este WhatsApp. Confira o número ou fale com um atendente.',
+  order_not_found: 'Não entendi o número do pedido. Confira e tente de novo pelo menu, ou fale com um atendente.',
+  document_prompt: 'Para confirmar que o pedido é seu, digite o CPF ou CNPJ usado na compra (só os números).',
+  order_not_verified: 'Não consegui confirmar esse pedido com os dados informados. Confira e tente de novo pelo menu, ou fale com um atendente.',
+  verify_locked: 'Por segurança, a consulta deste pedido foi bloqueada por algumas horas depois de várias tentativas. Um atendente pode ajudar.',
   quote: 'Você pode montar o pedido direto na loja: {site}. Se preferir, um atendente prepara o orçamento para você.',
   handoff: 'Pronto! Um atendente vai continuar a conversa por aqui.',
 };
@@ -34,7 +38,10 @@ export const TEXT_LABEL: Record<TextKey, string> = {
   greeting: 'Saudação (com o menu)',
   out_of_hours: 'Aviso fora do horário',
   order_prompt: 'Pedir o número do pedido',
-  order_not_found: 'Pedido não encontrado',
+  order_not_found: 'Número do pedido não entendido',
+  document_prompt: 'Pedir o CPF/CNPJ (pedido de outro telefone)',
+  order_not_verified: 'CPF/CNPJ não confere',
+  verify_locked: 'Consulta bloqueada por tentativas',
   quote: 'Orçamento',
   handoff: 'Passagem para atendente',
 };
@@ -67,6 +74,8 @@ const ORDER_STATUS: Record<string, string> = {
   canceled: 'cancelado',
 };
 const MAX_ORDER_TRIES = 3;
+const MAX_VERIFY_FAILS_PHONE = 3;
+const MAX_VERIFY_FAILS_ORDER = 5;
 const STALE_MS = 3_600_000; // mensagem com mais de 1 h nao recebe resposta automatica
 const AGENT_IDLE_MS = 24 * 3_600_000; // conversa com atendente parada ha 24 h volta ao bot
 const phoneHash = (phone: string) => keyedHash(`wa-optout:${phone}`);
@@ -125,7 +134,8 @@ export async function loadSettings(db: Q): Promise<BotSettings> {
   return { audience: r.audience, mode: r.mode, test_phones: r.test_phones, hours: r.hours, texts: r.texts };
 }
 
-type Ctx = { db: Q; phone: string | null; settings: BotSettings; now: Date };
+/** who: quem conversa, para limitar tentativas (o telefone; no chat de teste, o usuario do painel). */
+type Ctx = { db: Q; phone: string | null; who: string; settings: BotSettings; now: Date };
 
 async function render(ctx: Ctx, key: TextKey, name: string | null) {
   const loja = (await ctx.db.query<{ store_name: string | null }>('SELECT store_name FROM store_settings')).rows[0]?.store_name || 'loja';
@@ -156,23 +166,45 @@ async function storeInfo(ctx: Ctx) {
   return lines.length ? lines.join('\n\n') : 'Um atendente pode passar o horário e o endereço para você.';
 }
 
-async function orderInfo(ctx: Ctx, number: number) {
-  const o = (
-    await ctx.db.query<{ number: number; status: string; phone: string | null; kind: string | null; ship_name: string | null; carrier: string | null; tracking_code: string | null; tracking_url: string | null }>(
-      `SELECT o.number, o.status, o.buyer->>'phone' AS phone, o.shipping_snapshot->>'kind' AS kind, o.shipping_snapshot->>'name' AS ship_name,
-              s.carrier, s.tracking_code, s.tracking_url
-       FROM orders o LEFT JOIN shipments s ON s.order_id = o.id WHERE o.number = $1`,
-      [number],
+type OrderRow = { number: number; status: string; phone: string | null; document: string | null; kind: string | null; ship_name: string | null; carrier: string | null; tracking_code: string | null; tracking_url: string | null };
+
+async function findOrder(ctx: Ctx, number: number) {
+  if (!Number.isSafeInteger(number) || number < 1) return null;
+  return (
+    (
+      await ctx.db.query<OrderRow>(
+        `SELECT o.number, o.status, o.buyer->>'phone' AS phone, o.buyer->>'document' AS document, o.shipping_snapshot->>'kind' AS kind,
+                o.shipping_snapshot->>'name' AS ship_name, s.carrier, s.tracking_code, s.tracking_url
+         FROM orders o LEFT JOIN shipments s ON s.order_id = o.id WHERE o.number = $1`,
+        [number],
+      )
+    ).rows[0] ?? null
+  );
+}
+
+const verifyKey = (ctx: Ctx) => keyedHash(`bot-verify:${ctx.who}`);
+
+/** Tentativas erradas de confirmar com documento: 3 por telefone ou 5 por pedido em 24 h bloqueiam a consulta. */
+async function verifyLocked(ctx: Ctx, number: number) {
+  const r = (
+    await ctx.db.query<{ by_phone: number; by_order: number }>(
+      `SELECT count(*) FILTER (WHERE phone_hash = $1)::int AS by_phone, count(*) FILTER (WHERE order_number = $2)::int AS by_order
+       FROM bot_verify_failures WHERE created_at > now() - interval '24 hours' AND (phone_hash = $1 OR order_number = $2)`,
+      [verifyKey(ctx), number],
     )
-  ).rows[0];
-  // Pedido de outro telefone recebe a mesma resposta de pedido inexistente: nao revela que o numero existe.
-  if (!o || !samePhone(toWhatsAppNumber(o.phone), ctx.phone)) return null;
+  ).rows[0]!;
+  return r.by_phone >= MAX_VERIFY_FAILS_PHONE || r.by_order >= MAX_VERIFY_FAILS_ORDER;
+}
+
+function orderText(o: OrderRow) {
   const status = o.status === 'ready' && o.kind === 'pickup' ? 'pronto para retirada' : (ORDER_STATUS[o.status] ?? o.status);
   const lines = [`Pedido #${o.number}: ${status}.`];
   if (o.ship_name) lines.push(`Entrega: ${o.ship_name}.`);
   if (o.tracking_code) lines.push(`Rastreio${o.carrier ? ` (${o.carrier})` : ''}: ${o.tracking_code}${o.tracking_url ? `\n${o.tracking_url}` : ''}`);
   return lines.join('\n');
 }
+
+const onlyDigits = (s: string | null | undefined) => String(s ?? '').replace(/\D/g, '');
 
 function choiceOf(input: BotInput, step: string | null) {
   if (input.replyId && ['menu', ...MENU_ROWS.map((r) => r.id)].includes(input.replyId)) return input.replyId;
@@ -210,11 +242,27 @@ export async function menuBot(ctx: Ctx, state: BotState, input: BotInput): Promi
 
   if (state.step === 'await_order') {
     const digits = (input.text ?? '').match(/\d{1,9}/)?.[0];
-    const tries = Number(state.context.tries ?? 0) + 1;
-    const info = digits ? await orderInfo(ctx, Number(digits)) : null;
-    if (info) return done([{ kind: 'text', body: info }, AFTER()]);
-    if (tries >= MAX_ORDER_TRIES) return done([AFTER(await render(ctx, 'order_not_found', input.name))]);
-    return done([{ kind: 'text', body: digits ? await render(ctx, 'order_not_found', input.name) : await render(ctx, 'order_prompt', input.name) }], 'await_order', { tries });
+    if (!digits) {
+      const tries = Number(state.context.tries ?? 0) + 1;
+      if (tries >= MAX_ORDER_TRIES) return done([AFTER(await render(ctx, 'order_not_found', input.name))]);
+      return done([{ kind: 'text', body: await render(ctx, 'order_prompt', input.name) }], 'await_order', { tries });
+    }
+    const number = Number(digits);
+    const o = await findOrder(ctx, number);
+    if (o && samePhone(toWhatsAppNumber(o.phone), ctx.phone)) return done([{ kind: 'text', body: orderText(o) }, AFTER()]);
+    // Outro telefone ou pedido inexistente: os dois pedem o documento, para nao revelar se o numero existe.
+    if (await verifyLocked(ctx, number)) return done([AFTER(await render(ctx, 'verify_locked', input.name))]);
+    return done([{ kind: 'text', body: await render(ctx, 'document_prompt', input.name) }], 'await_document', { order: number });
+  }
+
+  if (state.step === 'await_document') {
+    const number = Number(state.context.order);
+    const typed = onlyDigits(input.document ?? input.text);
+    if (await verifyLocked(ctx, number)) return done([AFTER(await render(ctx, 'verify_locked', input.name))]);
+    const o = await findOrder(ctx, number);
+    if (o && (typed.length === 11 || typed.length === 14) && onlyDigits(o.document) === typed) return done([{ kind: 'text', body: orderText(o) }, AFTER()]);
+    await ctx.db.query('INSERT INTO bot_verify_failures (phone_hash, order_number) VALUES ($1, $2)', [verifyKey(ctx), Number.isSafeInteger(number) ? number : null]);
+    return done([AFTER(await render(ctx, 'order_not_verified', input.name))]);
   }
 
   if (state.step === null) return done(await menu(ctx, input.name));
@@ -245,6 +293,12 @@ async function sendReply(provider: WhatsAppProvider, to: string, r: BotReply) {
   return Boolean(wamid);
 }
 
+/** Documento guardado pelo webhook para esta mensagem: le e apaga. */
+async function takeDocument(inboundId: string) {
+  const r = (await pool.query<{ document_enc: string }>('DELETE FROM bot_pending_documents WHERE inbound_id = $1 RETURNING document_enc', [inboundId])).rows[0];
+  return r ? decrypt(r.document_enc) : null;
+}
+
 async function handleOne(provider: WhatsAppProvider, settings: BotSettings, m: InboundRow, now: Date) {
   const claim = async (outcome: string) => ((await pool.query('INSERT INTO bot_runs (inbound_id, outcome) VALUES ($1, $2) ON CONFLICT DO NOTHING', [m.id, outcome])).rowCount ?? 0) > 0;
   if (now.getTime() - m.sent_at.getTime() > STALE_MS) return claim('stale');
@@ -256,7 +310,13 @@ async function handleOne(provider: WhatsAppProvider, settings: BotSettings, m: I
   if (!(await claim('replied'))) return false;
 
   const state: BotState = conv?.state === 'bot' ? { step: conv.step, context: conv.context } : { step: null, context: {} };
-  const out = await menuBot({ db: pool, phone: m.from_phone, settings, now }, state, { text: m.body, replyId: m.reply_id, type: m.type, name: m.profile_name });
+  const out = await menuBot({ db: pool, phone: m.from_phone, who: m.from_phone, settings, now }, state, {
+    text: m.body,
+    replyId: m.reply_id,
+    type: m.type,
+    name: m.profile_name,
+    document: await takeDocument(m.id),
+  });
   for (const r of out.replies) await sendReply(provider, m.from_phone, r);
   await pool.query(
     `INSERT INTO whatsapp_conversations (phone, state, step, context, agent_since, updated_at) VALUES ($1, $2, $3, $4, $5, now())
@@ -288,6 +348,8 @@ async function runBot(provider: WhatsAppProvider, now: () => Date) {
   let handled = 0;
   do {
     again = false;
+    // Documento que ficou para tras (mensagem nao respondida): nao fica guardado.
+    await pool.query(`DELETE FROM bot_pending_documents WHERE created_at < now() - interval '2 hours'`);
     const settings = await loadSettings(pool);
     // Desligado: marca como vistas, para nao responder atrasado quando o bot for ligado.
     if (settings.audience === 'off') {
@@ -375,7 +437,7 @@ export async function botAdminRoutes(app: FastifyInstance) {
     const s = (await pool.query<{ phone: string | null; step: string | null; context: Record<string, unknown> }>('SELECT phone, step, context FROM bot_test_sessions WHERE user_id = $1', [auth.userId])).rows[0];
     const phone = b.phone === undefined ? (s?.phone ?? null) : b.phone;
     const out = await menuBot(
-      { db: pool, phone, settings, now: new Date() },
+      { db: pool, phone, who: `teste:${auth.userId}`, settings, now: new Date() },
       { step: s?.step ?? null, context: s?.context ?? {} },
       { text: b.text ?? null, replyId: b.replyId ?? null, type: b.replyId ? 'interactive' : 'text', name: null },
     );
@@ -407,4 +469,19 @@ export async function takeConversation(db: Db, phone: string, userId: string) {
 export async function releaseConversation(db: Db, phone: string) {
   const r = await db.query(`UPDATE whatsapp_conversations SET state = 'closed', assigned_to = NULL, agent_since = NULL, step = NULL, context = '{}', updated_at = now() WHERE phone = $1`, [phone]);
   if (!r.rowCount) throw new AppError(404, 'NOT_FOUND', 'Conversa não encontrada.');
+}
+
+/** O bot esta esperando o CPF/CNPJ deste numero? (o webhook consulta antes de gravar a mensagem) */
+export async function awaitingDocument(phone: string) {
+  const c = (await pool.query<{ step: string | null; state: string }>('SELECT step, state FROM whatsapp_conversations WHERE phone = $1', [phone])).rows[0];
+  return c?.state === 'bot' && c.step === 'await_document';
+}
+
+/** Texto gravado no lugar do documento: a caixa de entrada e o historico nunca mostram o CPF/CNPJ. */
+export const HIDDEN_DOCUMENT = 'Documento informado (oculto pelo sistema)';
+
+/** Guarda o documento cifrado so ate o bot conferir (takeDocument apaga). */
+export async function keepDocument(inboundId: string, text: string) {
+  const digits = text.replace(/\D/g, '').slice(0, 20);
+  if (digits) await pool.query('INSERT INTO bot_pending_documents (inbound_id, document_enc) VALUES ($1, $2) ON CONFLICT DO NOTHING', [inboundId, encrypt(digits)]);
 }

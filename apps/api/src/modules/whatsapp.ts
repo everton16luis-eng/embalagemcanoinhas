@@ -6,7 +6,7 @@ import { keyedHash } from '../lib/crypto.js';
 import { AppError } from '../lib/errors.js';
 import { toWhatsAppNumber, WhatsAppRejected, type WhatsAppProvider } from '../lib/whatsapp.js';
 import { requirePermission } from './auth.js';
-import { botTick, releaseConversation, takeConversation } from './bot.js';
+import { awaitingDocument, botTick, HIDDEN_DOCUMENT, keepDocument, releaseConversation, takeConversation } from './bot.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -121,10 +121,13 @@ async function applyWebhook(body: any) {
               : null;
         const replyId = typeof choice?.id === 'string' ? choice.id.slice(0, 256) : null;
         const ts = Number(m.timestamp);
-        const inserted = await pool.query(
-          `INSERT INTO whatsapp_inbound (wamid, from_phone, profile_name, type, body, reply_id, sent_at) VALUES ($1, $2, $3, $4, $5, $6, to_timestamp($7)) ON CONFLICT (wamid) DO NOTHING`,
-          [m.id.slice(0, 200), from, names.get(from) || null, String(m.type ?? 'unknown').slice(0, 40), text, replyId, Number.isFinite(ts) && ts > 0 ? ts : Date.now() / 1000],
+        // Resposta ao pedido de CPF/CNPJ do bot: o documento nao fica gravado na conversa.
+        const hide = Boolean(text && /\d/.test(text) && (await awaitingDocument(from)));
+        const inserted = await pool.query<{ id: string }>(
+          `INSERT INTO whatsapp_inbound (wamid, from_phone, profile_name, type, body, reply_id, sent_at) VALUES ($1, $2, $3, $4, $5, $6, to_timestamp($7)) ON CONFLICT (wamid) DO NOTHING RETURNING id`,
+          [m.id.slice(0, 200), from, names.get(from) || null, String(m.type ?? 'unknown').slice(0, 40), hide ? HIDDEN_DOCUMENT : text, replyId, Number.isFinite(ts) && ts > 0 ? ts : Date.now() / 1000],
         );
+        if (hide && inserted.rows[0]) await keepDocument(inserted.rows[0].id, text!);
         // Pedido de saida: bloqueia o numero e cancela o que estava na fila.
         if (inserted.rowCount && text && STOP_WORDS.has(text.trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''))) {
           await pool.query('INSERT INTO whatsapp_optouts (phone_hash) VALUES ($1) ON CONFLICT DO NOTHING', [phoneHash(from)]);

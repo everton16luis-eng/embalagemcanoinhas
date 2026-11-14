@@ -80,7 +80,7 @@ beforeAll(async () => {
   pickupId = (await boss.post('/api/v1/admin/shipping-options', { name: 'Retirada na loja', kind: 'pickup', baseCents: 0, minDays: 0, maxDays: 1 })).json().option.id;
 });
 beforeEach(async () => {
-  await owner.query('TRUNCATE bot_runs, bot_test_sessions, whatsapp_conversations, whatsapp_optouts, whatsapp_inbound, whatsapp_messages');
+  await owner.query('TRUNCATE bot_runs, bot_pending_documents, bot_verify_failures, bot_test_sessions, whatsapp_conversations, whatsapp_optouts, whatsapp_inbound, whatsapp_messages');
   await owner.query(`UPDATE bot_settings SET audience = 'off', test_phones = '{}', hours = '{}', texts = '{}'`);
 });
 afterAll(async () => {
@@ -161,15 +161,60 @@ describe('bot de menu no WhatsApp', () => {
     expect(msgs.at(-2).body).toBe(`Pedido #${o.number}: aguardando pagamento.\nEntrega: Retirada na loja.`);
     expect(msgs.at(-1).payload.buttons.map((b: any) => b.id)).toEqual(['menu', 'atendente']);
 
-    // Outro número com o mesmo pedido: mesma resposta de pedido inexistente.
+    // Outro número: pede o CPF/CNPJ da compra; pedido inexistente recebe o mesmo pedido de documento.
     await send(say(OTHER_PHONE, '1'));
     await send(say(OTHER_PHONE, '1')); // "1" no menu = Acompanhar pedido
     await send(say(OTHER_PHONE, String(o.number)));
-    const other = await lastBot(OTHER_PHONE);
-    expect(other.body).toBe('Não encontrei um pedido com esse número para este WhatsApp. Confira o número ou fale com um atendente.');
+    expect((await lastBot(OTHER_PHONE)).body).toBe('Para confirmar que o pedido é seu, digite o CPF ou CNPJ usado na compra (só os números).');
+    await send(say(OTHER_PHONE, '111.444.777-35'));
+    expect((await lastBot(OTHER_PHONE)).payload.body).toMatch(/^Não consegui confirmar esse pedido/);
+    await send(tap(OTHER_PHONE, 'button_reply', 'menu', 'Voltar ao menu'));
+    await send(tap(OTHER_PHONE, 'list_reply', 'pedido', 'Acompanhar pedido'));
     await send(say(OTHER_PHONE, '999999'));
-    expect((await lastBot(OTHER_PHONE)).body).toBe(other.body);
+    expect((await lastBot(OTHER_PHONE)).body).toBe('Para confirmar que o pedido é seu, digite o CPF ou CNPJ usado na compra (só os números).');
+    await send(say(OTHER_PHONE, '52998224725'));
+    expect((await lastBot(OTHER_PHONE)).payload.body).toMatch(/^Não consegui confirmar esse pedido/);
     expect(JSON.stringify(await botMessages(OTHER_PHONE))).not.toContain('aguardando pagamento');
+  });
+
+  it('pedido de outro telefone: confirma com o CPF da compra, sem gravar o CPF', async () => {
+    const o = await order();
+    await setBot({});
+    await send(tap(OTHER_PHONE, 'list_reply', 'pedido', 'Acompanhar pedido'));
+    await send(say(OTHER_PHONE, String(o.number)));
+    await send(say(OTHER_PHONE, 'meu cpf é 529.982.247-25'));
+    const msgs = await botMessages(OTHER_PHONE);
+    expect(msgs.at(-2).body).toBe(`Pedido #${o.number}: aguardando pagamento.\nEntrega: Retirada na loja.`);
+    // A mensagem fica oculta na conversa; o documento cifrado temporário já foi apagado.
+    const inbound = (await owner.query('SELECT body FROM whatsapp_inbound WHERE from_phone = $1 ORDER BY id', [OTHER_PHONE])).rows.map((r) => r.body);
+    expect(inbound.at(-1)).toBe('Documento informado (oculto pelo sistema)');
+    expect(JSON.stringify(inbound)).not.toMatch(/529|982|247/);
+    expect((await owner.query('SELECT count(*)::int AS n FROM bot_pending_documents')).rows[0].n).toBe(0);
+    const view = (await boss.post('/api/v1/admin/whatsapp/conversations/view', { phone: OTHER_PHONE })).json();
+    expect(JSON.stringify(view)).not.toContain('52998224725');
+  });
+
+  it('tentativas erradas bloqueiam a consulta, por telefone e por pedido', async () => {
+    const o = await order();
+    await setBot({});
+    const attempt = async (phone: string, doc: string) => {
+      await send(tap(phone, 'list_reply', 'pedido', 'Acompanhar pedido'));
+      await send(say(phone, String(o.number)));
+      if ((await lastBot(phone)).body?.startsWith('Para confirmar')) await send(say(phone, doc));
+      return lastBot(phone);
+    };
+    for (let k = 0; k < 3; k++) expect((await attempt(OTHER_PHONE, '11144477735')).payload.body).toMatch(/^Não consegui confirmar/);
+    // Três erros neste telefone: nem o CPF certo passa por 24 h.
+    expect((await attempt(OTHER_PHONE, '52998224725')).payload.body).toMatch(/^Por segurança, a consulta/);
+    // Mais dois erros de outros telefones somam cinco no pedido: bloqueia também para quem ainda não errou.
+    await attempt('5547911112222', '11144477735');
+    await attempt('5547933334444', '11144477735');
+    expect((await attempt('5547955556666', '52998224725')).payload.body).toMatch(/^Por segurança, a consulta/);
+    // O dono do telefone do pedido continua vendo sem documento.
+    await send(tap(OWNER_PHONE, 'list_reply', 'pedido', 'Acompanhar pedido'));
+    await send(say(OWNER_PHONE, String(o.number)));
+    expect((await botMessages(OWNER_PHONE)).at(-2).body).toContain(`Pedido #${o.number}`);
+    expect(JSON.stringify((await owner.query('SELECT * FROM bot_verify_failures')).rows)).not.toMatch(/5547|11144477735/);
   });
 
   it('atendente: o bot fica em silêncio até a conversa ser devolvida', async () => {
@@ -257,7 +302,10 @@ describe('painel do bot', () => {
     r = (await boss.post('/api/v1/admin/whatsapp/bot/test', { replyId: 'pedido' })).json();
     expect(r.replies[0].body).toBe('Digite o número do pedido.');
     r = (await boss.post('/api/v1/admin/whatsapp/bot/test', { text: String(o.number) })).json();
-    expect(r.replies[0].body).toContain('Não encontrei'); // sem telefone simulado
+    expect(r.replies[0].body).toMatch(/^Para confirmar que o pedido é seu/); // sem telefone simulado
+    r = (await boss.post('/api/v1/admin/whatsapp/bot/test', { text: '52998224725' })).json();
+    expect(r.replies[0].body).toContain(`Pedido #${o.number}`);
+    await boss.post('/api/v1/admin/whatsapp/bot/test', { replyId: 'pedido' });
     r = (await boss.post('/api/v1/admin/whatsapp/bot/test', { text: String(o.number), phone: '5547999990000' })).json();
     expect(r.replies[0].body).toContain(`Pedido #${o.number}`);
     expect(r.phone).toBe('5547999990000');

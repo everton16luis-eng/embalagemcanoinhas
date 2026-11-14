@@ -157,7 +157,7 @@ O que muda no código:
 
   | Ferramenta | O que devolve |
   |---|---|
-  | `consultar_pedido(numero)` | Situação, entrega e rastreio. Só se o telefone bater com o do pedido (regra 4). |
+  | `consultar_pedido(numero)` | Situação, entrega e rastreio. Só se o telefone bater com o do pedido (regra 4). Pedido de outro telefone vai para a confirmação por CPF/CNPJ **do menu**, fora da IA: o documento nunca é enviado ao Google. |
   | `buscar_produtos(termo)` | Nome, embalagem, preço com faixas por quantidade, disponível ou sob encomenda. Só produtos ativos na loja. |
   | `dados_da_loja()` | Horário, endereço, formas de entrega e pagamento, vindos do cadastro. |
   | `transferir_atendente(motivo)` | Passa a conversa para o painel. |
@@ -246,8 +246,18 @@ As etapas 1 a 3 funcionam com o simulador do WhatsApp. A 4 pode vir antes ou dep
   O webhook lê `button_reply` e `list_reply`.
 - **Motor** (`apps/api/src/modules/bot.ts`): menu com as opções de acompanhar pedido, pedir orçamento, horário e
   endereço, e falar com atendente. O cliente também pode digitar o número da opção (1 a 4).
-  - **Pedido:** só é mostrado se o telefone bater, aceitando o 9 a mais ou a menos. Para outro telefone, a resposta é
-    a mesma de pedido inexistente. Depois de 3 tentativas, oferece o atendente.
+  - **Pedido do mesmo telefone:** aparece direto. A comparação aceita o 9 a mais ou a menos do celular.
+  - **Pedido de outro telefone** (pedido de 14/11/2026): o bot pede o **CPF ou CNPJ usado na compra** e mostra o
+    pedido se o documento conferir.
+    - A data de nascimento não serve: a loja não guarda essa informação.
+    - Pedido inexistente também recebe o pedido de documento, então o bot nunca revela se um número existe.
+    - **Limite de erros em 24 h:** 3 por telefone, ou 5 no mesmo pedido somando todos os telefones. Depois disso, a
+      consulta fica bloqueada (`bot_verify_failures`, guarda só um hash do telefone e o número do pedido).
+    - **O documento não fica gravado:** quando o bot está esperando o CPF/CNPJ, a mensagem é guardada como
+      "Documento informado (oculto pelo sistema)".
+    - Os números vão cifrados para `bot_pending_documents` e são apagados assim que o bot confere (ou em até 2 h).
+    - A Meta recebe a mensagem como qualquer outra: isso não depende da loja.
+  - Sem número de pedido na mensagem, depois de 3 tentativas, o bot oferece o atendente.
   - **Fora do horário:** avisa, usando o horário de Brasília.
   - **Atendente:** a conversa vai para atendente e o bot fica em silêncio. Volta ao bot quando alguém clica em
     "Devolver ao bot" ou depois de 24 h parada.

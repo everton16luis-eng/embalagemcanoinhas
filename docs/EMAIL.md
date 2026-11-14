@@ -302,7 +302,13 @@ Se o `nginx -t` falhar, nada é recarregado. Volte ao arquivo temporário do ite
 sed 's/barbasystem\.com\.br/embalagemcanoinhas.com.br/g' /var/www/roundcube/config/barbasystem.inc.php > /var/www/roundcube/config/embalagemcanoinhas.inc.php
 ```
 
-Abra o arquivo e troque os nomes que ainda forem do barbasystem (por exemplo `product_name`) por `Embalagem Canoinhas`:
+O `sed` troca só o domínio: o nome de exibição continua o do barbasystem. Troque o `product_name`:
+
+```bash
+sed -i "s|\(\$config\['product_name'\] *= *\)'[^']*'|\1'Embalagem Canoinhas'|" /var/www/roundcube/config/embalagemcanoinhas.inc.php
+```
+
+Abra o arquivo e apague ou troque o que ainda citar o barbasystem (por exemplo `skin_logo`):
 
 ```bash
 nano /var/www/roundcube/config/embalagemcanoinhas.inc.php

@@ -29,9 +29,10 @@ Legenda: **HTTPS** = precisa da API publicada com certificado · **Você** = dep
 - [x] **Você** E-mail de teste do painel chega no Gmail com SPF, DKIM e DMARC = PASS ("Mostrar original") (14/11/2026).
 - [ ] **Você** Depois de alguns dias sem problema de entrega, trocar o DMARC na Hostinger para `p=quarantine`.
 - [x] **Você** "Esqueci minha senha" no painel: o link chega, troca a senha e não funciona uma segunda vez (14/11/2026).
-- [ ] **Servidor** Webmail `https://webmail.embalagemcanoinhas.com.br` (passo 7 de [EMAIL.md](EMAIL.md)): cadeado,
-      marca da loja, login de `contato@`; `webmail.barbasystem.com.br` continua com a marca dele;
-      `certbot renew --dry-run` sem erro.
+- [x] **Servidor** Webmail `https://webmail.embalagemcanoinhas.com.br` (passo 7 de [EMAIL.md](EMAIL.md)): cadeado,
+      marca da loja, login de `contato@` (14/11/2026).
+- [ ] **Servidor** `webmail.barbasystem.com.br` continua com a marca dele; `certbot renew --dry-run --cert-name
+      webmail.embalagemcanoinhas.com.br` sem erro.
 - [ ] **Você** Caixa criada pelo painel entra no celular (IMAP 993 e SMTP 587 em `mail.portalplanaltonorte.com.br`).
 - [ ] Inspeção visual por captura de tela (painel e loja, desktop e celular): até aqui a verificação foi por texto e
       medidas.

@@ -83,12 +83,13 @@ de swap, disco com 14% de uso). O servidor também roda outros sistemas (barbear
 
 | # | Achado | Criticidade | Situação |
 |---|---|---|---|
-| V1 | Cópias de backup (`db.dump` com o banco inteiro) e a pasta `.local` legíveis por **qualquer usuário** da máquina; um site vizinho comprometido leria clientes e hashes de senha. | Alta | **Corrigido** no código (`umask 077` no backup e `UMask=0077` na unidade); permissões das cópias existentes a corrigir no servidor |
+| V1 | Cópias de backup (`db.dump` com o banco inteiro) e a pasta `.local` legíveis por **qualquer usuário** da máquina; um site vizinho comprometido leria clientes e hashes de senha. | Alta | **Corrigido** (`umask 077` no backup, `UMask=0077` na unidade, cópias existentes em 700/600; conferido com o script em 14/11) |
 | V2 | SSH aceita **login do root com senha** (`PermitRootLogin yes`, `PasswordAuthentication yes`). fail2ban ativo reduz, mas não elimina, a força bruta. Vale para o servidor inteiro. | Alta | **Pendente** (decisão sua: exige confirmar o acesso por chave antes) |
-| V3 | 13 atualizações de segurança pendentes (o `unattended-upgrades` está ligado). | Média | **Pendente** (janela de manutenção: afeta todos os sites) |
-| V4 | Duas unidades do systemd com falha: `cloud-final` (scripts de primeira inicialização da hospedagem) e `motd-news` (notícias da mensagem de login). Nenhuma é da loja nem afeta segurança. | Informativo | **Atenção** (ver o log do `cloud-final` se quiser; `systemctl reset-failed` limpa o aviso) |
+| V3 | 13 atualizações de segurança pendentes (o `unattended-upgrades` está ligado). | Média | **Corrigido** (0 pendentes em 14/11); **reinício pendente** para o kernel novo |
+| V4 | Duas unidades do systemd com falha: `cloud-final` (scripts de primeira inicialização da hospedagem) e `motd-news` (notícias da mensagem de login). Nenhuma é da loja nem afeta segurança. | Informativo | **Resolvido** (aviso limpo; nenhuma unidade com falha em 14/11) |
 | V5 | Serviços de outros sistemas ouvindo em todas as interfaces (MySQL 3306/33060, FTP 21, 3000, 3001, 9443, 6081). O firewall bloqueia (padrão negar entrada), mas é uma camada só. Regra `8433:8443` provavelmente devia ser só `8443`. | Baixa | **Atenção** (não são da loja; não mexer sem os responsáveis) |
-| V6 | `/backups/` e `/storage/` respondem 308 (o Next tira a barra final) em vez de 404 direto. | Baixa | **Pendente** (conferir o destino; o script agora segue o redirecionamento) |
+| V6 | `/backups/` e `/storage/` respondem 308 (o Next tira a barra final) em vez de 404 direto. | Baixa | **Aprovado** (seguindo o redirecionamento: 404) |
+| V7 | Pasta `storage/` (fotos, XML e DANFE das notas, com dados de cliente) aberta para outros usuários (775). | Média | **Corrigido** no código (`UMask=0027` na API; o script agora confere a pasta); permissão da pasta a corrigir no servidor |
 
 **Aprovado no servidor:** firewall ativo com entrada negada por padrão; PostgreSQL da loja só em 127.0.0.1 com
 `scram-sha-256`; `.env` e `credentials.json` com permissão 600 e `pgdata` 700; serviços da loja ativos, sem

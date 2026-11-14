@@ -110,9 +110,10 @@ feito só com os simulados.
 ## Auditoria de novembro de 2026 ([AUDITORIA-2026-11.md](AUDITORIA-2026-11.md))
 
 - [x] **Servidor** Auditoria do servidor (14/11/2026): ver seção 3.3 do relatório.
-- [ ] **Servidor** Permissões das cópias de backup existentes (700/600) e da `.local`; conferir de novo com o script.
+- [x] **Servidor** Permissões das cópias de backup e da `.local` (14/11/2026).
+- [ ] **Servidor** Pasta `storage/` só para o usuário loja (750) e unidade da API com `UMask=0027`; reiniciar o servidor (kernel).
 - [ ] **Você** SSH só com chave e sem senha para o root (testar a chave numa segunda janela antes).
-- [ ] **Servidor** 13 atualizações de segurança (`apt upgrade`) em horário de pouco movimento.
+- [x] **Servidor** Atualizações de segurança aplicadas (14/11/2026); falta o reinício.
 - [ ] **Servidor** Instalar `deploy/nginx/00-loja-limites.conf` e os sites da loja atualizados; `nginx -t` antes do
       reload; conferir que a loja abre e que `curl -I` não mostra a versão do nginx.
 - [ ] **Servidor** Carga no VPS de outra máquina, fora do horário de movimento: `fumaca` e depois `inicial`

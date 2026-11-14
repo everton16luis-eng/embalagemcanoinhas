@@ -20,6 +20,8 @@ PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
 ReadWritePaths=/srv/loja-embalagens/storage
+# Fotos, XML e DANFE das notas (com dados de cliente): so o usuario loja le (auditoria 11/2026).
+UMask=0027
 
 [Install]
 WantedBy=multi-user.target

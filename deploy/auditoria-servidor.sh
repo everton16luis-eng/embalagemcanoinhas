@@ -52,6 +52,8 @@ for p in "$APP/.env" "$APP/.local" "$APP/.local/credentials.json" "$APP/.local/p
 done
 echo "Arquivos sensiveis legiveis por qualquer usuario (deveria ser vazio):"
 find "$APP/.env" "$APP/.local" "$APP/backups" -maxdepth 2 -perm -o+r 2>/dev/null | head -20
+# storage/ tem XML e DANFE das notas: a pasta nao pode ser aberta por outros usuarios.
+find "$APP/storage" -maxdepth 0 -perm -o+x 2>/dev/null
 echo "Arquivos da aplicacao com escrita para todos (deveria ser vazio):"
 find "$APP" -path "$APP/node_modules" -prune -o -perm -o+w -type f -print 2>/dev/null | head -20
 

@@ -6,7 +6,7 @@ banco (PostgreSQL próprio), configuração de implantação (nginx, systemd) e 
 **Onde foi testado.** Tudo o que tem número neste relatório rodou **localmente**, num banco de demonstração separado
 (`loja_demo`, dados fictícios, ~100 produtos), com a API e o site **compilados para produção** e sem pagamento real
 (`PAYMENT_FAKE`). Máquina de teste: Ryzen 5 4600G (12 threads), 15 GB, Windows 11; o gerador de carga (k6) rodou na
-mesma máquina. O VPS de produção é bem menor (2 vCPU, ~4,9 GB, divididos com outros sites), então **os números de
+mesma máquina. O VPS de produção é bem menor (2 vCPU e 7,9 GB, ~4,8 GB disponíveis, divididos com outros sites), então **os números de
 capacidade não valem para o servidor** sem a medição lá (roteiro em [tests/carga/README.md](../tests/carga/README.md) e
 pendências em [TESTES-PENDENTES.md](TESTES-PENDENTES.md)). Nada foi executado contra a loja publicada.
 
@@ -30,7 +30,7 @@ de HTTPS ou de conta externa) · **Não testado** = fora do que foi possível ne
 | Dependências | **Corrigido** (1 vulnerabilidade baixa); `npm audit` zerado |
 | Cabeçalhos de segurança | **Corrigido** no painel (CSP estrita); **Atenção** na loja (CSP parcial até validar o Mercado Pago) |
 | Proteção contra excesso de requisições | **Corrigido** na aplicação; nginx **Pendente** (arquivo pronto, aplicar no VPS) |
-| Configuração do servidor (SSH, firewall, portas, permissões) | **Pendente** (script de auditoria pronto, só leitura) |
+| Configuração do servidor (SSH, firewall, portas, permissões) | Auditado: **2 achados altos** (backups legíveis por todos; SSH do root com senha), ver 3.3 |
 | Desempenho do front-end | **Aprovado** (Lighthouse 97–100 em desempenho) |
 | Acessibilidade | **Corrigido** (nomes de botão/link, contraste, tabela) |
 | Banco de dados | **Corrigido** (índice para as fotos dos cards; limpeza de contadores) |
@@ -76,11 +76,30 @@ de HTTPS ou de conta externa) · **Não testado** = fora do que foi possível ne
 - **Corpo das requisições** limitado a 1 MB (fotos à parte); log com dados sensíveis mascarados.
 - **Dependências**: `npm audit --omit=dev` sem vulnerabilidades.
 
-### 3.3 Não testado ou pendente
+### 3.3 Servidor (auditoria só de leitura em 14/11/2026)
 
-- Configuração do VPS (SSH, firewall, portas abertas, fail2ban, permissões do `.env`, `pg_hba`, certificado):
-  **Pendente**. Script só de leitura: `sudo bash deploy/auditoria-servidor.sh`.
-- Cabeçalhos e cookies `Secure` através do nginx com HTTPS real: **Pendente**.
+Saída de `deploy/auditoria-servidor.sh` no VPS (Ubuntu 24.04.5, 2 vCPU, 7,9 GB de RAM com ~4,8 GB disponíveis, 2 GB
+de swap, disco com 14% de uso). O servidor também roda outros sistemas (barbearia, vitrine, CloudPanel, e-mail).
+
+| # | Achado | Criticidade | Situação |
+|---|---|---|---|
+| V1 | Cópias de backup (`db.dump` com o banco inteiro) e a pasta `.local` legíveis por **qualquer usuário** da máquina; um site vizinho comprometido leria clientes e hashes de senha. | Alta | **Corrigido** no código (`umask 077` no backup e `UMask=0077` na unidade); permissões das cópias existentes a corrigir no servidor |
+| V2 | SSH aceita **login do root com senha** (`PermitRootLogin yes`, `PasswordAuthentication yes`). fail2ban ativo reduz, mas não elimina, a força bruta. Vale para o servidor inteiro. | Alta | **Pendente** (decisão sua: exige confirmar o acesso por chave antes) |
+| V3 | 13 atualizações de segurança pendentes (o `unattended-upgrades` está ligado). | Média | **Pendente** (janela de manutenção: afeta todos os sites) |
+| V4 | Duas unidades do systemd com falha; o script antigo não mostrava o nome. | A conferir | **Pendente** (`systemctl --failed`) |
+| V5 | Serviços de outros sistemas ouvindo em todas as interfaces (MySQL 3306/33060, FTP 21, 3000, 3001, 9443, 6081). O firewall bloqueia (padrão negar entrada), mas é uma camada só. Regra `8433:8443` provavelmente devia ser só `8443`. | Baixa | **Atenção** (não são da loja; não mexer sem os responsáveis) |
+| V6 | `/backups/` e `/storage/` respondem 308 (o Next tira a barra final) em vez de 404 direto. | Baixa | **Pendente** (conferir o destino; o script agora segue o redirecionamento) |
+
+**Aprovado no servidor:** firewall ativo com entrada negada por padrão; PostgreSQL da loja só em 127.0.0.1 com
+`scram-sha-256`; `.env` e `credentials.json` com permissão 600 e `pgdata` 700; serviços da loja ativos, sem
+reinício e sem erro nem resposta 5xx nas últimas 24 h; nenhum simulador ligado em produção; nginx válido, com
+`server_tokens off` e o limite por IP instalado; HSTS, `X-Content-Type-Options`, `Referrer-Policy`,
+`Permissions-Policy` e CSP da loja presentes; `.env`, `.git`, `.local`, `package.json` e travessia de caminho
+inacessíveis pela web; `npm audit` sem vulnerabilidades; backup diário rodando.
+
+### 3.4 Não testado ou pendente
+
+- Cookies `Secure` e CSP do painel através do nginx: **Pendente** (o script só olha a página inicial).
 - CSP completa da loja com o SDK do Mercado Pago: **Pendente** (sandbox).
 - Teste de intrusão externo (varredura de portas, TLS) contra o servidor: **Não testado** (fora do escopo sem
   autorização e janela combinadas).
@@ -232,9 +251,8 @@ aparecer no menu da loja.
 
 Em ordem de prioridade. Nenhuma foi aplicada no servidor.
 
-1. **Rodar a auditoria do servidor** (`deploy/auditoria-servidor.sh`, só leitura) e corrigir o que ela apontar
-   (SSH só com chave, firewall só com 22/80/443 e as portas do CloudPanel, PostgreSQL ouvindo só em 127.0.0.1,
-   `.env` com permissão 600).
+1. **Corrigir os achados do servidor** (seção 3.3): permissões das cópias de backup já existentes, SSH só com
+   chave e sem senha para o root, atualizações de segurança numa janela de pouco movimento.
 2. **Aplicar o limite por IP do nginx** (`00-loja-limites.conf`), com `nginx -t` antes do reload.
 3. **Medir no VPS** com o roteiro de `tests/carga/README.md` (cenário `fumaca` e depois `inicial`, fora do horário de
    movimento, com `vmstat -w 2` aberto). É o único jeito de saber a capacidade real.

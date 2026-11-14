@@ -109,8 +109,10 @@ feito só com os simulados.
 
 ## Auditoria de novembro de 2026 ([AUDITORIA-2026-11.md](AUDITORIA-2026-11.md))
 
-- [ ] **Servidor** Rodar `sudo bash /srv/loja-embalagens/deploy/auditoria-servidor.sh 2>&1 | tee ~/auditoria-$(date +%F).txt`
-      (só leitura) e corrigir o que aparecer: SSH, firewall, portas, permissões do `.env`, PostgreSQL só em 127.0.0.1.
+- [x] **Servidor** Auditoria do servidor (14/11/2026): ver seção 3.3 do relatório.
+- [ ] **Servidor** Permissões das cópias de backup existentes (700/600) e da `.local`; conferir de novo com o script.
+- [ ] **Você** SSH só com chave e sem senha para o root (testar a chave numa segunda janela antes).
+- [ ] **Servidor** 13 atualizações de segurança (`apt upgrade`) em horário de pouco movimento; `systemctl --failed`.
 - [ ] **Servidor** Instalar `deploy/nginx/00-loja-limites.conf` e os sites da loja atualizados; `nginx -t` antes do
       reload; conferir que a loja abre e que `curl -I` não mostra a versão do nginx.
 - [ ] **Servidor** Carga no VPS de outra máquina, fora do horário de movimento: `fumaca` e depois `inicial`

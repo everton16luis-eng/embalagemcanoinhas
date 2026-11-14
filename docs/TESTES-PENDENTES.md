@@ -9,7 +9,9 @@ Legenda: **HTTPS** = precisa da API publicada com certificado · **Você** = dep
 
 ## Infraestrutura (antes de tudo)
 
-- [ ] **HTTPS** Publicar API e site em servidor com domínio e certificado; medir memória livre no VPS.
+- [x] **HTTPS** Domínio no ar com certificado Let's Encrypt por webroot (14/11/2026; vale até 12/02/2027,
+      renovação recarrega o nginx). VPS: 7,9 GB, ~5,5 GB disponíveis com tudo rodando. Acesso provisório pelo IP desligado.
+- [ ] **Servidor** `certbot renew --dry-run` passa (a renovação automática funciona).
 - [ ] **HTTPS** `next build` e implantação; conferir cookies `Secure`, cabeçalhos de segurança e `TRUST_PROXY`.
 - [x] Backup e teste de restauração **local** (13/11/2026): `npm run backup` e `backup:restore-test` OK; arquivo
       adulterado detectado pelo `backup:verify`. Ver [BACKUP.md](BACKUP.md).
@@ -111,9 +113,9 @@ feito só com os simulados.
 
 - [x] **Servidor** Auditoria do servidor (14/11/2026): ver seção 3.3 do relatório.
 - [x] **Servidor** Permissões das cópias de backup e da `.local` (14/11/2026).
-- [ ] **Servidor** Pasta `storage/` só para o usuário loja (750) e unidade da API com `UMask=0027`; reiniciar o servidor (kernel).
+- [x] **Servidor** Pasta `storage/` em 750, `UMask=0027` na API e reinício com o kernel novo (14/11/2026).
 - [ ] **Você** SSH só com chave e sem senha para o root (testar a chave numa segunda janela antes).
-- [x] **Servidor** Atualizações de segurança aplicadas (14/11/2026); falta o reinício.
+- [x] **Servidor** Atualizações de segurança aplicadas e servidor reiniciado (14/11/2026).
 - [ ] **Servidor** Instalar `deploy/nginx/00-loja-limites.conf` e os sites da loja atualizados; `nginx -t` antes do
       reload; conferir que a loja abre e que `curl -I` não mostra a versão do nginx.
 - [ ] **Servidor** Carga no VPS de outra máquina, fora do horário de movimento: `fumaca` e depois `inicial`

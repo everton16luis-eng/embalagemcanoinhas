@@ -29,7 +29,7 @@ de HTTPS ou de conta externa) · **Não testado** = fora do que foi possível ne
 | Injeção, XSS, travessia de caminho, atribuição em massa, CSRF | **Aprovado** |
 | Dependências | **Corrigido** (1 vulnerabilidade baixa); `npm audit` zerado |
 | Cabeçalhos de segurança | **Corrigido** no painel (CSP estrita); **Atenção** na loja (CSP parcial até validar o Mercado Pago) |
-| Proteção contra excesso de requisições | **Corrigido** na aplicação; nginx **Pendente** (arquivo pronto, aplicar no VPS) |
+| Proteção contra excesso de requisições | **Corrigido** na aplicação e no nginx do VPS |
 | Configuração do servidor (SSH, firewall, portas, permissões) | Auditado: **2 achados altos** (backups legíveis por todos; SSH do root com senha), ver 3.3 |
 | Desempenho do front-end | **Aprovado** (Lighthouse 97–100 em desempenho) |
 | Acessibilidade | **Corrigido** (nomes de botão/link, contraste, tabela) |
@@ -55,7 +55,7 @@ de HTTPS ou de conta externa) · **Não testado** = fora do que foi possível ne
 | S1 | Login de **cliente** só tinha limite por IP (10/min). Com vários IPs dava para testar senhas de uma conta sem parar. | Média | **Corrigido** | Mesmo bloqueio progressivo do painel: 5 falhas por e-mail ou 30 por IP em 15 min bloqueiam, inclusive a senha certa, até a janela passar. Teste `audit.test.ts` (12 tentativas de IPs diferentes → 429). |
 | S2 | `fast-xml-parser` 5.11.2 com GHSA-474x-hrwr-fgx4 (lê XML de nota de compra enviado pelo painel). | Baixa | **Corrigido** | 5.12.1; testes de notas de compra 4/4; `npm audit` 0. |
 | S3 | Sem Content-Security-Policy. | Baixa/média | **Corrigido** no painel · **Atenção** na loja | Painel: `default-src 'self'`, `frame-ancestors 'none'`, sem script externo. Loja: `object-src 'none'`, `base-uri 'self'`, `form-action 'self'`, `frame-ancestors 'self'`. A política completa da loja depende de liberar exatamente os domínios do SDK do Mercado Pago, o que só dá para conferir no sandbox. Conferido no build de produção: cabeçalhos presentes e painel sem erro no console. |
-| S4 | nginx mostrava a versão e não limitava um IP disparando requisições antes do Next. | Baixa | **Pendente** (aplicar no VPS) | `deploy/nginx/00-loja-limites.conf` (20 req/s por IP com rajada de 80; 60 conexões) e `server_tokens off` nos dois sites da loja. Instalação e reversão no próprio arquivo. |
+| S4 | nginx mostrava a versão e não limitava um IP disparando requisições antes do Next. | Baixa | **Corrigido** (aplicado no VPS e conferido em 14/11/2026) | `deploy/nginx/00-loja-limites.conf` (20 req/s por IP com rajada de 80; 60 conexões) e `server_tokens off` nos dois sites da loja. Instalação e reversão no próprio arquivo. |
 | S5 | Contadores de limite (`rate_limits`, `auth_throttle`) nunca eram apagados: cada IP e rota deixava uma linha para sempre. | Baixa | **Corrigido** | Limpeza de hora em hora só do que já perdeu efeito (janela encerrada há mais de 1 h; bloqueio vencido). |
 | S6 | Repositório no GitHub é **público**. Não há segredo no código nem no histórico (conferido: `.env`, `.local`, certificados nunca entraram), mas a estrutura do sistema fica exposta. | Informativo | **Atenção** | Recomendado tornar privado. |
 
@@ -100,7 +100,8 @@ inacessíveis pela web; `npm audit` sem vulnerabilidades; backup diário rodando
 
 ### 3.4 Não testado ou pendente
 
-- Cookies `Secure` e CSP do painel através do nginx: **Pendente** (o script só olha a página inicial).
+- CSP do painel e da loja, HSTS e `X-Frame-Options` pelo domínio: **Aprovado** (14/11/2026, certificado Let's Encrypt
+  até 12/02/2027). Cookies `Secure`/`HttpOnly` e IP real na Auditoria: **Pendente** (conferir no navegador).
 - CSP completa da loja com o SDK do Mercado Pago: **Pendente** (sandbox).
 - Teste de intrusão externo (varredura de portas, TLS) contra o servidor: **Não testado** (fora do escopo sem
   autorização e janela combinadas).

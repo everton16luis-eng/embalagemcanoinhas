@@ -11,7 +11,7 @@ Legenda: **HTTPS** = precisa da API publicada com certificado · **Você** = dep
 
 - [x] **HTTPS** Domínio no ar com certificado Let's Encrypt por webroot (14/11/2026; vale até 12/02/2027,
       renovação recarrega o nginx). VPS: 7,9 GB, ~5,5 GB disponíveis com tudo rodando. Acesso provisório pelo IP desligado.
-- [ ] **Servidor** `certbot renew --dry-run` passa (a renovação automática funciona).
+- [x] **Servidor** `certbot renew --dry-run` passou (14/11/2026).
 - [ ] **HTTPS** `next build` e implantação; conferir cookies `Secure`, cabeçalhos de segurança e `TRUST_PROXY`.
 - [x] Backup e teste de restauração **local** (13/11/2026): `npm run backup` e `backup:restore-test` OK; arquivo
       adulterado detectado pelo `backup:verify`. Ver [BACKUP.md](BACKUP.md).

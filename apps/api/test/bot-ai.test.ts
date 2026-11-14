@@ -6,7 +6,7 @@ import { pool } from '../src/db/pool.js';
 import { AiUnavailable, FakeAi, GeminiProvider, type AiPart } from '../src/lib/gemini.js';
 import { FakeProvider } from '../src/lib/payments.js';
 import { FakeWhatsApp } from '../src/lib/whatsapp.js';
-import { tidy } from '../src/modules/bot-ai.js';
+import { searchWords, tidy } from '../src/modules/bot-ai.js';
 import { botTick } from '../src/modules/bot.js';
 import { appRole, loggedAs, makeApp, ORIGIN, owner, productPayload, randomIp, resetCatalog, uid } from './helpers.js';
 
@@ -207,6 +207,40 @@ describe('IA no WhatsApp', () => {
     expect((await lastBot(OTHER_PHONE)).body).toContain('Resposta simulada com os dados');
   });
 
+  it('busca pela necessidade: palavras soltas, plural, descrição, especificações e saldo real', async () => {
+    expect(searchWords('Preciso de caixas para 100 bombons e papéis')).toEqual(['caixa', '100', 'bombom', 'papel']);
+    expect(searchWords('Qual cabe 100?')).toEqual(['100']);
+    const cat = (await boss.post('/api/v1/admin/categories', { name: `Caixas para doces ${uid()}` })).json().category;
+    const mk = async (body: Record<string, unknown>) => {
+      const r = await boss.post('/api/v1/admin/products', productPayload({ variants: [{ sku: `CX-${uid()}`.toUpperCase(), packagings: [{ kind: 'sale', label: 'Unidade', unitCode: 'UN', baseQty: '1', priceCents: 450, isDefault: true }] }], ...body }));
+      expect(r.statusCode, r.body).toBe(201);
+      return r.json().product;
+    };
+    const divisoria = await mk({
+      name: `Caixa kraft com divisórias ${uid()}`,
+      categoryId: cat.id,
+      description: 'Ideal para brigadeiros e docinhos de festa.',
+      specs: [
+        { label: 'Medidas internas', value: '20 x 20 x 4 cm' },
+        { label: 'Capacidade', value: '25 doces nº 4' },
+      ],
+    });
+    await boss.post('/api/v1/admin/stock/movements', { variantId: divisoria.variants[0].id, kind: 'adjustment', qty: '10', reason: 'Saldo inicial', requestKey: `k-${uid()}-${uid()}` });
+    await mk({ name: `Caixa para bolo 2 kg ${uid()}` });
+    await setBot({ mode: 'ai', testPhones: [OTHER_PHONE] });
+    ai.script = [call('buscar_produtos', { termo: 'caixa para 100 doces' })];
+    await send(OTHER_PHONE, 'preciso entregar 100 doces de 15 g, qual caixa cabe?');
+    const found = (ai.requests[1]!.contents.at(-1)!.parts[0] as any).functionResponse.response.produtos;
+    // A que fala de doces (categoria, descricao, especificacao) vem antes da que so tem "caixa" no nome.
+    expect(found[0]).toMatchObject({
+      nome: divisoria.name,
+      categoria: cat.name,
+      especificacoes: ['Medidas internas: 20 x 20 x 4 cm', 'Capacidade: 25 doces nº 4'],
+      disponibilidade: 'em estoque',
+    });
+    expect(found.find((x: any) => x.nome.startsWith('Caixa para bolo'))).toMatchObject({ disponibilidade: 'sem saldo no momento' });
+  });
+
   it('pedido do próprio telefone: a IA recebe a situação; de outro telefone: o menu pede o CPF fora da IA', async () => {
     const o = await order();
     await setBot({ mode: 'ai', testPhones: [OWNER_PHONE, OTHER_PHONE] });
@@ -272,7 +306,7 @@ describe('IA no WhatsApp', () => {
     expect(contents[0]).toEqual({ role: 'user', parts: [{ text: 'oi' }] });
     expect(contents[1]!.role).toBe('model');
     expect(contents.at(-1)).toEqual({ role: 'user', parts: [{ text: 'vocês vendem forminha?' }] });
-    expect(ai.requests[0]!.system).toContain('Nunca invente preço');
+    expect(ai.requests[0]!.system).toContain('Nunca invente produto, preço');
   });
 });
 

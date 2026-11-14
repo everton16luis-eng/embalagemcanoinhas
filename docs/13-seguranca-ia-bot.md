@@ -105,8 +105,15 @@ O prompt ganhou uma seção "Regras de segurança" com 7 regras:
 - só falar do cliente atual;
 - nunca mandar links de fora da loja.
 
-As regras de atendimento continuam iguais ("Nunca invente preço" etc.). O prompt passou de 824 para 1.803
-caracteres, cerca de 250 tokens a mais por chamada.
+O prompt passou de 824 para 1.803 caracteres com a segurança. Em 14/11/2026, a parte de atendimento virou a de
+**consultor de vendas** (entender a necessidade, buscar por tipo e aplicação, comparar, não afirmar que cabe sem
+medida cadastrada, recomendar uma opção e uma alternativa). Com isso o prompt foi a 3.127 caracteres, cerca de 780
+tokens por chamada. As regras de segurança e o "nunca invente" continuam iguais.
+
+A busca de produtos acompanhou a mudança: procura também na descrição, na categoria, nas especificações e nas
+variações; ordena pelos que casam mais palavras, em vez de exigir todas; ignora palavras vazias e passa plurais para o
+singular; e devolve especificações, variações e o saldo real ("em estoque" ou "sem saldo no momento"). Continua
+parametrizada, e a IA pode fazer até 3 buscas por mensagem.
 
 ### 4.2 Filtro de entrada (`assessInput`)
 Não é só lista de palavras.
@@ -225,7 +232,7 @@ estoque de verdade.
 | Mascaramento de dados pessoais | média 0,005 ms |
 | Filtro de resposta | média 0,38 ms, p95 0,55 ms |
 | 100 mensagens de 20 telefones, IA simulada | 1,7 s no total (17 ms por mensagem, incluindo banco), 100 respondidas, 0 bloqueios indevidos |
-| System Prompt | 824 → 1.803 caracteres (cerca de +250 tokens de entrada por chamada) |
+| System Prompt | 824 → 1.803 caracteres com a segurança; 3.127 com o consultor de vendas (cerca de 780 tokens por chamada) |
 
 **Leitura honesta**
 - As camadas somam menos de 1 ms por mensagem. O tempo real é dominado pelo Gemini, que leva centenas de ms ou mais
@@ -234,7 +241,8 @@ estoque de verdade.
   camadas. A comparação de custo é o prompt maior.
 - No fim a fim, 20 das 100 respostas são a saudação com menu do primeiro contato (fluxo que já existia). As outras
   80 foram à IA em 92 chamadas, porque as buscas de produto usam duas.
-- **Custo:** cerca de +250 tokens por chamada. Uma mensagem barrada não chama a IA, e a rajada e a pausa cortam o
+- **Custo:** cerca de +250 tokens por chamada pela segurança, e mais uns 330 pelo consultor de vendas. Uma recomendação
+  pode usar até 3 buscas, ou seja, até 4 chamadas. Uma mensagem barrada não chama a IA, e a rajada e a pausa cortam o
   gasto de quem abusa.
 
 ## 7. Vulnerabilidades corrigidas

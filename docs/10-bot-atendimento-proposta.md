@@ -8,8 +8,10 @@ Gemini, a instalação do Typebot no VPS e a ativação da Cloud API dependem da
 
 - **É possível usar o Gemini 3.5 Flash-Lite.** O modelo é estável, aceita chamada de funções (function calling) e
   saída estruturada, e é o mais barato da linha 3.5.
-- **Mas só no plano pago.** No plano gratuito, o Google usa as conversas para melhorar os produtos dele, e os termos
-  permitem revisão humana. Mensagens de clientes da loja não podem ir para lá.
+- **Testes no plano gratuito, clientes só no pago.** Decisão de 14/11/2026: a IA começa com a chave gratuita para os
+  testes e passa para o plano pago depois de tudo testado e alinhado. No gratuito, o Google usa as conversas para
+  melhorar os produtos dele e os termos permitem revisão humana. Por isso, **enquanto a chave for gratuita, a IA só
+  responde em conversas de teste** (seção 4.4) e os clientes reais ficam com o menu.
 - **Custo estimado do plano pago:** cerca de US$ 0,0015 por resposta. Com 2.000 respostas por mês, uns US$ 3. É uma
   estimativa, não um preço fechado (seção 4.4).
 - **As três formas ficam atrás de um único "motor de atendimento" na API da loja.** O webhook da Meta continua
@@ -133,6 +135,22 @@ O que muda no código:
   humana das conversas no gratuito e desaconselham enviar dados pessoais.
 - **Conclusão:** para mensagens de clientes, **só o plano pago**.
 
+**Modo gratuito (testes) e modo pago (clientes)**
+
+| | Modo gratuito | Modo pago |
+|---|---|---|
+| Chave | Gratuita, criada no Google AI Studio, sem faturamento | Projeto do Google Cloud com faturamento ativo |
+| Quem a IA atende | **Só** o chat de teste do painel e os números da lista de teste (`bot.test_phones`, cadastrada no painel) | Todos os clientes |
+| Clientes reais | Recebem o menu, como se a IA estivesse desligada | Recebem a IA |
+| Custo | R$ 0 | Seção de estimativa abaixo |
+| Limites | Os limites de uso do plano gratuito do Google. Ao estourar, o teste mostra o erro e o menu assume | Limite mensal em dólares no painel |
+
+- **A troca é uma opção no painel,** `Plano da chave: gratuito / pago`, com verificação em duas etapas e registro na
+  auditoria. A chave paga é trocada no `.env`.
+- **Nos testes, use só dados de teste:** pedidos e nomes fictícios. Não teste com o pedido de um cliente real.
+- Antes da troca para o pago ficam valendo os itens desta seção: limite mensal, política de privacidade e sua
+  autorização de custo.
+
 **Como a IA responde sem inventar**
 - **A IA não acessa o banco.** Ela pede uma "ferramenta" (função) e a loja decide o que entregar. As ferramentas são
   só de leitura:
@@ -210,8 +228,9 @@ chat de teste gasta tokens do Gemini e conta no limite.
 | Etapa | Entrega | Custo | Depende de |
 |---|---|---|---|
 | 1 | Mensagens interativas, estado da conversa, motor, forma **menu**, chat de teste, transferência para atendente, testes | R$ 0 | Sua aprovação deste plano |
-| 2 | Forma **IA** com Gemini: adaptador, ferramentas, limites, custo no painel, testes com o simulador | R$ 0 para programar | Etapa 1 |
-| 2b | Ligar a IA de verdade | Cobrança do Google (plano pago) | Sua autorização de custo, conta Google Cloud com faturamento, texto da política de privacidade |
+| 2 | Forma **IA** com Gemini: adaptador, ferramentas, limites, custo no painel, modo gratuito só para testes, testes com o simulador | R$ 0 | Etapa 1 |
+| 2a | Testar a IA com a **chave gratuita**: chat de teste do painel e números de teste | R$ 0 | Você criar a chave gratuita no Google AI Studio e colocar no `.env` |
+| 2b | Trocar para o **plano pago** e liberar para os clientes | Cobrança do Google | Testes da 2a aprovados, sua autorização de custo, conta Google Cloud com faturamento, texto da política de privacidade |
 | 3 | Instalar o **Typebot** no VPS e a forma Typebot na loja | R$ 0 de licença; memória do VPS | Sua autorização para instalar o serviço |
 | 4 | Ativar a Cloud API da Meta (passos já combinados) | Cobrança da Meta por mensagem de modelo | Sua autorização de custo |
 
@@ -220,8 +239,8 @@ As etapas 1 a 3 funcionam com o simulador do WhatsApp. A 4 pode vir antes ou dep
 ## 7. Decisões que preciso de você
 
 1. **Aprova o plano e a etapa 1** (menu, sem custo)?
-2. **Gemini no plano pago:** aceita o custo estimado (seção 4.4)? Qual limite mensal (sugestão: US$ 10)? A
-   cobrança só começa quando você criar a chave paga e colocar no `.env`.
+2. ~~Gemini no plano pago~~ **Decidido em 14/11/2026:** testes com a chave gratuita, restrita a conversas de teste;
+   o plano pago fica para depois dos testes. O limite mensal (sugestão: US$ 10) é decidido na troca.
 3. **Typebot no VPS:** autoriza instalar os dois serviços, o banco próprio e o subdomínio `bot.`?
 4. **Forma padrão** depois de tudo pronto: só menu, só IA, ou menu com IA para "outra dúvida" (sugestão: menu com IA)?
 5. **Horário de atendimento** da loja, para o aviso fora do horário.

@@ -9,7 +9,7 @@ import type { AiContent, AiProvider } from '../lib/gemini.js';
 import { TypebotSessionGone, type TbTurn, type TypebotProvider } from '../lib/typebot.js';
 import { interactiveSummary, toWhatsAppNumber, type Interactive, type WhatsAppProvider } from '../lib/whatsapp.js';
 import { requirePermission } from './auth.js';
-import { aiTurn, historyFor } from './bot-ai.js';
+import { aiTurn, historyFor, SAFE_REPLY, securitySummary } from './bot-ai.js';
 
 /**
  * Bot de atendimento (docs/10-bot-atendimento-proposta.md): etapa 1, menu com regras fixas; etapa 2, IA (Gemini)
@@ -168,6 +168,8 @@ type Ctx = {
   now: Date;
   /** IA liberada para esta conversa (plano pago, ou chat/numero de teste no plano gratuito). */
   aiAllowed?: boolean;
+  channel?: 'whatsapp' | 'teste';
+  inboundId?: string | null;
   history?: AiContent[];
 };
 
@@ -312,7 +314,8 @@ export async function menuBot(ctx: Ctx, state: BotState, input: BotInput): Promi
 let aiProvider: AiProvider | null = null;
 export const setAiProvider = (p: AiProvider | null) => void (aiProvider = p);
 
-type Out = { replies: BotReply[]; state: BotState; handoff: boolean; ai?: boolean };
+/** guarded: a protecao barrou a mensagem (ela nao entra no historico do chat de teste). */
+type Out = { replies: BotReply[]; state: BotState; handoff: boolean; ai?: boolean; guarded?: boolean };
 
 /**
  * Quem responde: menu ou IA. Botoes, opcoes digitadas e os passos de pedido/documento ficam sempre com o menu.
@@ -337,11 +340,13 @@ export async function respond(ctx: Ctx, state: BotState, input: BotInput): Promi
       ai: aiProvider!,
       phone: ctx.phone,
       who: ctx.who,
+      channel: ctx.channel ?? 'whatsapp',
+      inboundId: ctx.inboundId ?? null,
       storeName: await storeName(ctx),
       storeInfo: () => storeInfo(ctx),
       orderText: async (n) => {
         const o = await findOrder(ctx, n);
-        return o ? { ownerPhone: toWhatsAppNumber(o.phone), text: orderText(o) } : null;
+        return o ? { ownerPhone: toWhatsAppNumber(o.phone), text: orderText(o), urls: o.tracking_url ? [o.tracking_url] : [] } : null;
       },
       sameOwner: (p) => samePhone(p, ctx.phone),
       limits: { monthlyUsd: ctx.settings.ai_monthly_limit_usd, dailyPerWho: ctx.settings.ai_daily_per_phone },
@@ -359,6 +364,9 @@ export async function respond(ctx: Ctx, state: BotState, input: BotInput): Promi
       return r.order ? menuBot(ctx, { step: 'await_order', context: { tries: 0 } }, { ...input, replyId: null, text: String(r.order) }) : menuChoice('pedido');
     case 'limit':
       return r.reason === 'daily' ? menuChoice('atendente') : menuBot(ctx, state, input);
+    case 'refused':
+      // Barrado pela protecao: resposta padrao da loja, sem detalhe tecnico, com os botoes de sempre.
+      return { replies: [AFTER(SAFE_REPLY)], state: { step: 'menu', context: {} }, handoff: false, guarded: true };
     default:
       return menuBot(ctx, state, input);
   }
@@ -480,7 +488,7 @@ async function handleOne(provider: WhatsAppProvider, settings: BotSettings, m: I
   const state: BotState = conv?.state === 'bot' ? { step: conv.step, context: conv.context } : { step: null, context: {} };
   const aiAllowed = aiAllowedFor(settings, m.from_phone);
   const history = aiAllowed && aiProvider ? await historyFor(pool, m.from_phone, m.id) : [];
-  const out = await respond({ db: pool, phone: m.from_phone, who: m.from_phone, settings, now, aiAllowed, history }, state, {
+  const out = await respond({ db: pool, phone: m.from_phone, who: m.from_phone, settings, now, aiAllowed, history, channel: 'whatsapp', inboundId: m.id }, state, {
     text: m.body,
     replyId: m.reply_id,
     type: m.type,
@@ -520,6 +528,8 @@ async function runBot(provider: WhatsAppProvider, now: () => Date) {
     again = false;
     // Documento que ficou para tras (mensagem nao respondida): nao fica guardado.
     await pool.query(`DELETE FROM bot_pending_documents WHERE created_at < now() - interval '2 hours'`);
+    // LGPD: eventos de seguranca ficam 90 dias.
+    await pool.query(`DELETE FROM bot_security_events WHERE created_at < now() - interval '90 days'`);
     const settings = await loadSettings(pool);
     // Desligado: marca como vistas, para nao responder atrasado quando o bot for ligado.
     if (settings.audience === 'off') {
@@ -662,7 +672,7 @@ export async function botAdminRoutes(app: FastifyInstance) {
     const history = s?.history ?? [];
     // O chat de teste sempre pode usar a IA (o modo menu continua so menu).
     const out = await respond(
-      { db: pool, phone, who: `teste:${auth.userId}`, settings, now: new Date(), aiAllowed: isAiMode(settings.mode), history },
+      { db: pool, phone, who: `teste:${auth.userId}`, settings, now: new Date(), aiAllowed: isAiMode(settings.mode), history, channel: 'teste' },
       { step: s?.step ?? null, context: s?.context ?? {} },
       { text: b.text ?? null, replyId: b.replyId ?? null, type: b.replyId ? 'interactive' : 'text', name: null },
     );
@@ -671,7 +681,7 @@ export async function botAdminRoutes(app: FastifyInstance) {
       ? []
       : [
           ...history,
-          ...(said ? [{ role: 'user' as const, parts: [{ text: said }] }] : []),
+          ...(said && !out.guarded ? [{ role: 'user' as const, parts: [{ text: said }] }] : []),
           ...out.replies.map((r) => ({ role: 'model' as const, parts: [{ text: r.kind === 'text' ? r.body : interactiveSummary(r.i) }] })),
         ].slice(-10);
     await pool.query(
@@ -680,6 +690,12 @@ export async function botAdminRoutes(app: FastifyInstance) {
       [auth.userId, phone, out.handoff ? null : out.state.step, JSON.stringify(out.handoff ? {} : out.state.context), JSON.stringify(next)],
     );
     return { replies: out.replies, handoff: out.handoff, ai: Boolean(out.ai), phone };
+  });
+
+  /** Eventos de seguranca da IA (7 dias): sem texto das mensagens e sem telefone. */
+  app.get('/security', async (req) => {
+    requirePermission(req, 'bot.manage');
+    return securitySummary(pool);
   });
 
   app.delete('/test', async (req) => {

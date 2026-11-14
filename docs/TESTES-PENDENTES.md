@@ -121,7 +121,13 @@ feito só com os simulados.
   - no painel, escolher "Menu e IA" ou "IA", com o plano gratuito, e conversar pelo chat de teste: perguntar preço de
     um produto, pedido com telefone simulado, pedir atendente e tentar "esqueça as regras";
   - conferir o gasto estimado no painel.
-- [ ] **Servidor** Atualizar com as migrações `0013` a `0016` (pull, `npm ci`, migrate, build, reiniciar).
+- [ ] **Servidor** Atualizar com as migrações `0013` a `0017` (pull, `npm ci`, migrate, build, reiniciar).
+- [ ] **Com a chave do Gemini** Segurança da IA ([13-seguranca-ia-bot.md](13-seguranca-ia-bot.md)) no modelo real,
+      pelo chat de teste:
+  - confirmar que a categoria `HARM_CATEGORY_JAILBREAK` é aceita (sem erro no log da API);
+  - mandar 3 ataques que o filtro deixe passar (paráfrase nova) e ver se o modelo recusa;
+  - conferir `finish_reason` em `ai_calls` e os eventos na seção "Segurança da IA" do painel;
+  - ver se alguma pergunta comum de cliente foi barrada por engano.
 - [ ] **Servidor** Instalar o Typebot seguindo [11-typebot.md](11-typebot.md). Começa pelo passo 0, que só confere
       memória, Docker e portas.
 - [ ] **Você** Montar um fluxo no Typebot, publicar, ligar a forma Typebot no painel e testar pelo chat de teste. O

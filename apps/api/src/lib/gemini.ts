@@ -15,9 +15,55 @@ export type AiPart =
 export type AiContent = { role: 'user' | 'model'; parts: AiPart[] };
 export type AiFunction = { name: string; description: string; parameters: Record<string, unknown> };
 export type AiRequest = { system: string; contents: AiContent[]; functions: AiFunction[]; maxOutputTokens: number };
-export type AiResult = { parts: AiPart[]; inputTokens: number; outputTokens: number };
+/**
+ * finishReason: candidates[0].finishReason (STOP, MAX_TOKENS, SAFETY, ...). blockReason: promptFeedback.blockReason,
+ * quando a propria entrada foi barrada pelos filtros do Google (sem candidato).
+ */
+export type AiResult = { parts: AiPart[]; inputTokens: number; outputTokens: number; finishReason?: string | null; blockReason?: string | null };
 
 export class AiUnavailable extends Error {}
+/** O Google recusou a entrada pelos filtros dele (HTTP 400 com motivo de seguranca). */
+export class AiBlocked extends Error {}
+
+/** Motivos de termino (documentacao de generateContent, 14/11/2026) agrupados para o bot. */
+export const FINISH_BLOCKED = new Set(['SAFETY', 'RECITATION', 'BLOCKLIST', 'PROHIBITED_CONTENT', 'SPII', 'LANGUAGE', 'IMAGE_SAFETY', 'IMAGE_PROHIBITED_CONTENT', 'JAILBREAK']);
+export const FINISH_INVALID = new Set(['MALFORMED_FUNCTION_CALL', 'UNEXPECTED_TOOL_CALL', 'TOO_MANY_TOOL_CALLS', 'MISSING_THOUGHT_SIGNATURE', 'MALFORMED_RESPONSE', 'OTHER', 'FINISH_REASON_UNSPECIFIED']);
+
+/**
+ * Filtros do Google (safetySettings). Nao substituem as protecoes da loja: sao mais uma camada. A categoria de
+ * jailbreak e recente; se o modelo recusar a configuracao, a chamada repete sem ela (e o servidor lembra).
+ */
+const BASE_SAFETY = [
+  { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
+  { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
+  { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
+  { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
+];
+const JAILBREAK_SAFETY = { category: 'HARM_CATEGORY_JAILBREAK', threshold: 'BLOCK_MEDIUM_AND_ABOVE' };
+
+/** Segredos do .env que nunca podem aparecer em resposta, erro gravado ou log. */
+export function knownSecrets(): string[] {
+  const c = config as Record<string, unknown>;
+  return [
+    'GEMINI_API_KEY',
+    'WA_ACCESS_TOKEN',
+    'WA_APP_SECRET',
+    'WA_VERIFY_TOKEN',
+    'ENC_KEY',
+    'APP_DB_PASSWORD',
+    'MP_ACCESS_TOKEN',
+    'MP_WEBHOOK_SECRET',
+    'FOCUS_TOKEN_HOMOLOGACAO',
+    'FOCUS_TOKEN_PRODUCAO',
+    'FISCAL_WEBHOOK_SECRET',
+    'ML_CLIENT_SECRET',
+    'SHOPEE_PARTNER_KEY',
+    'MELHOR_ENVIO_TOKEN',
+    'SMTP_PASS',
+  ]
+    .map((k) => c[k])
+    .filter((v): v is string => typeof v === 'string' && v.length >= 8);
+}
 
 export interface AiProvider {
   readonly fake: boolean;
@@ -36,7 +82,23 @@ export class GeminiProvider implements AiProvider {
     private readonly fetcher: Fetcher = defaultFetch,
   ) {}
 
+  /** O modelo aceitou HARM_CATEGORY_JAILBREAK? (null = ainda nao se sabe) */
+  private jailbreakFilter: boolean | null = null;
+
   async generate(req: AiRequest): Promise<AiResult> {
+    try {
+      return await this.call(req, this.jailbreakFilter !== false);
+    } catch (err) {
+      // Configuracao recusada por causa da categoria nova: repete sem ela uma vez e guarda a decisao.
+      if (err instanceof AiUnavailable && this.jailbreakFilter === null && /JAILBREAK|safety_?settings|HarmCategory/i.test(err.message)) {
+        this.jailbreakFilter = false;
+        return this.call(req, false);
+      }
+      throw err;
+    }
+  }
+
+  private async call(req: AiRequest, withJailbreak: boolean): Promise<AiResult> {
     let res;
     try {
       res = await this.fetcher(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(this.model)}:generateContent`, {
@@ -46,12 +108,16 @@ export class GeminiProvider implements AiProvider {
           systemInstruction: { parts: [{ text: req.system }] },
           contents: req.contents,
           tools: [{ functionDeclarations: req.functions }],
+          // AUTO (padrao estavel): o modelo escolhe texto ou funcao. Quem decide se a funcao roda e o servidor.
+          toolConfig: { functionCallingConfig: { mode: 'AUTO' } },
+          safetySettings: withJailbreak ? [...BASE_SAFETY, JAILBREAK_SAFETY] : BASE_SAFETY,
           // Raciocinio no minimo: cada token de raciocinio e cobrado como saida.
-          generationConfig: { maxOutputTokens: req.maxOutputTokens, thinkingConfig: { thinkingLevel: 'minimal' } },
+          generationConfig: { maxOutputTokens: req.maxOutputTokens, candidateCount: 1, thinkingConfig: { thinkingLevel: 'minimal' } },
         }),
       });
     } catch (err) {
-      throw new AiUnavailable(`falha de comunicacao: ${(err as Error).message}`.slice(0, 300));
+      // Mensagem curta e sem detalhes de rede (endereco, cabecalhos).
+      throw new AiUnavailable(`falha de comunicacao: ${(err as Error).name === 'TimeoutError' ? 'tempo esgotado' : 'sem resposta'}`);
     }
     const text = await res.text();
     let body: any = null;
@@ -62,14 +128,21 @@ export class GeminiProvider implements AiProvider {
     }
     if (res.status < 200 || res.status >= 300) {
       const msg = typeof body?.error?.message === 'string' ? body.error.message : `HTTP ${res.status}`;
-      throw new AiUnavailable(`${res.status}: ${msg}`.slice(0, 300));
+      const clean = `${res.status}: ${msg}`.replace(/AIza[0-9A-Za-z_-]{20,}/g, '[segredo]').slice(0, 300);
+      // Entrada barrada pelos filtros do Google (codigos safety/jailbreak/prohibited/blocklist).
+      if (res.status === 400 && /input blocked|\b(safety|jailbreak|prohibited_content|blocklist)\b/i.test(msg) && !/safety_?settings|HarmCategory/i.test(msg)) throw new AiBlocked(clean);
+      throw new AiUnavailable(clean);
     }
-    const parts = body?.candidates?.[0]?.content?.parts;
+    if (withJailbreak && this.jailbreakFilter === null) this.jailbreakFilter = true;
+    const cand = body?.candidates?.[0];
+    const parts = cand?.content?.parts;
     const u = body?.usageMetadata ?? {};
     return {
       parts: Array.isArray(parts) ? parts : [],
       inputTokens: Number(u.promptTokenCount ?? 0) || 0,
       outputTokens: (Number(u.candidatesTokenCount ?? 0) || 0) + (Number(u.thoughtsTokenCount ?? 0) || 0),
+      finishReason: typeof cand?.finishReason === 'string' ? cand.finishReason.slice(0, 40) : null,
+      blockReason: typeof body?.promptFeedback?.blockReason === 'string' ? body.promptFeedback.blockReason.slice(0, 40) : null,
     };
   }
 }
@@ -84,9 +157,16 @@ export class FakeAi implements AiProvider {
   requests: AiRequest[] = [];
   script: AiResult[] = [];
   failNext = false;
+  /** Proxima chamada lanca este erro (testes de vazamento por mensagem de erro). */
+  throwNext: Error | null = null;
 
   async generate(req: AiRequest): Promise<AiResult> {
     this.requests.push(req);
+    if (this.throwNext) {
+      const e = this.throwNext;
+      this.throwNext = null;
+      throw e;
+    }
     if (this.failNext) {
       this.failNext = false;
       throw new AiUnavailable('fora do ar (simulado)');
@@ -96,7 +176,7 @@ export class FakeAi implements AiProvider {
     const last = req.contents.at(-1)!;
     const usage = { inputTokens: 1000, outputTokens: 100 };
     const answered = last.parts.find((p): p is Extract<AiPart, { functionResponse: unknown }> => 'functionResponse' in p);
-    if (answered) return { parts: [{ text: `Resposta simulada com ${answered.functionResponse.name}: ${JSON.stringify(answered.functionResponse.response).slice(0, 300)}` }], ...usage };
+    if (answered) return { parts: [{ text: `Resposta simulada com os dados: ${JSON.stringify(answered.functionResponse.response).slice(0, 300)}` }], ...usage };
     const text = last.parts.map((p) => ('text' in p ? p.text : '')).join(' ');
     const number = text.match(/\b\d{3,9}\b/)?.[0];
     const call = (name: string, args: Record<string, unknown>): AiResult => ({ parts: [{ functionCall: { name, args }, thoughtSignature: 'assinatura-simulada' }], ...usage });

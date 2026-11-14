@@ -31,6 +31,7 @@ import { marketplaceAdminRoutes, marketplaceWebhookRoutes } from './modules/mark
 import { salesReportRoutes } from './modules/sales-reports.js';
 import { whatsappAdminRoutes, whatsappWebhookRoutes } from './modules/whatsapp.js';
 import { botAdminRoutes, setAiProvider, setTypebotProvider } from './modules/bot.js';
+import { setSecurityAlert } from './modules/bot-ai.js';
 import { typebotFromConfig, type TypebotProvider } from './lib/typebot.js';
 import { aiFromConfig, type AiProvider } from './lib/gemini.js';
 import { publicQuoteRoutes, salesDeskRoutes } from './modules/quotes.js';
@@ -52,6 +53,9 @@ const trustedHops = (hops: number) => (hops ? (_addr: string, hop: number) => ho
 /** Provedor de pagamento: o configurado (Mercado Pago), o simulado so fora de producao, ou nenhum. */
 export const defaultPaymentProvider = () => providerFromConfig() ?? (config.PAYMENT_FAKE && !isProduction ? new FakeProvider() : null);
 
+/** Tira da URL os valores de parametros sensiveis antes de ir ao log. */
+export const safeLogUrl = (url: string) => url.replace(/([?&](hub\.verify_token|hub\.challenge|code|state|token|access_token|key|signature)=)[^&#]*/gi, '$1[oculto]');
+
 export async function buildApp(opts: {
   /** Padrao: e-mail de redefinicao pelo SMTP do .env. Os testes capturam o token. */
   notifier?: ResetNotifier;
@@ -71,7 +75,21 @@ export async function buildApp(opts: {
   typebot?: TypebotProvider | null;
 }) {
   const app = Fastify({
-    logger: config.NODE_ENV === 'test' ? false : { redact: ['req.headers.cookie', 'req.headers.authorization', 'res.headers["set-cookie"]'] },
+    logger:
+      config.NODE_ENV === 'test'
+        ? false
+        : {
+            redact: ['req.headers.cookie', 'req.headers.authorization', 'req.headers["x-hub-signature-256"]', 'req.headers["x-signature"]', 'res.headers["set-cookie"]'],
+            // A URL vai ao log sem os segredos da query (token de verificacao do webhook da Meta, codigos OAuth).
+            serializers: {
+              req: (req: { method: string; url: string; hostname?: string; ip?: string }) => ({
+                method: req.method,
+                url: safeLogUrl(req.url),
+                hostname: req.hostname,
+                remoteAddress: req.ip,
+              }),
+            },
+          },
     trustProxy: trustedHops(config.TRUST_PROXY),
     bodyLimit: 1024 * 1024,
   });
@@ -100,6 +118,7 @@ export async function buildApp(opts: {
   setCarrierProvider(opts.carrier === undefined ? carrierFromConfig() : opts.carrier);
   setAiProvider(opts.ai === undefined ? aiFromConfig() : opts.ai);
   setTypebotProvider(opts.typebot === undefined ? typebotFromConfig() : opts.typebot);
+  setSecurityAlert((msg, data) => app.log.warn(data, msg));
   app.decorate('mailer', new Mailer(opts.mailSettings ?? mailSettingsFromConfig(), opts.mailTransport === undefined ? smtpTransportFromConfig() : opts.mailTransport, app.log));
   app.decorate('emailAccounts', opts.emailAccounts === undefined ? accountsFromConfig() : opts.emailAccounts);
 

@@ -370,6 +370,160 @@ function TestChat() {
   );
 }
 
+type SecEvent = { at: string; channel: 'whatsapp' | 'teste'; protection: string; outcome: string; categories: string[]; tool: string | null; who: string };
+type Security = { byKind: { protection: string; outcome: string; n: number }[]; byCategory: { category: string; n: number }[]; paused: number; recent: SecEvent[] };
+
+const PROTECTION: Record<string, string> = {
+  input_guard: 'Filtro de entrada',
+  tool_guard: 'Controle de funções',
+  output_guard: 'Filtro de resposta',
+  model_filter: 'Filtro do Google',
+  rate_limit: 'Limite de uso',
+  cooldown: 'Pausa de 24 h',
+  indirect_guard: 'Dado da loja com instrução',
+};
+const OUTCOME: Record<string, { label: string; tone: 'bad' | 'warn' | 'neutral' }> = {
+  blocked: { label: 'barrado', tone: 'bad' },
+  denied: { label: 'negado', tone: 'bad' },
+  flagged: { label: 'suspeito', tone: 'warn' },
+  redacted: { label: 'corrigido', tone: 'warn' },
+  limited: { label: 'limitado', tone: 'neutral' },
+};
+const CATEGORY: Record<string, string> = {
+  override: 'ignorar instruções',
+  prompt_extraction: 'pedir instruções internas',
+  identity: 'troca de identidade',
+  privilege: 'falso administrador',
+  jailbreak: 'jailbreak',
+  credentials: 'senhas e chaves',
+  sql: 'comando SQL',
+  code_exec: 'execução de comandos',
+  file_access: 'arquivos do servidor',
+  tool_manipulation: 'manipular funções',
+  data_other: 'dados de outros clientes',
+  history_manipulation: 'mexer no histórico',
+  write_attempt: 'alterar dados',
+  encoding: 'texto codificado',
+  overlong: 'mensagem muito longa',
+  split: 'ataque dividido',
+  not_allowed: 'função inexistente',
+  invalid_args: 'dados inválidos na função',
+  repeated_denied_calls: 'insistência em funções',
+  repeated_attempts: 'tentativas repetidas',
+  burst: 'rajada de mensagens',
+  secret: 'segredo na resposta',
+  prompt_leak: 'cópia das instruções',
+  internal: 'detalhe técnico',
+  external_link: 'link de fora',
+  personal_data: 'dado pessoal',
+  too_long: 'resposta longa',
+  format: 'formatação',
+  empty: 'resposta vazia',
+  indirect_injection: 'instrução em dado da loja',
+  input_blocked: 'entrada barrada pelo Google',
+};
+const catLabel = (c: string) => CATEGORY[c] ?? (c.startsWith('gemini:') ? `Google: ${c.slice(7)}` : c);
+
+function OutcomeBadge({ outcome }: { outcome: string }) {
+  const o = OUTCOME[outcome];
+  return <Badge tone={o?.tone ?? 'neutral'}>{o?.label ?? outcome}</Badge>;
+}
+
+function SecurityPanel() {
+  const [data, setData] = useState<Security | null>(null);
+  const [error, setError] = useState('');
+  const load = useCallback(() => api<Security>('/admin/whatsapp/bot/security').then(setData, (e) => setError(e.message)), []);
+  useEffect(() => {
+    load();
+  }, [load]);
+  const empty = data !== null && data.byKind.length === 0 && data.recent.length === 0;
+  return (
+    <Panel
+      title="Segurança da IA"
+      description="Tentativas de manipular o bot nos últimos 7 dias. Os eventos não guardam o texto nem o telefone do cliente: cada pessoa aparece só como um código."
+      actions={
+        <Button type="button" onClick={load}>
+          Atualizar
+        </Button>
+      }
+    >
+      <div className="space-y-4 p-4 sm:p-5">
+        {error && <Notice tone="bad">{error}</Notice>}
+        {!data && !error && <p className="text-sm text-ink-faint">Carregando…</p>}
+        {empty && <p className="text-sm text-ink-soft">Nenhum evento registrado.</p>}
+        {data && !empty && (
+          <>
+            {data.paused > 0 && (
+              <Notice tone="warn">
+                {data.paused === 1 ? '1 contato está' : `${data.paused} contatos estão`} com a IA pausada por 24 h após tentativas repetidas. Eles continuam recebendo o menu.
+              </Notice>
+            )}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <h3 className="mb-2 text-sm font-semibold">Por proteção</h3>
+                <ul className="space-y-1 text-sm">
+                  {data.byKind.map((k) => (
+                    <li key={`${k.protection}-${k.outcome}`} className="flex items-center justify-between gap-2">
+                      <span>
+                        {PROTECTION[k.protection] ?? k.protection} <OutcomeBadge outcome={k.outcome} />
+                      </span>
+                      <span className="tabular-nums text-ink-soft">{k.n}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div>
+                <h3 className="mb-2 text-sm font-semibold">Por tipo</h3>
+                <ul className="space-y-1 text-sm">
+                  {data.byCategory.map((c) => (
+                    <li key={c.category} className="flex items-center justify-between gap-2">
+                      <span>{catLabel(c.category)}</span>
+                      <span className="tabular-nums text-ink-soft">{c.n}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+            <div>
+              <h3 className="mb-2 text-sm font-semibold">Últimos eventos</h3>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead className="text-xs text-ink-faint">
+                    <tr>
+                      <th className="py-1 pr-3 font-medium">Quando</th>
+                      <th className="py-1 pr-3 font-medium">Proteção</th>
+                      <th className="py-1 pr-3 font-medium">Tipo</th>
+                      <th className="py-1 pr-3 font-medium">Contato</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.recent.map((e, i) => (
+                      <tr key={i} className="border-t border-line align-top">
+                        <td className="py-1.5 pr-3 whitespace-nowrap tabular-nums">{new Date(e.at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}</td>
+                        <td className="py-1.5 pr-3">
+                          {PROTECTION[e.protection] ?? e.protection} <OutcomeBadge outcome={e.outcome} />
+                        </td>
+                        <td className="py-1.5 pr-3">
+                          {e.categories.map(catLabel).join(', ')}
+                          {e.tool && <span className="text-ink-faint"> ({e.tool})</span>}
+                        </td>
+                        <td className="py-1.5 pr-3 font-mono text-xs text-ink-soft">
+                          {e.who}
+                          {e.channel === 'teste' && ' · teste'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    </Panel>
+  );
+}
+
 export function BotTab() {
   const { can } = useMe();
   const [data, setData] = useState<BotData | null>(null);
@@ -385,6 +539,7 @@ export function BotTab() {
     <div className="space-y-4">
       <Settings key={JSON.stringify(data.settings)} data={data} reload={load} />
       {can('bot.manage') && <TestChat />}
+      {can('bot.manage') && <SecurityPanel />}
     </div>
   );
 }

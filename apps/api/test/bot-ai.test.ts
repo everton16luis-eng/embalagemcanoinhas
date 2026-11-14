@@ -106,7 +106,7 @@ beforeAll(async () => {
   product = p.json().product;
 });
 beforeEach(async () => {
-  await owner.query('TRUNCATE ai_calls, bot_runs, bot_pending_documents, bot_verify_failures, bot_test_sessions, whatsapp_conversations, whatsapp_optouts, whatsapp_inbound, whatsapp_messages');
+  await owner.query('TRUNCATE ai_calls, bot_security_events, bot_runs, bot_pending_documents, bot_verify_failures, bot_test_sessions, whatsapp_conversations, whatsapp_optouts, whatsapp_inbound, whatsapp_messages');
   await owner.query(`UPDATE bot_settings SET audience = 'off', mode = 'menu', ai_plan = 'free', ai_monthly_limit_usd = 10, ai_daily_per_phone = 20, test_phones = '{}', hours = '{}', texts = '{}'`);
   ai.requests = [];
   ai.script = [];
@@ -136,8 +136,10 @@ describe('adaptador do Gemini', () => {
     const body = JSON.parse(seen[0].init.body);
     expect(body.systemInstruction).toEqual({ parts: [{ text: 'regras' }] });
     expect(body.tools[0].functionDeclarations[0].name).toBe('f');
-    expect(body.generationConfig).toEqual({ maxOutputTokens: 400, thinkingConfig: { thinkingLevel: 'minimal' } });
-    expect(r).toEqual({ parts: [{ text: 'Oi!' }], inputTokens: 900, outputTokens: 42 });
+    expect(body.generationConfig).toEqual({ maxOutputTokens: 400, candidateCount: 1, thinkingConfig: { thinkingLevel: 'minimal' } });
+    expect(body.toolConfig).toEqual({ functionCallingConfig: { mode: 'AUTO' } });
+    expect(body.safetySettings.map((s: any) => s.category)).toContain('HARM_CATEGORY_JAILBREAK');
+    expect(r).toEqual({ parts: [{ text: 'Oi!' }], inputTokens: 900, outputTokens: 42, finishReason: null, blockReason: null });
 
     const bad = new GeminiProvider('chave-de-teste-com-vinte-caracteres', 'x-1', async () => ({ status: 400, text: async () => JSON.stringify({ error: { message: 'thought signature ausente' } }) }));
     await expect(bad.generate({ system: '', contents: [], functions: [], maxOutputTokens: 10 })).rejects.toBeInstanceOf(AiUnavailable);
@@ -202,7 +204,7 @@ describe('IA no WhatsApp', () => {
     expect(answer.response.produtos).toEqual([
       expect.objectContaining({ nome: product.name, link: `${ORIGIN}/p/${product.slug}`, embalagens: [{ embalagem: 'Pacote com 100', preco: 'R$ 12,90', precos_por_quantidade: [] }] }),
     ]);
-    expect((await lastBot(OTHER_PHONE)).body).toContain('Resposta simulada com buscar_produtos');
+    expect((await lastBot(OTHER_PHONE)).body).toContain('Resposta simulada com os dados');
   });
 
   it('pedido do próprio telefone: a IA recebe a situação; de outro telefone: o menu pede o CPF fora da IA', async () => {

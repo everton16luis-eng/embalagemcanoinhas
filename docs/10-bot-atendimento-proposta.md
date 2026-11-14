@@ -4,6 +4,9 @@ Pedido de 14/11/2026: ter disponíveis as três formas de bot (menu, Typebot e I
 como a IA das respostas. **Nada foi instalado, contratado ou ativado.** Pela diretriz de integrações, a cobrança do
 Gemini, a instalação do Typebot no VPS e a ativação da Cloud API dependem da sua autorização expressa.
 
+> As proteções da IA contra prompt injection, com testes e riscos restantes, estão em
+> [13-seguranca-ia-bot.md](13-seguranca-ia-bot.md).
+
 ## 1. Resumo
 
 - **É possível usar o Gemini 3.5 Flash-Lite.** O modelo é estável, aceita chamada de funções (function calling) e

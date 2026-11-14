@@ -331,6 +331,33 @@ navegador com um usuário proprietário com verificação em duas etapas (só pe
 - chat de teste no navegador como proprietário (verificado pela API);
 - `next build`.
 
+## 6.3 Etapa 3 entregue (14/11/2026): Typebot
+
+Autorizada em 14/11/2026, junto com a etapa 4 ([docs/12](12-whatsapp-meta-ativacao.md)). A IA continua no plano
+gratuito, só para testes.
+
+**Instalação no servidor:** [docs/11-typebot.md](11-typebot.md), com os arquivos em `deploy/typebot/`.
+- Docker do repositório oficial e Typebot 3.19.1 com banco e Redis próprios.
+- Portas só em 127.0.0.1, limites de memória e HTTPS no nginx por webroot.
+
+**Na loja:**
+- **Migração `0016_bot_typebot`:** a forma `typebot` e o ID público do fluxo.
+- **Adaptador** `lib/typebot.ts`: `startChat` e `continueChat` da documentação, markdown convertido para a formatação
+  do WhatsApp, simulador `TYPEBOT_FAKE`.
+- **Motor:**
+  - as opções do fluxo viram botões (até 3) ou lista (até 10);
+  - os valores reservados `atendente`, `pedido` e `menu` chamam a loja, e o CPF/CNPJ nunca passa pelo Typebot;
+  - sessão perdida ou parada há 12 h recomeça o fluxo;
+  - com o Typebot fora do ar, o menu responde;
+  - só o primeiro nome do cliente vai como variável.
+- **Painel:** a forma Typebot, com o campo do ID público e as instruções dos valores reservados.
+- **Testes:** 7 novos em `test/bot-typebot.test.ts`, com o simulador. A suíte inteira tem 198 passando.
+
+**Não verificado:**
+- a instalação no servidor (depende de você rodar o docs/11);
+- as chamadas a um Typebot real;
+- o `next build`.
+
 ## 7. Decisões que preciso de você
 
 1. **Aprova o plano e a etapa 1** (menu, sem custo)?

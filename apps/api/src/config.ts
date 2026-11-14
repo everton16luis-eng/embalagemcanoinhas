@@ -64,6 +64,9 @@ const schema = z.object({
   GEMINI_PRICE_INPUT_PER_M: z.coerce.number().min(0).max(1000).default(0.3),
   GEMINI_PRICE_OUTPUT_PER_M: z.coerce.number().min(0).max(1000).default(2.5),
   GEMINI_FAKE: blankAsMissing(z.enum(['true', 'false']).optional()).transform((v) => v === 'true'),
+  // Typebot do proprio servidor (docs/11): endereco interno da API do executor, ex. http://127.0.0.1:3092/api.
+  TYPEBOT_API_URL: blankAsMissing(z.url().optional()),
+  TYPEBOT_FAKE: blankAsMissing(z.enum(['true', 'false']).optional()).transform((v) => v === 'true'),
   // Transportadoras (docs/08 §2): Melhor Envio. Token do aplicativo; User-Agent com nome do app e e-mail tecnico (obrigatorio).
   MELHOR_ENVIO_TOKEN: blankAsMissing(z.string().min(20).optional()),
   MELHOR_ENVIO_USER_AGENT: blankAsMissing(z.string().min(5).max(200).optional()),
@@ -120,3 +123,4 @@ if (isProduction && config.MARKETPLACE_FAKE) throw new Error('MARKETPLACE_FAKE n
 if (isProduction && config.WHATSAPP_FAKE) throw new Error('WHATSAPP_FAKE nao pode ser usado em producao');
 if (isProduction && config.CARRIER_FAKE) throw new Error('CARRIER_FAKE nao pode ser usado em producao');
 if (isProduction && config.GEMINI_FAKE) throw new Error('GEMINI_FAKE nao pode ser usado em producao');
+if (isProduction && config.TYPEBOT_FAKE) throw new Error('TYPEBOT_FAKE nao pode ser usado em producao');

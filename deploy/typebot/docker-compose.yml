@@ -1,0 +1,94 @@
+# Typebot da loja (docs/11-typebot.md). Base: docker-compose.yml oficial do projeto (github.com/baptisteArno/typebot.io),
+# conferido em 14/11/2026, com estas mudancas:
+# - versoes fixas (nada de latest);
+# - portas so em 127.0.0.1 (o Docker passa por cima do ufw nas portas publicadas);
+# - banco e Redis proprios, sem porta para fora e com senha gerada;
+# - limite de memoria e de log para nao apertar os outros sistemas do servidor.
+# Fica em /srv/typebot, com o .env ao lado (modelo em env.exemplo).
+
+name: typebot
+
+x-typebot-common: &typebot-common
+  restart: always
+  depends_on:
+    typebot-redis:
+      condition: service_healthy
+    typebot-db:
+      condition: service_healthy
+  networks:
+    - typebot-network
+  env_file: .env
+  environment:
+    REDIS_URL: redis://typebot-redis:6379
+  mem_limit: 768m
+  logging:
+    driver: json-file
+    options:
+      max-size: 10m
+      max-file: '3'
+
+services:
+  typebot-db:
+    image: postgres:16
+    restart: always
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: typebot
+      POSTGRES_PASSWORD: ${TYPEBOT_DB_PASSWORD:?defina TYPEBOT_DB_PASSWORD no .env}
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - typebot-network
+    mem_limit: 256m
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+
+  typebot-redis:
+    image: redis:7.4-alpine
+    restart: always
+    command: --save 60 1 --loglevel warning
+    healthcheck:
+      test: ['CMD-SHELL', 'redis-cli ping | grep PONG']
+      start_period: 20s
+      interval: 30s
+      retries: 5
+      timeout: 3s
+    volumes:
+      - redis-data:/data
+    networks:
+      - typebot-network
+    mem_limit: 128m
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+
+  # Editor dos fluxos (typebot.embalagemcanoinhas.com.br).
+  typebot-builder:
+    <<: *typebot-common
+    image: baptistearno/typebot-builder:3.19.1
+    ports:
+      - '127.0.0.1:3091:3000'
+
+  # Executa os fluxos e atende a API de conversa (bot.embalagemcanoinhas.com.br). A API da loja chama este.
+  typebot-viewer:
+    <<: *typebot-common
+    image: baptistearno/typebot-viewer:3.19.1
+    ports:
+      - '127.0.0.1:3092:3000'
+
+networks:
+  typebot-network:
+    driver: bridge
+
+volumes:
+  db-data:
+  redis-data:

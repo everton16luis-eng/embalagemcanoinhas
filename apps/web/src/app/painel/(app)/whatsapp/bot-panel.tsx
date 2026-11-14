@@ -7,7 +7,7 @@ import { api } from '@/lib/api';
 
 type Day = { open: string; close: string } | null;
 type Audience = 'off' | 'test' | 'all';
-type Mode = 'menu' | 'ai' | 'menu_ai';
+type Mode = 'menu' | 'ai' | 'menu_ai' | 'typebot';
 type AiPlan = 'free' | 'paid';
 type BotData = {
   settings: {
@@ -19,7 +19,9 @@ type BotData = {
     aiPlan: AiPlan;
     aiMonthlyLimitUsd: number;
     aiDailyPerPhone: number;
+    typebotPublicId: string | null;
   };
+  typebot: { configured: boolean; simulated: boolean };
   ai: { configured: boolean; simulated: boolean; model: string | null; month: { usd: number; calls: number; failed: number } };
   defaults: Record<string, string>;
   labels: Record<string, string>;
@@ -42,6 +44,7 @@ const MODES: Record<Mode, { label: string; hint: string }> = {
   menu: { label: 'Só menu', hint: 'Respostas fixas: o cliente escolhe uma opção. Sem custo e sem IA.' },
   menu_ai: { label: 'Menu e IA', hint: 'O menu abre a conversa; quando o cliente escreve algo que o menu não entende, a IA responde.' },
   ai: { label: 'IA', hint: 'A IA responde o que o cliente escrever. Os botões, a consulta de pedido e a confirmação por CPF/CNPJ continuam com o menu.' },
+  typebot: { label: 'Typebot', hint: 'Um fluxo montado no editor do Typebot conduz a conversa. Pedido e atendente continuam com a loja (valores reservados nos botões).' },
 };
 const usd = (n: number) => `US$ ${n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: n < 1 ? 4 : 2 })}`;
 
@@ -69,6 +72,7 @@ function Settings({ data, reload }: { data: BotData; reload: () => void }) {
   const [aiPlan, setAiPlan] = useState<AiPlan>(data.settings.aiPlan);
   const [monthly, setMonthly] = useState(String(data.settings.aiMonthlyLimitUsd));
   const [daily, setDaily] = useState(String(data.settings.aiDailyPerPhone));
+  const [typebotId, setTypebotId] = useState(data.settings.typebotPublicId ?? '');
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -93,6 +97,7 @@ function Settings({ data, reload }: { data: BotData; reload: () => void }) {
           aiPlan,
           aiMonthlyLimitUsd: Number(monthly.replace(',', '.')),
           aiDailyPerPhone: Number(daily),
+          typebotPublicId: typebotId.trim() || null,
         },
       });
       setSaved(true);
@@ -130,7 +135,7 @@ function Settings({ data, reload }: { data: BotData; reload: () => void }) {
 
         <fieldset disabled={!edit} className="space-y-2">
           <legend className="text-sm font-medium">Como o bot responde</legend>
-          {(['menu', 'menu_ai', 'ai'] as const).map((m) => (
+          {(['menu', 'menu_ai', 'ai', 'typebot'] as const).map((m) => (
             <label key={m} className="flex min-h-9 items-start gap-2 text-sm">
               <input type="radio" name="mode" className="mt-1" checked={mode === m} onChange={() => setMode(m)} />
               <span>
@@ -141,7 +146,25 @@ function Settings({ data, reload }: { data: BotData; reload: () => void }) {
           ))}
         </fieldset>
 
-        {mode !== 'menu' && (
+        {mode === 'typebot' && (
+          <fieldset disabled={!edit} className="space-y-3 rounded-md border border-line p-3">
+            <legend className="px-1 text-sm font-medium">Typebot</legend>
+            {!data.typebot.configured ? (
+              <Notice tone="warn">O Typebot não está ligado no servidor (TYPEBOT_API_URL). Até lá, o bot responde só com o menu.</Notice>
+            ) : (
+              data.typebot.simulated && <p className="text-[13px] text-ink-faint">Typebot simulado (desenvolvimento).</p>
+            )}
+            <Field label="ID público do fluxo" hint="No editor do Typebot, publique o fluxo e copie o final do endereço de compartilhamento (bot.embalagemcanoinhas.com.br/<id>).">
+              {(id) => <Input id={id} value={typebotId} onChange={(e) => setTypebotId(e.target.value)} className="max-w-sm font-mono" />}
+            </Field>
+            <p className="text-[13px] text-ink-faint">
+              Valores reservados nos botões do fluxo: <code>atendente</code> passa para um atendente, <code>pedido</code> abre a consulta de pedido da loja (com CPF/CNPJ quando
+              precisa) e <code>menu</code> mostra o menu. Não monte fluxos que peçam documento ou senha.
+            </p>
+          </fieldset>
+        )}
+
+        {(mode === 'ai' || mode === 'menu_ai') && (
           <fieldset disabled={!edit} className="space-y-3 rounded-md border border-line p-3">
             <legend className="px-1 text-sm font-medium">Inteligência artificial (Gemini)</legend>
             {!data.ai.configured ? (
@@ -178,7 +201,7 @@ function Settings({ data, reload }: { data: BotData; reload: () => void }) {
           </fieldset>
         )}
 
-        {(audience === 'test' || (mode !== 'menu' && aiPlan === 'free')) && (
+        {(audience === 'test' || ((mode === 'ai' || mode === 'menu_ai') && aiPlan === 'free')) && (
           <Field label="Números de teste" hint="Um por linha, com 55 e DDD, por exemplo 5547999998888. Até 20. No plano gratuito, só eles falam com a IA.">
             {(id) => <Textarea id={id} disabled={!edit} value={phones} onChange={(e) => setPhones(e.target.value)} className="font-mono" />}
           </Field>

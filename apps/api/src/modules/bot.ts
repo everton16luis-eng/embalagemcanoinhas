@@ -6,13 +6,14 @@ import { audit } from '../lib/audit.js';
 import { decrypt, encrypt, keyedHash } from '../lib/crypto.js';
 import { AppError } from '../lib/errors.js';
 import type { AiContent, AiProvider } from '../lib/gemini.js';
+import { TypebotSessionGone, type TbTurn, type TypebotProvider } from '../lib/typebot.js';
 import { interactiveSummary, toWhatsAppNumber, type Interactive, type WhatsAppProvider } from '../lib/whatsapp.js';
 import { requirePermission } from './auth.js';
 import { aiTurn, historyFor } from './bot-ai.js';
 
 /**
  * Bot de atendimento (docs/10-bot-atendimento-proposta.md): etapa 1, menu com regras fixas; etapa 2, IA (Gemini)
- * no texto livre, com o menu como reserva.
+ * no texto livre, com o menu como reserva; etapa 3, fluxo do Typebot do proprio servidor (docs/11).
  * Nao altera nada na loja: so consulta pedido (do proprio telefone), horario e endereco, e passa para atendente.
  */
 
@@ -22,7 +23,7 @@ export type BotState = { step: string | null; context: Record<string, unknown> }
 /** document: CPF/CNPJ digitado, quando a mensagem guardada esta com o texto oculto. */
 export type BotInput = { text: string | null; replyId: string | null; type: string; name: string | null; document?: string | null };
 type Day = { open: string; close: string } | null;
-export type BotMode = 'menu' | 'ai' | 'menu_ai';
+export type BotMode = 'menu' | 'ai' | 'menu_ai' | 'typebot';
 export type BotSettings = {
   audience: 'off' | 'test' | 'all';
   mode: BotMode;
@@ -32,6 +33,7 @@ export type BotSettings = {
   ai_plan: 'free' | 'paid';
   ai_monthly_limit_usd: number;
   ai_daily_per_phone: number;
+  typebot_public_id: string | null;
 };
 
 export const TEXT_KEYS = ['greeting', 'out_of_hours', 'order_prompt', 'order_not_found', 'document_prompt', 'order_not_verified', 'verify_locked', 'quote', 'handoff'] as const;
@@ -143,7 +145,7 @@ export function hoursText(hours: Record<string, Day>) {
 }
 
 export async function loadSettings(db: Q): Promise<BotSettings> {
-  const r = (await db.query('SELECT audience, mode, test_phones, hours, texts, ai_plan, ai_monthly_limit_usd, ai_daily_per_phone FROM bot_settings')).rows[0];
+  const r = (await db.query('SELECT audience, mode, test_phones, hours, texts, ai_plan, ai_monthly_limit_usd, ai_daily_per_phone, typebot_public_id FROM bot_settings')).rows[0];
   return {
     audience: r.audience,
     mode: r.mode,
@@ -153,6 +155,7 @@ export async function loadSettings(db: Q): Promise<BotSettings> {
     ai_plan: r.ai_plan,
     ai_monthly_limit_usd: Number(r.ai_monthly_limit_usd),
     ai_daily_per_phone: r.ai_daily_per_phone,
+    typebot_public_id: r.typebot_public_id,
   };
 }
 
@@ -170,9 +173,11 @@ type Ctx = {
 
 const storeName = async (ctx: Ctx) => (await ctx.db.query<{ store_name: string | null }>('SELECT store_name FROM store_settings')).rows[0]?.store_name || 'loja';
 
+const firstName = (name: string | null) => String(name ?? '').trim().split(/\s+/)[0] ?? '';
+
 async function render(ctx: Ctx, key: TextKey, name: string | null) {
   const loja = await storeName(ctx);
-  const first = String(name ?? '').trim().split(/\s+/)[0] ?? '';
+  const first = firstName(name);
   const vars: Record<string, string> = { loja, nome: first, site: config.APP_ORIGIN };
   return (ctx.settings.texts[key] || DEFAULT_TEXTS[key]).replace(/\{(loja|nome|site)\}/g, (_, v: string) => vars[v] ?? '');
 }
@@ -316,6 +321,12 @@ type Out = { replies: BotReply[]; state: BotState; handoff: boolean; ai?: boolea
  */
 export async function respond(ctx: Ctx, state: BotState, input: BotInput): Promise<Out> {
   const mode = ctx.settings.mode;
+  if (mode === 'typebot') {
+    if (!typebotProvider || !ctx.settings.typebot_public_id) return menuBot(ctx, state, input);
+    // Atendente digitado, botoes do menu da loja e os passos de pedido/CPF ficam com a loja.
+    const ours = choiceOf(input, state.step) !== null || state.step === 'await_order' || state.step === 'await_document' || (input.replyId !== null && !input.replyId.startsWith('tb:'));
+    return ours ? menuBot(ctx, state, input) : typebotBot(ctx, state, input);
+  }
   const freeText = !input.replyId && Boolean(input.text?.trim()) && choiceOf(input, state.step) === null && state.step !== 'await_order' && state.step !== 'await_document';
   const useAi = aiProvider && ctx.aiAllowed && freeText && (mode === 'ai' || (mode === 'menu_ai' && state.step !== null));
   if (!useAi) return menuBot(ctx, state, input);
@@ -353,8 +364,78 @@ export async function respond(ctx: Ctx, state: BotState, input: BotInput): Promi
   }
 }
 
+// ---------------- Typebot ----------------
+
+let typebotProvider: TypebotProvider | null = null;
+export const setTypebotProvider = (p: TypebotProvider | null) => void (typebotProvider = p);
+
+/** Valores de botao no fluxo que chamam a loja (docs/11 §9). */
+const TB_RESERVED = ['atendente', 'pedido', 'menu'];
+/** Sessao parada ha mais de 12 h recomeca o fluxo. */
+const TB_STALE_MS = 12 * 3_600_000;
+type TbItems = Record<string, { content: string; value: string | null }>;
+type TbContext = { session?: string; items?: TbItems; at?: string };
+
+/** Textos do fluxo em mensagens; as opcoes viram botoes (ate 3 curtas) ou lista (ate 10). */
+function tbReplies(turn: TbTurn): BotReply[] {
+  const replies: BotReply[] = turn.texts.map((t) => ({ kind: 'text', body: t.slice(0, 4096) }));
+  const items = (turn.choices ?? []).slice(0, 10);
+  if (items.length) {
+    const last = replies.at(-1);
+    const body = last?.kind === 'text' ? (replies.pop() as { body: string }).body : 'Escolha uma opção:';
+    replies.push(
+      items.length <= 3 && items.every((c) => c.content.length <= 20)
+        ? { kind: 'interactive', i: { type: 'button', body, buttons: items.map((c) => ({ id: `tb:${c.id}`, title: c.content })) } }
+        : {
+            kind: 'interactive',
+            i: { type: 'list', body, button: 'Ver opções', rows: items.map((c) => ({ id: `tb:${c.id}`, title: c.content, ...(c.content.length > 24 ? { description: c.content } : {}) })) },
+          },
+    );
+  }
+  return replies.length ? replies : [AFTER()];
+}
+
+async function typebotBot(ctx: Ctx, state: BotState, input: BotInput): Promise<Out> {
+  const tb = typebotProvider!;
+  const publicId = ctx.settings.typebot_public_id!;
+  const c: TbContext = state.step === 'typebot' ? (state.context as TbContext) : {};
+  const items = c.items ?? {};
+  let text = input.text?.trim() ?? '';
+  // Opcao tocada (ou digitada igual): valor reservado chama a loja; senao vai o texto da opcao, que o Typebot confere.
+  const picked = input.replyId?.startsWith('tb:') ? items[input.replyId.slice(3)] : Object.values(items).find((i) => norm(i.content) === norm(text));
+  if (picked?.value && TB_RESERVED.includes(picked.value)) return menuBot(ctx, state, { ...input, text: null, replyId: picked.value });
+  if (picked) text = picked.content;
+  if (!text) text = `[${input.type}]`;
+
+  const fresh = !c.session || !c.at || ctx.now.getTime() - Date.parse(c.at) > TB_STALE_MS;
+  const name = firstName(input.name);
+  const variables: Record<string, string> = name ? { nome: name } : {};
+  let turn: TbTurn;
+  try {
+    if (fresh) turn = await tb.start(publicId, variables);
+    else {
+      try {
+        turn = await tb.continue(c.session!, text.slice(0, 1000));
+      } catch (err) {
+        if (!(err instanceof TypebotSessionGone)) throw err;
+        turn = await tb.start(publicId, variables);
+      }
+    }
+  } catch {
+    // Typebot fora do ar: o menu da loja responde.
+    return menuBot(ctx, { step: null, context: {} }, input);
+  }
+  const next: TbItems = Object.fromEntries((turn.choices ?? []).slice(0, 10).map((i) => [i.id, { content: i.content, value: i.value }]));
+  return {
+    replies: tbReplies(turn),
+    state: turn.ended ? { step: null, context: {} } : { step: 'typebot', context: { session: turn.sessionId, items: next, at: ctx.now.toISOString() } },
+    handoff: false,
+  };
+}
+
 /** No plano gratuito a IA so atende o chat de teste e os numeros de teste. */
-const aiAllowedFor = (settings: BotSettings, phone: string) => settings.mode !== 'menu' && (settings.ai_plan === 'paid' || settings.test_phones.some((p) => samePhone(p, phone)));
+const isAiMode = (m: BotMode) => m === 'ai' || m === 'menu_ai';
+const aiAllowedFor = (settings: BotSettings, phone: string) => isAiMode(settings.mode) && (settings.ai_plan === 'paid' || settings.test_phones.some((p) => samePhone(p, phone)));
 
 // ---------------- processamento das mensagens recebidas ----------------
 
@@ -472,7 +553,13 @@ const settingsBody = z.strictObject({
   hours: z.partialRecord(z.enum(['0', '1', '2', '3', '4', '5', '6']), day),
   texts: z.partialRecord(z.enum(TEXT_KEYS), z.string().trim().max(1000)),
   // Campos da IA (etapa 2). Ausentes = ficam como estao.
-  mode: z.enum(['menu', 'ai', 'menu_ai']).optional(),
+  mode: z.enum(['menu', 'ai', 'menu_ai', 'typebot']).optional(),
+  typebotPublicId: z
+    .string()
+    .trim()
+    .regex(/^[A-Za-z0-9_-]{1,100}$/, 'ID público do fluxo: só letras, números, - e _.')
+    .nullable()
+    .optional(),
   aiPlan: z.enum(['free', 'paid']).optional(),
   aiMonthlyLimitUsd: z.number().min(0).max(1000).multipleOf(0.01).optional(),
   aiDailyPerPhone: z.number().int().min(1).max(200).optional(),
@@ -509,7 +596,9 @@ export async function botAdminRoutes(app: FastifyInstance) {
         aiPlan: s.ai_plan,
         aiMonthlyLimitUsd: s.ai_monthly_limit_usd,
         aiDailyPerPhone: s.ai_daily_per_phone,
+        typebotPublicId: s.typebot_public_id,
       },
+      typebot: { configured: Boolean(typebotProvider), simulated: typebotProvider?.fake ?? false },
       ai: { configured: Boolean(aiProvider), simulated: aiProvider?.fake ?? false, model: aiProvider?.model ?? null, month: await aiMonth(pool) },
       defaults: DEFAULT_TEXTS,
       labels: TEXT_LABEL,
@@ -529,10 +618,12 @@ export async function botAdminRoutes(app: FastifyInstance) {
       const aiPlan = b.aiPlan ?? before.ai_plan;
       const aiMonthly = b.aiMonthlyLimitUsd ?? before.ai_monthly_limit_usd;
       const aiDaily = b.aiDailyPerPhone ?? before.ai_daily_per_phone;
+      const typebotId = b.typebotPublicId === undefined ? before.typebot_public_id : b.typebotPublicId || null;
+      if (mode === 'typebot' && !typebotId) throw new AppError(400, 'VALIDATION', 'Informe o ID público do fluxo do Typebot.');
       await db.query(
         `UPDATE bot_settings SET audience = $1, test_phones = $2, hours = $3, texts = $4, mode = $5, ai_plan = $6, ai_monthly_limit_usd = $7,
-           ai_daily_per_phone = $8, updated_by = $9, updated_at = now()`,
-        [b.audience, b.testPhones, JSON.stringify(b.hours), JSON.stringify(texts), mode, aiPlan, aiMonthly, aiDaily, auth.userId],
+           ai_daily_per_phone = $8, typebot_public_id = $9, updated_by = $10, updated_at = now()`,
+        [b.audience, b.testPhones, JSON.stringify(b.hours), JSON.stringify(texts), mode, aiPlan, aiMonthly, aiDaily, typebotId, auth.userId],
       );
       await audit(db, {
         actorId: auth.userId,
@@ -547,8 +638,9 @@ export async function botAdminRoutes(app: FastifyInstance) {
           aiPlan: before.ai_plan,
           aiMonthlyLimitUsd: before.ai_monthly_limit_usd,
           aiDailyPerPhone: before.ai_daily_per_phone,
+          typebotPublicId: before.typebot_public_id,
         },
-        after: { audience: b.audience, testPhones: b.testPhones.length, hours: b.hours, texts: Object.keys(texts), mode, aiPlan, aiMonthlyLimitUsd: aiMonthly, aiDailyPerPhone: aiDaily },
+        after: { audience: b.audience, testPhones: b.testPhones.length, hours: b.hours, texts: Object.keys(texts), mode, aiPlan, aiMonthlyLimitUsd: aiMonthly, aiDailyPerPhone: aiDaily, typebotPublicId: typebotId },
         ip: auth.ip,
       });
       return { ok: true };
@@ -570,7 +662,7 @@ export async function botAdminRoutes(app: FastifyInstance) {
     const history = s?.history ?? [];
     // O chat de teste sempre pode usar a IA (o modo menu continua so menu).
     const out = await respond(
-      { db: pool, phone, who: `teste:${auth.userId}`, settings, now: new Date(), aiAllowed: settings.mode !== 'menu', history },
+      { db: pool, phone, who: `teste:${auth.userId}`, settings, now: new Date(), aiAllowed: isAiMode(settings.mode), history },
       { step: s?.step ?? null, context: s?.context ?? {} },
       { text: b.text ?? null, replyId: b.replyId ?? null, type: b.replyId ? 'interactive' : 'text', name: null },
     );

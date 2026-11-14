@@ -9,6 +9,7 @@ import type { CarrierProvider } from '../src/lib/carriers.js';
 import type { Marketplaces } from '../src/lib/marketplaces.js';
 import type { WhatsAppProvider } from '../src/lib/whatsapp.js';
 import type { AiProvider } from '../src/lib/gemini.js';
+import type { TypebotProvider } from '../src/lib/typebot.js';
 import type { PaymentProvider } from '../src/lib/payments.js';
 import { hashPassword } from '../src/modules/auth.js';
 
@@ -46,8 +47,8 @@ export const makeApp = (
   payments: PaymentProvider | null = null,
   fiscal: FiscalProvider | null = null,
   marketplaces: Marketplaces = { mercadolivre: null, shopee: null },
-  extra: { whatsapp?: WhatsAppProvider | null; carrier?: CarrierProvider | null; ai?: AiProvider | null } = {},
-) => buildApp({ notifier: async (email, token) => void sentResets.push({ email, token }), routes, payments, fiscal, marketplaces, whatsapp: extra.whatsapp ?? null, carrier: extra.carrier ?? null, ai: extra.ai ?? null });
+  extra: { whatsapp?: WhatsAppProvider | null; carrier?: CarrierProvider | null; ai?: AiProvider | null; typebot?: TypebotProvider | null } = {},
+) => buildApp({ notifier: async (email, token) => void sentResets.push({ email, token }), routes, payments, fiscal, marketplaces, whatsapp: extra.whatsapp ?? null, carrier: extra.carrier ?? null, ai: extra.ai ?? null, typebot: extra.typebot ?? null });
 
 export async function createUser(role: string, opts: { mfa?: boolean } = {}) {
   const email = `${role}-${uid()}@teste.local`;
@@ -113,7 +114,7 @@ export async function resetCatalog() {
     'TRUNCATE ai_calls, bot_runs, bot_pending_documents, bot_verify_failures, bot_test_sessions,whatsapp_conversations, whatsapp_messages, whatsapp_inbound,whatsapp_optouts, whatsapp_templates, shipping_quote_cache, marketplace_notifications, marketplace_orders, marketplace_listings, marketplace_oauth_states, marketplace_accounts, quote_events, quote_items, quotes, purchase_invoices, fiscal_files, fiscal_document_events, fiscal_documents, fiscal_inutilizations, fiscal_webhook_notifications, fiscal_certificates, fiscal_rules_history, fiscal_rules, shipments, payment_notifications, payments, order_events, order_items, orders, cart_items, carts, customer_addresses, customer_sessions, customers, shipping_options, price_tiers, inventory_count_items, inventory_counts, purchase_receipt_items, purchase_receipts, purchase_order_items, purchase_orders, supplier_products, supplier_contacts, suppliers, stock_reservations, stock_movements, stock_balances',
   );
   await owner.query('ALTER TABLE fiscal_documents ENABLE TRIGGER fiscal_documents_no_truncate; ALTER TABLE fiscal_files ENABLE TRIGGER fiscal_files_no_truncate');
-  await owner.query(`UPDATE bot_settings SET audience = 'off', mode = 'menu', ai_plan = 'free', ai_monthly_limit_usd = 10, ai_daily_per_phone = 20, test_phones = '{}', hours = '{}', texts = '{}'`);
+  await owner.query(`UPDATE bot_settings SET audience = 'off', mode = 'menu', ai_plan = 'free', ai_monthly_limit_usd = 10, ai_daily_per_phone = 20, typebot_public_id = NULL, test_phones = '{}', hours = '{}', texts = '{}'`);
   await owner.query('DELETE FROM product_images; DELETE FROM packagings; DELETE FROM product_variants; DELETE FROM products; DELETE FROM categories');
 }
 

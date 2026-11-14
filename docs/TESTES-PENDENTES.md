@@ -104,8 +104,10 @@ Roteiro detalhado em [07-marketplaces.md](07-marketplaces.md) §5. Tudo abaixo f
 Roteiro em [08-whatsapp-transportadoras-relatorios.md](08-whatsapp-transportadoras-relatorios.md). Tudo abaixo foi
 feito só com os simulados.
 
-- [ ] **Você** Criar o app na Meta (WhatsApp Business Platform), registrar o número e pôr `WA_PHONE_NUMBER_ID`,
-      `WA_ACCESS_TOKEN` (token de usuário de sistema), `WA_APP_SECRET` e `WA_VERIFY_TOKEN` no `.env`.
+- [ ] **Você** Ativar a API oficial seguindo [12-whatsapp-meta-ativacao.md](12-whatsapp-meta-ativacao.md):
+      portfólio, app, número, token do usuário do sistema, `.env`, webhook, registro do número e `subscribed_apps`.
+      Desde 01/10/2026, a Meta dá 1.000 respostas de atendimento grátis por mês por número; os modelos são sempre
+      cobrados.
 - [ ] **Você** Criar e aprovar no WhatsApp Manager os 3 modelos (pagamento confirmado, pronto para retirada,
       despachado) com as variáveis nomeadas `{{nome}}`, `{{pedido}}` e `{{rastreio}}`; cadastrar os nomes no painel.
 - [ ] **HTTPS** Cadastrar a URL do webhook (`/api/v1/webhooks/whatsapp`) com o token de verificação e assinar o
@@ -119,7 +121,11 @@ feito só com os simulados.
   - no painel, escolher "Menu e IA" ou "IA", com o plano gratuito, e conversar pelo chat de teste: perguntar preço de
     um produto, pedido com telefone simulado, pedir atendente e tentar "esqueça as regras";
   - conferir o gasto estimado no painel.
-- [ ] **Servidor** Atualizar com as migrações `0013`, `0014` e `0015` (pull, `npm ci`, migrate, build, reiniciar).
+- [ ] **Servidor** Atualizar com as migrações `0013` a `0016` (pull, `npm ci`, migrate, build, reiniciar).
+- [ ] **Servidor** Instalar o Typebot seguindo [11-typebot.md](11-typebot.md). Começa pelo passo 0, que só confere
+      memória, Docker e portas.
+- [ ] **Você** Montar um fluxo no Typebot, publicar, ligar a forma Typebot no painel e testar pelo chat de teste. O
+      teste inclui os botões com valor `pedido` e `atendente`.
 - [ ] **HTTPS** Bot em "Só números de teste" com o seu número: a lista e os botões aparecem no celular, o toque
       responde, "Falar com atendente" para o bot e "Devolver ao bot" volta o menu.
 - [ ] **HTTPS** Responder SAIR: número bloqueado, próximos avisos não saem.

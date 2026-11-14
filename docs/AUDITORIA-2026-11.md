@@ -101,7 +101,7 @@ inacessíveis pela web; `npm audit` sem vulnerabilidades; backup diário rodando
 ### 3.4 Não testado ou pendente
 
 - CSP do painel e da loja, HSTS e `X-Frame-Options` pelo domínio: **Aprovado** (14/11/2026, certificado Let's Encrypt
-  até 12/02/2027). Cookies `Secure`/`HttpOnly` e IP real na Auditoria: **Pendente** (conferir no navegador).
+  até 12/02/2027). Cookies `Secure`/`HttpOnly` e IP real na Auditoria: **Aprovado** (conferidos no navegador em 14/11/2026).
 - CSP completa da loja com o SDK do Mercado Pago: **Pendente** (sandbox).
 - Teste de intrusão externo (varredura de portas, TLS) contra o servidor: **Não testado** (fora do escopo sem
   autorização e janela combinadas).

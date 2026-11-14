@@ -13,7 +13,7 @@ Legenda: **HTTPS** = precisa da API publicada com certificado · **Você** = dep
       renovação recarrega o nginx). VPS: 7,9 GB, ~5,5 GB disponíveis com tudo rodando. Acesso provisório pelo IP desligado.
 - [x] **Servidor** `certbot renew --dry-run` passou (14/11/2026).
 - [x] **HTTPS** `next build` e implantação no domínio, cabeçalhos de segurança conferidos pelo script (14/11/2026).
-- [ ] **HTTPS** Cookie de sessão com `Secure` e `HttpOnly` no navegador (F12 → Aplicativo → Cookies).
+- [x] **HTTPS** Cookie de sessão com `Secure` e `HttpOnly` no navegador (14/11/2026).
 - [x] Backup e teste de restauração **local** (13/11/2026): `npm run backup` e `backup:restore-test` OK; arquivo
       adulterado detectado pelo `backup:verify`. Ver [BACKUP.md](BACKUP.md).
 - [ ] **HTTPS** Backup agendado no servidor, cópia para fora dele e teste de restauração lá.
@@ -131,7 +131,7 @@ feito só com os simulados.
 ## Lançamento
 
 - [x] **Servidor** Unidades do systemd (inclusive `loja-db`) voltaram sozinhas depois do reinício do VPS (14/11/2026).
-- [ ] **HTTPS** IP real do cliente na Auditoria (nginx sobrescrevendo `X-Forwarded-For` + `TRUST_PROXY=1`).
+- [x] **HTTPS** IP real do cliente na Auditoria (nginx sobrescrevendo `X-Forwarded-For` + `TRUST_PROXY=1`) (14/11/2026).
 - [x] **Servidor** `loja-backup.timer` gerou a cópia da madrugada (14/11/2026, 03:30).
 - [ ] **Você** Cópia dos backups para fora do servidor.
 - [ ] **Servidor** Envio de foto de 8 MB pelo painel passando por nginx e Next.

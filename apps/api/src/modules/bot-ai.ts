@@ -253,11 +253,13 @@ const BLOCKS_24H = `SELECT count(*)::int AS n FROM bot_security_events WHERE who
 
 /** Pessoa com bloqueios repetidos em 24 h: a IA fica desligada para ela (menu continua). */
 async function inCooldown(ctx: AiTurnCtx) {
+  if (ctx.channel === 'teste') return false;
   return (await ctx.db.query<{ n: number }>(BLOCKS_24H, [whoHash(ctx.who)])).rows[0]!.n >= COOLDOWN_BLOCKS;
 }
 
 /** Depois de um bloqueio: ao atingir o limite, registra a pausa e avisa (uma vez por janela). */
 async function afterBlock(ctx: AiTurnCtx) {
+  if (ctx.channel === 'teste') return;
   const n = (await ctx.db.query<{ n: number }>(BLOCKS_24H, [whoHash(ctx.who)])).rows[0]!.n;
   if (n < COOLDOWN_BLOCKS) return;
   const already = (await ctx.db.query(`SELECT 1 FROM bot_security_events WHERE who_hash = $1 AND protection = 'cooldown' AND created_at > now() - interval '24 hours'`, [whoHash(ctx.who)])).rows[0];
@@ -267,7 +269,7 @@ async function afterBlock(ctx: AiTurnCtx) {
 }
 
 /** Ainda cabe no limite do mes, no limite diario e no de rajada de quem conversa? */
-export async function aiLimit(db: Q, who: string, limits: AiTurnCtx['limits']): Promise<'monthly' | 'daily' | 'burst' | null> {
+export async function aiLimit(db: Q, who: string, limits: AiTurnCtx['limits'], perContact = true): Promise<'monthly' | 'daily' | 'burst' | null> {
   const r = (
     await db.query<{ month_usd: string; today: number; burst: number }>(
       `SELECT coalesce(sum(cost_usd) FILTER (WHERE created_at >= date_trunc('month', now() AT TIME ZONE 'America/Sao_Paulo') AT TIME ZONE 'America/Sao_Paulo'), 0) AS month_usd,
@@ -278,6 +280,7 @@ export async function aiLimit(db: Q, who: string, limits: AiTurnCtx['limits']): 
     )
   ).rows[0]!;
   if (Number(r.month_usd) >= limits.monthlyUsd) return 'monthly';
+  if (!perContact) return null;
   if (r.today >= limits.dailyPerWho) return 'daily';
   if (r.burst >= BURST_CALLS) return 'burst';
   return null;
@@ -373,7 +376,9 @@ async function turn(ctx: AiTurnCtx, userText: string): Promise<AiTurn> {
   if (a.decision === 'flag') await securityEvent(ctx, { protection: 'input_guard', outcome: 'flagged', categories: a.categories, score: a.score, rules: a.rules });
 
   // 2. Limites de custo e de abuso.
-  const limit = await aiLimit(ctx.db, ctx.who, ctx.limits);
+  // O chat de teste do painel é de quem administra o bot: sem limites por contato (diário, rajada, pausa de 24 h).
+  // O limite de gasto do mês vale sempre.
+  const limit = await aiLimit(ctx.db, ctx.who, ctx.limits, ctx.channel !== 'teste');
   if (limit === 'burst') {
     const already = (await ctx.db.query(`SELECT 1 FROM bot_security_events WHERE who_hash = $1 AND protection = 'rate_limit' AND created_at > now() - interval '5 minutes'`, [whoHash(ctx.who)])).rows[0];
     if (!already) await securityEvent(ctx, { protection: 'rate_limit', outcome: 'limited', categories: ['burst'] });
@@ -527,7 +532,7 @@ export async function securitySummary(db: Q) {
   ).rows;
   const paused = (
     await db.query<{ n: number }>(
-      `SELECT count(*)::int AS n FROM (SELECT who_hash FROM bot_security_events WHERE outcome = 'blocked' AND created_at > now() - interval '24 hours' GROUP BY who_hash HAVING count(*) >= $1) x`,
+      `SELECT count(*)::int AS n FROM (SELECT who_hash FROM bot_security_events WHERE outcome = 'blocked' AND channel <> 'teste' AND created_at > now() - interval '24 hours' GROUP BY who_hash HAVING count(*) >= $1) x`,
       [COOLDOWN_BLOCKS],
     )
   ).rows[0]!.n;

@@ -181,6 +181,10 @@ Não é só lista de palavras.
 - **Novo:** depois de 3 bloqueios em 24 h, a IA fica pausada para aquele contato por 24 h. Ele continua recebendo o
   menu, gera um alerta e aparece no painel. Uma função negada sozinha não conta para a pausa.
 - Uma mensagem barrada não chama a IA, então não custa nada.
+- O chat de teste do painel não segue os limites por contato (diário, rajada e pausa de 24 h): quem usa é o
+  administrador do bot, que precisa repetir ataques para conferir os filtros. Os filtros continuam barrando e
+  registrando os eventos, e o limite de gasto do mês vale também para o teste. A contagem de "contatos pausados" no
+  painel ignora o teste.
 
 ### 4.9 Filtro de resposta (`checkOutput`, sem nova chamada de IA)
 - **Barra a resposta inteira** quando ela vem vazia, tem um segredo, copia trechos do System Prompt (linha inteira ou

@@ -41,6 +41,16 @@ const expiry = setInterval(() => {
 }, 60_000);
 expiry.unref();
 
+// Contadores de limite vencidos (auditoria 11/2026): cada IP e rota deixava uma linha para sempre.
+// So contadores ja sem efeito: janela encerrada ha mais de 1 hora e bloqueio de login vencido.
+const housekeeping = setInterval(() => {
+  pool
+    .query(`DELETE FROM rate_limits WHERE reset_at < now() - interval '1 hour'`)
+    .then(() => pool.query(`DELETE FROM auth_throttle WHERE window_start < now() - interval '1 day' AND (locked_until IS NULL OR locked_until < now())`))
+    .catch((err) => app.log.error(err, 'falha ao limpar contadores de limite'));
+}, 3_600_000);
+housekeeping.unref();
+
 let stopping = false;
 async function stop(signal: string) {
   if (stopping) return;
@@ -48,6 +58,7 @@ async function stop(signal: string) {
   app.log.info(`${signal}: encerrando depois das requisicoes em andamento`);
   setTimeout(() => process.exit(1), 15_000).unref();
   clearInterval(expiry);
+  clearInterval(housekeeping);
   await app.close();
   await pool.end();
   process.exit(0);

@@ -55,7 +55,7 @@ export function Photo({ imageKey, alt, size = 320, className = '' }: { imageKey:
     return <img src={imageUrl(imageKey, size)} alt={alt} loading="lazy" className={`aspect-square w-full bg-g-photo object-contain ${className}`} />;
   }
   return (
-    <div role="img" aria-label={`${alt}: foto em breve`} className={`@container grid aspect-square w-full place-items-center bg-g-photo text-g-faint ${className}`}>
+    <div role="img" aria-label={`${alt}: foto em breve`} className={`@container grid aspect-square w-full place-items-center bg-g-photo text-g-soft ${className}`}>
       <span className="flex flex-col items-center gap-1 text-[11px] font-semibold tracking-wider uppercase">
         <Package size={size === 320 ? 30 : 56} strokeWidth={1.25} aria-hidden />
         {/* Em miniaturas pequenas (carrinho) fica so o icone. */}

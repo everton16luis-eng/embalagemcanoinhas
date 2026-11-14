@@ -168,6 +168,13 @@ export function BuyBox({ product: p }: { product: ProductDetail }) {
             render={(k, current) => (
               <table className="w-full border-2 border-g-ink text-sm">
                 <caption className="mb-1.5 text-left text-xs font-bold tracking-[0.06em] uppercase">Preço por quantidade</caption>
+                <thead className="sr-only">
+                  <tr>
+                    <th scope="col">Embalagens</th>
+                    <th scope="col">Preço por embalagem</th>
+                    <th scope="col" className="hidden sm:table-cell">Preço por unidade</th>
+                  </tr>
+                </thead>
                 <tbody>
                   {[{ minPacks: 1, priceCents: Number(k.price_cents) }, ...tiersOf(k)].map((t, i, all) => {
                     const to = all[i + 1]?.minPacks;
@@ -175,7 +182,7 @@ export function BuyBox({ product: p }: { product: ProductDetail }) {
                     return (
                       // Faixa ativa so muda o fundo: o peso da fonte fica igual para os numeros nao mudarem de largura.
                       <tr key={t.minPacks} className={`border-b border-g-line last:border-0 ${active ? 'bg-g-green-tint' : ''}`}>
-                        <td className="px-3 py-2">{to ? (to - 1 === t.minPacks ? `${t.minPacks}` : `${t.minPacks} a ${to - 1}`) : `${t.minPacks} ou mais`}</td>
+                        <th scope="row" className="px-3 py-2 text-left font-normal">{to ? (to - 1 === t.minPacks ? `${t.minPacks}` : `${t.minPacks} a ${to - 1}`) : `${t.minPacks} ou mais`}</th>
                         <td className="num px-3 py-2 text-right font-semibold">{reais(t.priceCents)} cada</td>
                         <td className="num hidden px-3 py-2 text-right text-g-soft sm:table-cell">
                           {unitReais(t.priceCents / Number(k.base_qty))}/{unitName(p.base_unit)}

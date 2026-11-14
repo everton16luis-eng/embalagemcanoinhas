@@ -45,13 +45,13 @@ export default async function StoreLayout({ children }: { children: ReactNode })
                 Buscar produtos
               </label>
               <input id="busca" name="q" type="search" placeholder="Buscar por produto, medida ou código" className="min-w-0 flex-1 px-3.5 text-[15px] outline-none placeholder:text-g-faint" />
-              <button type="submit" className="flex items-center gap-2 bg-g-ink px-4 font-semibold text-white sm:px-5">
+              <button type="submit" aria-label="Buscar" className="flex items-center gap-2 bg-g-ink px-4 font-semibold text-white sm:px-5">
                 <Search size={18} aria-hidden />
                 <span className="hidden sm:inline">Buscar</span>
               </button>
             </form>
             <nav aria-label="Atalhos" className="order-2 flex items-center gap-5 sm:order-3">
-              <Link href="/conta" className="flex items-center gap-1.5 text-[13px] font-semibold">
+              <Link href="/conta" aria-label="Minha conta" className="flex items-center gap-1.5 text-[13px] font-semibold">
                 <UserRound size={20} aria-hidden />
                 <span className="hidden sm:inline">Minha conta</span>
               </Link>

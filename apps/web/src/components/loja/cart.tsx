@@ -109,7 +109,7 @@ function AddedToast() {
 export function CartButton() {
   const { count } = useCart();
   return (
-    <Link href="/carrinho" className="flex items-center gap-1.5 text-[13px] font-semibold" aria-label={`Carrinho, ${count} ${count === 1 ? 'item' : 'itens'}`}>
+    <Link href="/carrinho" className="flex items-center gap-1.5 text-[13px] font-semibold" aria-label={`Carrinho ${count} ${count === 1 ? 'item' : 'itens'}`}>
       <ShoppingCart size={20} aria-hidden />
       <span className="hidden sm:inline">Carrinho</span>
       <span className="num min-w-5 bg-g-label px-1.5 text-center font-bold">{count}</span>

@@ -107,6 +107,22 @@ feito só com os simulados.
       peso e medidas das variações (sem eles a opção não aparece).
 - [ ] **Você** Decidir como comprar o frete e gerar etiqueta (hoje fora do sistema).
 
+## Auditoria de novembro de 2026 ([AUDITORIA-2026-11.md](AUDITORIA-2026-11.md))
+
+- [ ] **Servidor** Rodar `sudo bash /srv/loja-embalagens/deploy/auditoria-servidor.sh 2>&1 | tee ~/auditoria-$(date +%F).txt`
+      (só leitura) e corrigir o que aparecer: SSH, firewall, portas, permissões do `.env`, PostgreSQL só em 127.0.0.1.
+- [ ] **Servidor** Instalar `deploy/nginx/00-loja-limites.conf` e os sites da loja atualizados; `nginx -t` antes do
+      reload; conferir que a loja abre e que `curl -I` não mostra a versão do nginx.
+- [ ] **Servidor** Carga no VPS de outra máquina, fora do horário de movimento: `fumaca` e depois `inicial`
+      ([tests/carga/README.md](../tests/carga/README.md)), com `vmstat -w 2` aberto no servidor. Anotar p95 e CPU.
+- [ ] **HTTPS** Cabeçalhos pelo nginx: `Content-Security-Policy` no painel e na loja, cookies `Secure`.
+- [ ] **Você** Sandbox do Mercado Pago: anotar os domínios que o SDK carrega e então fechar a CSP da loja
+      (`script-src`, `connect-src`, `frame-src`).
+- [ ] **Você** Lighthouse de novo com o catálogo e as fotos reais (LCP passa a ser a foto).
+- [ ] **Você** Logotipo definido → `favicon` (hoje 404 no console).
+- [ ] **Você** Retenção de sessões vencidas e carrinhos abandonados; monitor externo de disponibilidade.
+- [ ] **Você** Tornar o repositório do GitHub privado.
+
 ## Lançamento
 
 - [ ] **Servidor** Seguir [IMPLANTACAO.md](IMPLANTACAO.md) num servidor Ubuntu: unidades do systemd sobem e

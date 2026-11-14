@@ -470,3 +470,21 @@ Contratos conferidos na documentação oficial e decisões em
   o mesmo item físico). A tabela aceita ligar uma foto a uma opção (cor), mas a loja ainda mostra todas juntas:
   trocar a foto ao escolher a cor fica para quando houver fotos por cor.
 - Loja: setas, contador, teclado e deslizar no celular; miniatura ativa sem mudar de tamanho.
+
+### Auditoria de segurança, desempenho e capacidade (13–14/11/2026)
+
+Relatório completo: [AUDITORIA-2026-11.md](AUDITORIA-2026-11.md). Medido só localmente, com dados fictícios; o VPS
+fica pendente (roteiro em [TESTES-PENDENTES.md](TESTES-PENDENTES.md)).
+
+- Segurança: login de cliente ganhou bloqueio por conta (antes só limite por IP); `fast-xml-parser` atualizado;
+  CSP no painel (estrita) e na loja (parcial até validar o Mercado Pago); limite por IP e versão oculta no nginx
+  (arquivo pronto, aplicar no VPS); limpeza de hora em hora dos contadores de limite vencidos.
+- Integridade: última unidade, checkout duplicado, ajustes simultâneos e preço alterado cobertos por
+  `test/audit.test.ts`, sem venda acima do estoque nem pedido duplicado.
+- Carga (k6, `tests/carga/`): sem degradação até 100 usuários simultâneos; 200 com p95 das páginas em 1,3–1,7 s e
+  nenhuma falha; saturação entre 200 e 300 nesta máquina. Gargalo: renderização das páginas no Next, não o banco.
+- Banco: índice para a foto principal dos cards (migração `0011`, medido antes: 57 → 8 ms com 20 mil fotos).
+- Front-end: Lighthouse 96–100 em desempenho; acessibilidade de 86–96 para 100 e SEO para 100.
+- Decisões: cache de 60 s só para departamentos e dados da loja (preço e estoque sempre frescos). Cache da página
+  inteira e segunda instância do Next ficam para depois da medição no VPS, por mudarem o que o cliente vê ou a
+  infraestrutura.

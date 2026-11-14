@@ -22,7 +22,8 @@ async function load(slug: string, sp: Record<string, string | undefined>) {
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
   const cat = (await getCategories()).find((c) => c.slug === slug);
-  return { title: cat?.name ?? 'Departamento', description: cat?.description ?? undefined };
+  // Sem descricao propria, fica a da loja (definida no layout): `description: undefined` apagava a herdada.
+  return { title: cat?.name ?? 'Departamento', ...(cat?.description ? { description: cat.description } : {}) };
 }
 
 export default async function CategoryPage({ params, searchParams }: Props) {

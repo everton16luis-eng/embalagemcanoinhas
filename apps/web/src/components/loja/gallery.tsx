@@ -54,7 +54,15 @@ export function Gallery({ images, alt }: { images: Image[]; alt: string }) {
         }}
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={imageUrl(cur.file_key, 1600)} alt={cur.alt ?? alt} className="aspect-square w-full bg-g-photo object-contain" />
+        {/* Foto que define o LCP: prioridade alta e 800 px para tela que nao precisa de 1600 (auditoria 11/2026). */}
+        <img
+          src={imageUrl(cur.file_key, 1600)}
+          srcSet={`${imageUrl(cur.file_key, 800)} 800w, ${imageUrl(cur.file_key, 1600)} 1600w`}
+          sizes="(min-width: 1024px) 600px, 100vw"
+          fetchPriority="high"
+          alt={cur.alt ?? alt}
+          className="aspect-square w-full bg-g-photo object-contain"
+        />
         {n > 1 && (
           <>
             <button type="button" onClick={() => go(i - 1)} aria-label="Foto anterior" className="absolute top-1/2 left-2 grid size-10 -translate-y-1/2 place-items-center border-2 border-g-ink bg-white/90 hover:bg-white">

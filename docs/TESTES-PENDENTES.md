@@ -22,13 +22,13 @@ Legenda: **HTTPS** = precisa da API publicada com certificado · **Você** = dep
 - [ ] **Servidor** Foto de produto tirada pelo celular, enviada pelo painel no servidor.
 - [ ] **Servidor** Depois de `systemctl restart loja-api` as fotos continuam aparecendo na loja e no painel.
 - [ ] **Você** Onde guardar as cópias fora do servidor e por quanto tempo (retenção).
-- [ ] **Servidor** E-mail da loja (passos 1 a 6 de [EMAIL.md](EMAIL.md)): domínio no Postfix, DKIM, DNS na Hostinger,
-      script e socket das caixas, `nao-responda@` e `contato@` criadas pelo painel, SMTP no `.env`.
-- [ ] **Servidor** `printf '{"acao":"info"}' | sudo -u loja nc -U -N /run/loja-contas-email.sock` mostra só caixas
-      `@embalagemcanoinhas.com.br` (nenhuma do portal ou do barbasystem).
-- [ ] **Você** E-mail de teste do painel chega no Gmail com SPF, DKIM e DMARC = PASS ("Mostrar original"); depois
-      trocar o DMARC para `p=quarantine`.
-- [ ] **Você** "Esqueci minha senha" no painel: o link chega, troca a senha e não funciona uma segunda vez.
+- [x] **Servidor** E-mail da loja (passos 1 a 6 de [EMAIL.md](EMAIL.md)): domínio no Postfix, DKIM, DNS na Hostinger,
+      script e socket das caixas, `nao-responda@` e `contato@` criadas pelo painel, SMTP no `.env` (14/11/2026).
+- [x] **Servidor** `printf '{"acao":"info"}' | sudo -u loja nc -U -N /run/loja-contas-email.sock` mostra só caixas
+      `@embalagemcanoinhas.com.br` (nenhuma do portal ou do barbasystem) (14/11/2026).
+- [x] **Você** E-mail de teste do painel chega no Gmail com SPF, DKIM e DMARC = PASS ("Mostrar original") (14/11/2026).
+- [ ] **Você** Depois de alguns dias sem problema de entrega, trocar o DMARC na Hostinger para `p=quarantine`.
+- [x] **Você** "Esqueci minha senha" no painel: o link chega, troca a senha e não funciona uma segunda vez (14/11/2026).
 - [ ] **Você** Caixa criada pelo painel entra no celular (IMAP 993 e SMTP 587 em `mail.portalplanaltonorte.com.br`).
 - [ ] Inspeção visual por captura de tela (painel e loja, desktop e celular): até aqui a verificação foi por texto e
       medidas.

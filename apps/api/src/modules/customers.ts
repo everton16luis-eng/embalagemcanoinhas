@@ -7,7 +7,7 @@ import { isValidCnpj, isValidCpf, normalizeCnpj, onlyDigits } from '../lib/br.js
 import { randomToken, sha256 } from '../lib/crypto.js';
 import { AppError, notFound, unauthorized } from '../lib/errors.js';
 import { idParams, isUniqueViolation } from '../lib/http.js';
-import { hashPassword, passwordSchema } from './auth.js';
+import { hashPassword, isLocked, MAX_EMAIL_FAILURES, MAX_IP_FAILURES, passwordSchema, registerFailure } from './auth.js';
 import { CART_COOKIE } from './storefront.js';
 
 /** Sessao do cliente da loja. Separada da sessao da equipe: nome, tabela e regras proprias. */
@@ -134,9 +134,19 @@ export async function customerRoutes(app: FastifyInstance) {
 
   app.post('/login', strict, async (req, reply) => {
     const b = loginSchema.parse(req.body);
+    // Bloqueio por conta (e-mail) e por IP, como no painel: o limite por minuto sozinho nao segura
+    // tentativas vindas de muitos IPs contra a mesma conta. Chaves separadas das do painel.
+    const emailKey = `customer:email:${sha256(b.email.toLowerCase())}`;
+    const ipKey = `customer:ip:${sha256(req.ip)}`;
+    if (await isLocked([emailKey, ipKey])) throw new AppError(429, 'TOO_MANY_ATTEMPTS', 'Muitas tentativas. Aguarde alguns minutos ou recupere a senha.');
     const row = (await pool.query<{ id: string; password_hash: string; is_active: boolean }>('SELECT * FROM customer_login_lookup($1)', [b.email])).rows[0];
     const ok = await argon2.verify(row?.password_hash ?? (await dummyHash), b.password);
-    if (!row || !ok || !row.is_active) throw new AppError(401, 'INVALID_CREDENTIALS', 'E-mail ou senha incorretos.');
+    if (!row || !ok || !row.is_active) {
+      await registerFailure(emailKey, MAX_EMAIL_FAILURES);
+      await registerFailure(ipKey, MAX_IP_FAILURES);
+      throw new AppError(401, 'INVALID_CREDENTIALS', 'E-mail ou senha incorretos.');
+    }
+    await pool.query('DELETE FROM auth_throttle WHERE key = $1', [emailKey]);
     await tx(null, (db) => startSession(db, req, reply, row.id));
     await loadCustomerById(req, row.id);
     return { customer: req.customer };

@@ -11,8 +11,8 @@ import { effectivePermissions, MFA_REQUIRED, type Permission } from '../lib/perm
 
 // Nome proprio do cookie: no desenvolvimento, outros sistemas tambem rodam em localhost.
 export const COOKIE = isProduction ? '__Host-loja_sid' : 'loja_sid';
-const MAX_EMAIL_FAILURES = 5;
-const MAX_IP_FAILURES = 30;
+export const MAX_EMAIL_FAILURES = 5;
+export const MAX_IP_FAILURES = 30;
 const THROTTLE_WINDOW = '15 minutes';
 const MFA_ISSUER = 'Loja - Painel';
 
@@ -53,12 +53,12 @@ const loginSchema = z.strictObject({
 // Mantem o tempo de resposta parecido quando o e-mail nao existe.
 const dummyHash = hashPassword(randomToken());
 
-async function isLocked(keys: string[]) {
+export async function isLocked(keys: string[]) {
   const { rowCount } = await pool.query('SELECT 1 FROM auth_throttle WHERE key = ANY($1) AND locked_until > now()', [keys]);
   return Boolean(rowCount);
 }
 
-async function registerFailure(key: string, limit: number) {
+export async function registerFailure(key: string, limit: number) {
   await pool.query(
     `INSERT INTO auth_throttle AS t (key, failures) VALUES ($1, 1)
      ON CONFLICT (key) DO UPDATE SET

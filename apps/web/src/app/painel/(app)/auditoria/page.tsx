@@ -29,6 +29,51 @@ const ACTIONS: Record<string, string> = {
   'fiscal.settings_updated': 'Alterou a configuração fiscal',
   'company.updated': 'Alterou dados da empresa',
   'settings.store_updated': 'Alterou a marca da loja',
+  'users.password_reset': 'Gerou nova senha para usuário',
+  'products.image_replaced': 'Trocou o arquivo de uma foto',
+  'products.images_reordered': 'Reordenou as fotos',
+  'fiscal.certificate_registered': 'Cadastrou o certificado digital',
+  'fiscal.production_released': 'Liberou a emissão em produção',
+  'fiscal.rule_created': 'Criou regra fiscal',
+  'fiscal.rule_updated': 'Alterou regra fiscal',
+  'fiscal.rule_validated': 'Validou regra fiscal',
+  'fiscal.rule_deactivated': 'Desativou regra fiscal',
+  'fiscal.nfe_emit': 'Emitiu NF-e',
+  'fiscal.nfe_cancel': 'Cancelou NF-e',
+  'fiscal.nfe_correction': 'Enviou carta de correção',
+  'fiscal.inutilization': 'Inutilizou numeração de NF-e',
+  'order.status': 'Mudou o status do pedido',
+  'order.dispatch': 'Despachou pedido',
+  'order.cancel': 'Cancelou pedido',
+  'stock.reserved': 'Reservou estoque',
+  'stock.reservation_released': 'Liberou reserva de estoque',
+  'stock.reservation_consumed': 'Baixou reserva de estoque',
+  'inventory.opened': 'Abriu inventário',
+  'inventory.closed': 'Fechou inventário',
+  'inventory.canceled': 'Cancelou inventário',
+  'suppliers.created': 'Cadastrou fornecedor',
+  'suppliers.updated': 'Alterou fornecedor',
+  'suppliers.offers_updated': 'Alterou ofertas do fornecedor',
+  'purchases.created': 'Criou pedido de compra',
+  'purchases.updated': 'Alterou pedido de compra',
+  'purchases.sent': 'Enviou pedido de compra',
+  'purchases.received': 'Recebeu mercadoria',
+  'purchases.closed_short': 'Encerrou compra com falta',
+  'purchases.canceled': 'Cancelou pedido de compra',
+  'purchases.invoice_imported': 'Importou nota de compra',
+  'purchases.invoice_linked': 'Ligou nota de compra ao pedido',
+  'sales.quote_created': 'Criou orçamento',
+  'sales.quote_canceled': 'Cancelou orçamento',
+  'marketplace.import': 'Importou anúncios do marketplace',
+  'marketplace.listing_link': 'Ligou anúncio a produto',
+  'marketplace.listing_update': 'Alterou anúncio do marketplace',
+  'marketplace.order_fetch': 'Buscou venda do marketplace',
+  'marketplace.cancel': 'Venda cancelada no marketplace',
+  'marketplace.disconnect': 'Desconectou marketplace',
+  'marketplace.reauth_required': 'Marketplace pediu nova autorização',
+  'marketplace.rename': 'Renomeou conta do marketplace',
+  'whatsapp.template': 'Alterou modelo de mensagem do WhatsApp',
+  'whatsapp.reply': 'Respondeu pelo WhatsApp',
 };
 
 function Audit() {
@@ -65,6 +110,7 @@ function Audit() {
                 <span className="num text-ink-faint">{when(e.created_at)}</span>
                 <span className="font-medium">{e.actor_name ?? 'Sistema'}</span>
                 <span>{ACTIONS[e.action] ?? e.action}</span>
+                {e.ip && <span className="num text-xs text-ink-faint">IP {e.ip}</span>}
                 {(e.before || e.after) && (
                   <button className="text-act hover:underline" onClick={() => setOpen(open === e.id ? null : e.id)}>{open === e.id ? 'ocultar' : 'detalhes'}</button>
                 )}

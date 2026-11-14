@@ -132,7 +132,7 @@ sudo nginx -t && sudo systemctl reload nginx
 ```
 
 ```bash
-sudo certbot certonly --webroot -w /var/www/letsencrypt -d embalagemcanoinhas.com.br -d www.embalagemcanoinhas.com.br
+sudo certbot certonly --webroot -w /var/www/letsencrypt -d embalagemcanoinhas.com.br -d www.embalagemcanoinhas.com.br --deploy-hook "systemctl reload nginx"
 ```
 
 Com o certificado emitido, o site completo:
@@ -144,6 +144,14 @@ sudo cp /srv/loja-embalagens/deploy/nginx/loja.conf /etc/nginx/sites-available/e
 ```bash
 sudo nginx -t && sudo systemctl reload nginx
 ```
+
+O `--deploy-hook` fica gravado na renovação: a cada certificado renovado o nginx recarrega e passa a usar o novo.
+
+Se a loja estava no ar pelo acesso provisório por IP (`loja-ip-temporario.conf`, porta 8447), depois que o domínio
+abrir: trocar `APP_ORIGIN` e `PUBLIC_API_URL` do `.env` para `https://embalagemcanoinhas.com.br`, reiniciar só a
+`loja-api` (o site não guarda o endereço no build), apagar `loja-ip-temporario.conf` do `sites-enabled` e fechar a
+porta 8447 no firewall (`ufw delete allow 8447/tcp`). A API aceita uma origem só: depois da troca, o acesso pelo IP
+deixa de gravar (login, carrinho, painel).
 
 Pontos de [`deploy/nginx/loja.conf`](../deploy/nginx/loja.conf) que não podem faltar:
 

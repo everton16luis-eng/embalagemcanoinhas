@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowLeft, ArrowRight, ImagePlus, RefreshCw, Star, Trash2 } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Camera, ImagePlus, RefreshCw, Star, Trash2 } from 'lucide-react';
 import { useEffect, useImperativeHandle, useRef, useState, type DragEvent, type ReactNode, type Ref } from 'react';
 import { api, imageUrl, uploadWithProgress } from '@/lib/api';
 import { Badge, Notice, Panel } from './ui';
@@ -55,6 +55,10 @@ export function ProductImages({ productId, images = [], editable, pendingRef }: 
   const [dropHover, setDropHover] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const replaceInput = useRef<HTMLInputElement>(null);
+  // Camera: o Android so oferece a camera quando o campo aceita image/* e um arquivo por vez.
+  const cameraInput = useRef<HTMLInputElement>(null);
+  const [touch, setTouch] = useState(false);
+  useEffect(() => setTouch(window.matchMedia('(pointer: coarse)').matches), []);
   const replaceTarget = useRef<string | null>(null);
   const itemsRef = useRef(items);
   itemsRef.current = items;
@@ -244,6 +248,24 @@ export function ProductImages({ productId, images = [], editable, pendingRef }: 
                 Escolher fotos
               </button>
             )}
+            {remaining > 0 && touch && (
+              <button type="button" disabled={locked} onClick={() => cameraInput.current?.click()} className="inline-flex h-9 items-center gap-1.5 rounded-[var(--radius-ctl)] border border-line-strong bg-card px-3.5 text-sm font-medium hover:bg-sunken disabled:opacity-55">
+                <Camera size={16} aria-hidden /> Tirar foto
+              </button>
+            )}
+            <input
+              ref={cameraInput}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="sr-only"
+              tabIndex={-1}
+              aria-label="Tirar foto com a câmera"
+              onChange={(e) => {
+                void addFiles(e.target.files);
+                e.target.value = '';
+              }}
+            />
             <input
               ref={fileInput}
               type="file"

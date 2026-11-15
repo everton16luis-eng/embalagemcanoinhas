@@ -18,8 +18,8 @@ Legenda: **HTTPS** = precisa da API publicada com certificado · **Você** = dep
       adulterado detectado pelo `backup:verify`. Ver [BACKUP.md](BACKUP.md).
 - [x] **Servidor** Backup agendado (`loja-backup.timer`) e teste de restauração no servidor: cópia
       `20261115-123155` conferida e restaurada em banco temporário, 16 tabelas batendo com o manifesto (15/11/2026).
-- [ ] **Servidor** Cópia cifrada no Google Drive ligada e conferida (passos 1 a 7 de "Cópia cifrada" em [BACKUP.md](BACKUP.md)),
-      senhas do `loja-cripto` guardadas fora do servidor e uma cópia baixada do Drive restaurada com `backup:restore-test`.
+- [x] **Servidor** Cópia cifrada no Google Drive (`loja-cripto:`), enviada e conferida com `cryptcheck`; cópia
+      `20261115-123155` baixada do Drive e restaurada com `backup:restore-test` (15/11/2026).
 - [x] **Servidor** Fotos pelo computador no servidor: 7,8 MB subiu e 8,2 MB foi recusada com a mensagem do sistema,
       já com a correção do erro 500 acima de 8 MB (14/11/2026). Fotos do teste em `.local/fotos-teste/`.
 - [x] **Servidor** Foto de produto tirada pelo celular (botão "Tirar foto"), enviada pelo painel no servidor: 1 foto
@@ -175,7 +175,7 @@ feito só com os simulados.
 - [x] **Servidor** Unidades do systemd (inclusive `loja-db`) voltaram sozinhas depois do reinício do VPS (14/11/2026).
 - [x] **HTTPS** IP real do cliente na Auditoria (nginx sobrescrevendo `X-Forwarded-For` + `TRUST_PROXY=1`) (14/11/2026).
 - [x] **Servidor** `loja-backup.timer` gerou a cópia da madrugada (14/11/2026, 03:30).
-- [ ] **Você** Cópia dos backups para fora do servidor.
+- [x] **Você** Cópia dos backups para fora do servidor: Google Drive cifrado, toda madrugada (15/11/2026).
 - [x] **Servidor** Envio de foto de 8 MB pelo painel passando por nginx e Next (14/11/2026).
 - [x] **Você** Provedor de e-mail: servidor próprio do VPS, sem custo (14/11/2026). Ver [EMAIL.md](EMAIL.md).
 - [ ] **Você** E-mails para clientes da loja (recuperação de senha do cliente, avisos de pedido): ainda não existem.

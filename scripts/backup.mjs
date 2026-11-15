@@ -219,8 +219,17 @@ function offsite(dry) {
   const names = localBackups().sort();
   if (!names.length) throw new Error('Nenhuma copia local para enviar.');
   const newest = names.at(-1);
-  const remoteDirs = () => new Set(rclone(['lsf', '--dirs-only', remote]).split(/\r?\n/).map((l) => l.replace(/\/$/, '').trim()).filter((n) => STAMP.test(n)));
+  const remoteDirs = () => {
+    try {
+      return new Set(rclone(['lsf', '--dirs-only', remote]).split(/\r?\n/).map((l) => l.replace(/\/$/, '').trim()).filter((n) => STAMP.test(n)));
+    } catch (err) {
+      // Primeiro envio: a pasta ainda nao existe no remoto.
+      if (/directory not found/i.test(err.message)) return new Set();
+      throw err;
+    }
+  };
   const before = remoteDirs();
+  if (!before.size && !dry) rclone(['mkdir', remote]);
   // So envia o que esta dentro da retencao: uma copia velha recem-apagada aqui nao volta a subir.
   const send = [...keepSet(names)].filter((n) => !before.has(n) || n === newest).sort();
   for (const n of send) {

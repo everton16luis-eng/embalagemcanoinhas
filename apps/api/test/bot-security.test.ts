@@ -114,6 +114,7 @@ beforeEach(async () => {
   ai.requests = [];
   ai.script = [];
   ai.failNext = false;
+  ai.failCount = 0;
   ai.throwNext = null;
   alerts.length = 0;
 });
@@ -370,10 +371,12 @@ describe('40 cenários de ataque', () => {
     expect((await lastBot(ALICE)).body).toContain(SAFE_REPLY);
   });
 
-  it('26 excesso de requisições: rajada vai para o menu e é registrada uma vez', async () => {
+  it('26 excesso de requisições: rajada (12 mensagens em 5 min, não chamadas) pede um minuto e é registrada uma vez', async () => {
+    // Cada pergunta sobre copos faz 2 chamadas (busca + resposta): o limite conta as 12 mensagens, não as 24 chamadas.
     for (let i = 0; i < 13; i++) await say(ALICE, `pergunta número ${i} sobre copos`);
-    expect(ai.requests.length).toBe(12);
-    expect((await lastBot(ALICE)).kind).toBe('interactive');
+    expect(ai.requests.length).toBe(24);
+    // No meio da conversa com a IA a resposta é um aviso em texto, não o menu.
+    expect((await lastBot(ALICE)).body).toContain('várias mensagens seguidas');
     expect((await events()).filter((e) => e.protection === 'rate_limit')).toHaveLength(1);
   });
 
@@ -511,7 +514,8 @@ describe('40 cenários de ataque', () => {
     await say(ALICE, 'x'.repeat(4000));
     const req = ai.requests[0]!;
     const chars = req.contents.flatMap((c) => c.parts.map((p: any) => p.text ?? '')).join('').length;
-    expect(chars).toBeLessThanOrEqual(5100);
+    // Histórico até 5000 caracteres (12 mensagens de até 800) + mensagem até 1000.
+    expect(chars).toBeLessThanOrEqual(6100);
     expect((req.contents.at(-1)!.parts[0] as any).text.length).toBeLessThanOrEqual(1000);
   });
 
@@ -555,11 +559,12 @@ describe('proteções extras', () => {
     ai.script = [reply('Temos copos de 200 ml e 300 ml. Os preços estão na loja. E também temos tampas que', { finishReason: 'MAX_TOKENS' })];
     await say(BOB, 'pergunta quatro');
     expect((await lastBot(BOB)).body).toBe('Temos copos de 200 ml e 300 ml. Os preços estão na loja.');
-    ai.script = [reply('', { finishReason: 'MALFORMED_FUNCTION_CALL' })];
+    // Função malformada duas vezes (tenta de novo uma vez): no meio da conversa, aviso em texto em vez do menu.
+    ai.script = [reply('', { finishReason: 'MALFORMED_FUNCTION_CALL' }), reply('', { finishReason: 'MALFORMED_FUNCTION_CALL' })];
     await say(BOB, 'pergunta cinco');
-    expect((await lastBot(BOB)).kind).toBe('interactive');
+    expect((await lastBot(BOB)).body).toContain('instabilidade');
     const fins = (await owner.query('SELECT finish_reason FROM ai_calls ORDER BY id')).rows.map((r) => r.finish_reason);
-    expect(fins).toEqual(['SAFETY', 'PROHIBITED_CONTENT', 'INPUT_BLOCKED', 'MAX_TOKENS', 'MALFORMED_FUNCTION_CALL']);
+    expect(fins).toEqual(['SAFETY', 'PROHIBITED_CONTENT', 'INPUT_BLOCKED', 'MAX_TOKENS', 'MALFORMED_FUNCTION_CALL', 'MALFORMED_FUNCTION_CALL']);
   });
 
   it('42 adaptador: categoria de jailbreak recusada → repete sem ela; entrada barrada → AiBlocked; erro sem chave', async () => {

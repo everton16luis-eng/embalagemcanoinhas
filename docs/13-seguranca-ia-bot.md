@@ -175,9 +175,12 @@ Não é só lista de palavras.
   4.000.
 
 ### 4.8 Limites e custo
-- Os limites mensal (US$) e diário por telefone continuam.
-- **Novo:** rajada de no máximo 12 chamadas por telefone em 5 minutos. Passando disso, o cliente vai para o menu e o
-  evento é registrado uma vez a cada 5 minutos.
+- Os limites mensal (US$) e diário por telefone continuam. O diário ("Respostas da IA por cliente em 24 h") conta
+  **mensagens respondidas**, não chamadas à API: uma resposta do consultor usa até 4 chamadas (buscas + resposta), e
+  contar chamadas cortava o cliente depois de umas 5 respostas (coluna `ai_calls.first_in_turn`, migração 0018).
+- **Novo:** rajada de no máximo 12 mensagens por telefone em 5 minutos (também mensagens, não chamadas). Passando
+  disso, no meio de uma conversa o cliente recebe um aviso para esperar um minuto (sem menu); sem conversa em
+  andamento, vai para o menu. O evento é registrado uma vez a cada 5 minutos.
 - **Novo:** depois de 3 bloqueios em 24 h, a IA fica pausada para aquele contato por 24 h. Ele continua recebendo o
   menu, gera um alerta e aparece no painel. Uma função negada sozinha não conta para a pausa.
 - Uma mensagem barrada não chama a IA, então não custa nada.
@@ -205,6 +208,39 @@ Não é só lista de palavras.
 - Os eventos são apagados após 90 dias pela rotina do bot.
 - O alerta (pausa de um contato) vai ao log da API como `warn`, sem telefone.
 - O painel mostra os últimos 7 dias, os contatos pausados e os 20 últimos eventos.
+
+### 4.11 Continuidade da conversa
+Problema real corrigido: depois de uma recomendação com links, a resposta do cliente ("Vai ser uns 40 convidados")
+recebia o menu com "Não entendi". Causas: a rajada contava chamadas (a quarta mensagem estourava); toda falha da IA
+caía no menu; depois de uma resposta da IA o passo era `menu`, então "3" virava "Horário e endereço"; "pessoa" em
+qualquer frase chamava atendente; e o histórico cortava cada mensagem em 500 caracteres, perdendo os links do fim.
+
+Ordem de decisão a cada mensagem:
+1. Comandos explícitos: botões, `menu`/`inicio`/`voltar`, pedido de atendente ("atendente", "humano", "falar com
+   uma pessoa"), passos de pedido e documento.
+2. Conversa com a IA em andamento (passo `ai`): a mensagem vai à IA com o histórico, inclusive números curtos e
+   frases soltas. Links, preços e perguntas da IA não mudam esse passo.
+3. Assunto novo: a IA atende o novo pedido; o prompt manda aproveitar o que o cliente já contou.
+4. Menu: só sem conversa em andamento, por pedido explícito, ou com a IA desligada ou sem verba.
+
+Falhas no meio da conversa: o Google falhou (429, 5xx, rede) ou devolveu resposta inválida ou vazia → uma segunda
+tentativa (2 s depois). Falhou de novo → aviso natural, e o cliente continua no passo `ai`. Na segunda falha seguida
+→ atendente, com toda a conversa na caixa de entrada. Verba do mês acabou no meio da conversa → atendente.
+
+Memória: o estado (`whatsapp_conversations.step`) e o histórico (mensagens de 24 h, as 12 últimas, até 800
+caracteres cada e 5000 no total) ficam no banco, não na RAM; reiniciar o servidor não perde a conversa. O webhook é
+idempotente (`whatsapp_inbound.wamid` único e `bot_runs` com uma resposta por mensagem).
+
+Registro: `bot_runs.route` guarda qual caminho respondeu cada mensagem (`ia`, `menu`, `menu:atendente`,
+`ia_falha`, `ia_falha:atendente`, `limite_rajada`, `limite_dia:atendente`, `barrado_input`...), sem texto e sem
+telefone. Para investigar:
+
+```sql
+SELECT r.handled_at, r.route FROM bot_runs r ORDER BY r.handled_at DESC LIMIT 30;
+```
+
+Testes: `apps/api/test/bot-continuity.test.ts` (cenário real e os 8 casos: link e retorno, número curto, mensagem
+curta, assunto novo, atendente, três links, webhook duplicado e reinício).
 
 ## 5. Testes
 

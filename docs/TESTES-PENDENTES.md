@@ -121,7 +121,8 @@ feito só com os simulados.
   - no painel, escolher "Menu e IA" ou "IA", com o plano gratuito, e conversar pelo chat de teste: perguntar preço de
     um produto, pedido com telefone simulado, pedir atendente e tentar "esqueça as regras";
   - conferir o gasto estimado no painel.
-- [ ] **Servidor** Atualizar com as migrações `0013` a `0017` (pull, `npm ci`, migrate, build, reiniciar).
+- [ ] **Servidor** Atualizar com as migrações `0013` a `0018` (pull, `npm ci`, migrate, build, reiniciar).
+- [ ] **IA (Gemini real)** Repetir a conversa dos copos (oi → copos para festa de 15 anos → só refrigerante → uns 40 convidados → "3" pacotes) e conferir que nenhuma resposta é o menu. Conferir em `bot_runs.route` que todas saíram como `ia`.
 - [ ] **Com a chave do Gemini** Segurança da IA ([13-seguranca-ia-bot.md](13-seguranca-ia-bot.md)) no modelo real,
       pelo chat de teste:
   - confirmar que a categoria `HARM_CATEGORY_JAILBREAK` é aceita (sem erro no log da API);

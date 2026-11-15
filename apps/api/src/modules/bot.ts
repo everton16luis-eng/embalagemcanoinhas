@@ -254,7 +254,8 @@ function choiceOf(input: BotInput, step: string | null) {
   if (input.replyId && ['menu', ...MENU_ROWS.map((r) => r.id)].includes(input.replyId)) return input.replyId;
   const t = norm(input.text ?? '');
   if (['menu', 'inicio', 'voltar', 'opcoes'].includes(t)) return 'menu';
-  if (/\batendente\b|\bhumano\b|\bpessoa\b/.test(t)) return 'atendente';
+  // Pedido explicito de atendimento humano. "pessoa" sozinha nao vale: "1 copo por pessoa" e conversa de venda.
+  if (/\batendente\b|\bhumano\b|\b(falar|conversar) com (uma |alguma )?pessoa\b|\bpessoa de verdade\b/.test(t)) return 'atendente';
   // No menu, o cliente pode digitar o numero da opcao em vez de tocar na lista.
   if (step === 'menu' && /^[1-4]$/.test(t)) return MENU_ROWS[Number(t) - 1]!.id;
   return null;
@@ -309,7 +310,8 @@ export async function menuBot(ctx: Ctx, state: BotState, input: BotInput): Promi
     return done([AFTER(await render(ctx, 'order_not_verified', input.name))]);
   }
 
-  if (state.step === null) return done(await menu(ctx, input.name));
+  // Sem conversa em andamento (ou a da IA, quando ela nao responde mais): o menu de sempre, sem "Não entendi".
+  if (state.step === null || state.step === AI_STEP) return done(await menu(ctx, input.name));
   return done(await menu(ctx, input.name, 'Não entendi. Escolha uma das opções:'));
 }
 
@@ -319,7 +321,17 @@ let aiProvider: AiProvider | null = null;
 export const setAiProvider = (p: AiProvider | null) => void (aiProvider = p);
 
 /** guarded: a protecao barrou a mensagem (ela nao entra no historico do chat de teste). */
-type Out = { replies: BotReply[]; state: BotState; handoff: boolean; ai?: boolean; guarded?: boolean };
+/** route: caminho que respondeu (gravado em bot_runs, sem texto e sem telefone) para investigar conversas. */
+type Out = { replies: BotReply[]; state: BotState; handoff: boolean; ai?: boolean; guarded?: boolean; route?: string };
+
+/**
+ * Passo da conversa com a IA. Enquanto ele vale, a mensagem do cliente continua a conversa: numero curto ("3") nao
+ * e opcao do menu, e uma falha da IA nao mostra o menu. So comandos explicitos (menu, atendente) saem dele.
+ */
+const AI_STEP = 'ai';
+const AI_RETRY_TEXT =
+  'Desculpe, tive uma instabilidade aqui e não consegui responder agora. Pode me mandar de novo daqui a pouquinho? Se preferir, digite *atendente* que eu chamo alguém da equipe.';
+const AI_BURST_TEXT = 'Recebi várias mensagens seguidas. Me dá um minutinho e me mande de novo, por favor.';
 
 /**
  * Quem responde: menu ou IA. Botoes, opcoes digitadas e os passos de pedido/documento ficam sempre com o menu.
@@ -336,8 +348,16 @@ export async function respond(ctx: Ctx, state: BotState, input: BotInput): Promi
   }
   const freeText = !input.replyId && Boolean(input.text?.trim()) && choiceOf(input, state.step) === null && state.step !== 'await_order' && state.step !== 'await_document';
   const useAi = aiProvider && ctx.aiAllowed && freeText && (mode === 'ai' || (mode === 'menu_ai' && state.step !== null));
-  if (!useAi) return menuBot(ctx, state, input);
-  const menuChoice = (replyId: string) => menuBot(ctx, state, { ...input, text: null, replyId });
+  if (!useAi) return { ...(await menuBot(ctx, state, input)), route: choiceOf(input, state.step) ? `menu:${choiceOf(input, state.step)}` : 'menu' };
+  const inAi = state.step === AI_STEP;
+  const menuChoice = async (replyId: string, route: string) => ({ ...(await menuBot(ctx, state, { ...input, text: null, replyId })), route });
+  // Falha da IA no meio da conversa: resposta natural e o cliente continua; na segunda seguida, atendente.
+  const aiFailed = async (route: string): Promise<Out> => {
+    if (!inAi) return { ...(await menuBot(ctx, state, input)), route };
+    const fails = Number(state.context.aiFails ?? 0) + 1;
+    if (fails >= 2) return menuChoice('atendente', `${route}:atendente`);
+    return { replies: [{ kind: 'text', body: AI_RETRY_TEXT }], state: { step: AI_STEP, context: { aiFails: fails } }, handoff: false, route };
+  };
   const r = await aiTurn(
     {
       db: ctx.db,
@@ -360,19 +380,26 @@ export async function respond(ctx: Ctx, state: BotState, input: BotInput): Promi
   );
   switch (r.kind) {
     case 'reply':
-      return { replies: [{ kind: 'text', body: r.text }], state: { step: 'menu', context: {} }, handoff: false, ai: true };
+      // Recomendacao com links, preco ou pergunta: a conversa segue com a IA (nada de menu na proxima mensagem).
+      return { replies: [{ kind: 'text', body: r.text }], state: { step: AI_STEP, context: {} }, handoff: false, ai: true, route: 'ia' };
     case 'handoff':
-      return menuChoice('atendente');
+      return menuChoice('atendente', 'ia:atendente');
     case 'verify':
       // Pedido de outro telefone: o menu pede o CPF/CNPJ, e o documento nao passa pela IA.
-      return r.order ? menuBot(ctx, { step: 'await_order', context: { tries: 0 } }, { ...input, replyId: null, text: String(r.order) }) : menuChoice('pedido');
+      return r.order
+        ? { ...(await menuBot(ctx, { step: 'await_order', context: { tries: 0 } }, { ...input, replyId: null, text: String(r.order) })), route: 'ia:verificar' }
+        : menuChoice('pedido', 'ia:pedido');
     case 'limit':
-      return r.reason === 'daily' ? menuChoice('atendente') : menuBot(ctx, state, input);
+      if (r.reason === 'daily') return menuChoice('atendente', 'limite_dia:atendente');
+      // Verba do mes acabou no meio da conversa: um atendente continua, com o historico.
+      if (r.reason === 'monthly') return inAi ? menuChoice('atendente', 'limite_mes:atendente') : { ...(await menuBot(ctx, state, input)), route: 'limite_mes' };
+      if (r.reason === 'burst' && inAi) return { replies: [{ kind: 'text', body: AI_BURST_TEXT }], state, handoff: false, route: 'limite_rajada' };
+      return { ...(await menuBot(ctx, state, input)), route: `limite_${r.reason}` };
     case 'refused':
       // Barrado pela protecao: resposta padrao da loja, sem detalhe tecnico, com os botoes de sempre.
-      return { replies: [AFTER(SAFE_REPLY)], state: { step: 'menu', context: {} }, handoff: false, guarded: true };
+      return { replies: [AFTER(SAFE_REPLY)], state: { step: 'menu', context: {} }, handoff: false, guarded: true, route: `barrado_${r.reason}` };
     default:
-      return menuBot(ctx, state, input);
+      return aiFailed('ia_falha');
   }
 }
 
@@ -500,6 +527,7 @@ async function handleOne(provider: WhatsAppProvider, settings: BotSettings, m: I
     document: await takeDocument(m.id),
   });
   for (const r of out.replies) await sendReply(provider, m.from_phone, r);
+  await pool.query('UPDATE bot_runs SET route = $2 WHERE inbound_id = $1', [m.id, (out.route ?? (out.handoff ? 'atendente' : 'menu')).slice(0, 40)]);
   await pool.query(
     `INSERT INTO whatsapp_conversations (phone, state, step, context, agent_since, updated_at) VALUES ($1, $2, $3, $4, $5, now())
      ON CONFLICT (phone) DO UPDATE SET state = EXCLUDED.state, step = EXCLUDED.step, context = EXCLUDED.context,
@@ -687,7 +715,7 @@ export async function botAdminRoutes(app: FastifyInstance) {
           ...history,
           ...(said && !out.guarded ? [{ role: 'user' as const, parts: [{ text: said }] }] : []),
           ...out.replies.map((r) => ({ role: 'model' as const, parts: [{ text: r.kind === 'text' ? r.body : interactiveSummary(r.i) }] })),
-        ].slice(-10);
+        ].slice(-12);
     await pool.query(
       `INSERT INTO bot_test_sessions (user_id, phone, step, context, history, updated_at) VALUES ($1, $2, $3, $4, $5, now())
        ON CONFLICT (user_id) DO UPDATE SET phone = EXCLUDED.phone, step = EXCLUDED.step, context = EXCLUDED.context, history = EXCLUDED.history, updated_at = now()`,

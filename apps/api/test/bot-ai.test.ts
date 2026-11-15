@@ -111,6 +111,7 @@ beforeEach(async () => {
   ai.requests = [];
   ai.script = [];
   ai.failNext = false;
+  ai.failCount = 0;
 });
 afterAll(async () => {
   await owner.query(`UPDATE bot_settings SET audience = 'off', mode = 'menu', ai_plan = 'free', test_phones = '{}'`);
@@ -271,12 +272,23 @@ describe('IA no WhatsApp', () => {
     expect(ai.requests).toHaveLength(1);
   });
 
-  it('IA fora do ar: o menu responde e a falha fica registrada', async () => {
+  it('IA fora do ar (duas falhas seguidas, sem conversa em andamento): o menu responde e as falhas ficam registradas', async () => {
     await setBot({ mode: 'ai', testPhones: [OTHER_PHONE] });
-    ai.failNext = true;
+    ai.failCount = 2;
     await send(OTHER_PHONE, 'bom dia');
     expect((await lastBot(OTHER_PHONE)).kind).toBe('interactive');
-    expect((await owner.query('SELECT ok, error FROM ai_calls')).rows).toEqual([{ ok: false, error: 'fora do ar (simulado)' }]);
+    expect((await owner.query('SELECT ok, error, first_in_turn FROM ai_calls ORDER BY id')).rows).toEqual([
+      { ok: false, error: 'fora do ar (simulado)', first_in_turn: true },
+      { ok: false, error: 'fora do ar (simulado)', first_in_turn: false },
+    ]);
+  });
+
+  it('falha passageira do Google: a segunda tentativa responde', async () => {
+    await setBot({ mode: 'ai', testPhones: [OTHER_PHONE] });
+    ai.failNext = true;
+    ai.script = [say_('Bom dia! Como posso ajudar?')];
+    await send(OTHER_PHONE, 'bom dia');
+    expect((await lastBot(OTHER_PHONE)).body).toBe('Bom dia! Como posso ajudar?');
   });
 
   it('limite do mês volta ao menu; limite diário passa para atendente', async () => {

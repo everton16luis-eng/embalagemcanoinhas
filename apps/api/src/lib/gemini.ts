@@ -157,6 +157,8 @@ export class FakeAi implements AiProvider {
   requests: AiRequest[] = [];
   script: AiResult[] = [];
   failNext = false;
+  /** As proximas N chamadas falham (a IA tenta de novo uma vez antes de desistir). */
+  failCount = 0;
   /** Proxima chamada lanca este erro (testes de vazamento por mensagem de erro). */
   throwNext: Error | null = null;
 
@@ -167,8 +169,9 @@ export class FakeAi implements AiProvider {
       this.throwNext = null;
       throw e;
     }
-    if (this.failNext) {
+    if (this.failNext || this.failCount > 0) {
       this.failNext = false;
+      if (this.failCount > 0) this.failCount--;
       throw new AiUnavailable('fora do ar (simulado)');
     }
     const scripted = this.script.shift();

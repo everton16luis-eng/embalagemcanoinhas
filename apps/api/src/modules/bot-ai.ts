@@ -41,15 +41,22 @@ export type AiTurn =
 /** Rodadas com a IA por mensagem: ate 3 buscas (com sinonimos) e a resposta. */
 const MAX_ROUNDS = 4;
 const MAX_OUTPUT_TOKENS = 400;
-const HISTORY = 10;
-/** Tamanho que vai a IA: a mensagem (1000), cada mensagem do historico (500) e o historico inteiro (4000). */
+const HISTORY = 12;
+/**
+ * Tamanho que vai a IA: a mensagem (1000), cada mensagem do historico (800) e o historico inteiro (5000).
+ * 800 por mensagem cabe uma recomendacao inteira (ate 700), com os links do fim: sem eles a IA nao sabe
+ * a qual produto o cliente se refere depois.
+ */
 const MAX_INPUT_CHARS = 1000;
-const MAX_HISTORY_ITEM = 500;
-const MAX_HISTORY_CHARS = 4000;
+const MAX_HISTORY_ITEM = 800;
+const MAX_HISTORY_CHARS = 5000;
 const MAX_CALLS_PER_ROUND = 3;
 const MAX_CALLS_PER_TURN = 5;
-/** Rajada: chamadas a IA em 5 minutos por quem conversa. */
-const BURST_CALLS = 12;
+/** Rajada: mensagens respondidas pela IA em 5 minutos por quem conversa (nao chamadas: uma resposta usa ate 4). */
+const BURST_MESSAGES = 12;
+/** Espera antes da segunda tentativa quando o Google falha (429 do plano gratuito, 5xx, tempo esgotado). */
+let retryDelayMs = process.env.NODE_ENV === 'test' ? 0 : 2000;
+export const setAiRetryDelay = (ms: number) => void (retryDelayMs = ms);
 /** Bloqueios em 24 h que deixam a IA desligada para aquela pessoa (so o menu responde) ate passar a janela. */
 export const COOLDOWN_BLOCKS = 3;
 
@@ -99,6 +106,9 @@ export function systemPrompt(storeName: string) {
     '- Peso não é tamanho: uma caixa que aguenta 1,5 kg não comporta necessariamente 100 doces de 15 g. Só afirme que cabe se medidas, capacidade ou especificações da busca mostrarem. Sem esse dado, apresente as opções prováveis e faça uma pergunta objetiva, como o diâmetro do doce.',
     '- Recomende uma opção principal e, se fizer sentido, uma alternativa: nome, por que serve, embalagem e preço, preço por quantidade quando houver, disponibilidade e o link desse produto.',
     '- O link de cada produto é o campo link que a busca devolveu: copie inteiro, sem mudar nada, numa linha própria logo abaixo do produto. Nunca troque o link do produto pelo endereço geral da loja.',
+    '- A conversa é contínua: leia o histórico antes de responder. Uma resposta curta (só um número, "a maior", uma palavra) responde à sua última pergunta; não peça para o cliente repetir nem escrever a frase inteira.',
+    '- Guarde o que o cliente já contou (evento, número de pessoas, bebida, quantidades, produtos que você indicou) e use nas próximas respostas. Se ele mudar de assunto, atenda o novo pedido aproveitando essas informações.',
+    '- Quando o cliente citar um produto que você já indicou ("o segundo", "esse de 300"), responda sobre ele com os dados que já estão na conversa.',
     '- Não responda só que não encontrou: diga o que conseguiu confirmar e o que falta. Ofereça atendente depois de tentar outras buscas ou de fazer a pergunta, ou na hora se o cliente pedir.',
     '- Produto sem saldo ou sob encomenda: diga isso claramente, nunca como pronta entrega.',
     '- Responda em português do Brasil, com tom natural e objetivo, em no máximo 700 caracteres. Pode usar poucos emojis para organizar. Sem tabelas.',
@@ -273,8 +283,8 @@ export async function aiLimit(db: Q, who: string, limits: AiTurnCtx['limits'], p
   const r = (
     await db.query<{ month_usd: string; today: number; burst: number }>(
       `SELECT coalesce(sum(cost_usd) FILTER (WHERE created_at >= date_trunc('month', now() AT TIME ZONE 'America/Sao_Paulo') AT TIME ZONE 'America/Sao_Paulo'), 0) AS month_usd,
-              count(*) FILTER (WHERE who_hash = $1 AND created_at > now() - interval '24 hours')::int AS today,
-              count(*) FILTER (WHERE who_hash = $1 AND created_at > now() - interval '5 minutes')::int AS burst
+              count(*) FILTER (WHERE who_hash = $1 AND first_in_turn AND created_at > now() - interval '24 hours')::int AS today,
+              count(*) FILTER (WHERE who_hash = $1 AND first_in_turn AND created_at > now() - interval '5 minutes')::int AS burst
        FROM ai_calls WHERE created_at > now() - interval '32 days'`,
       [whoHash(who)],
     )
@@ -282,12 +292,13 @@ export async function aiLimit(db: Q, who: string, limits: AiTurnCtx['limits'], p
   if (Number(r.month_usd) >= limits.monthlyUsd) return 'monthly';
   if (!perContact) return null;
   if (r.today >= limits.dailyPerWho) return 'daily';
-  if (r.burst >= BURST_CALLS) return 'burst';
+  if (r.burst >= BURST_MESSAGES) return 'burst';
   return null;
 }
 
-async function record(ctx: AiTurnCtx, input: number, output: number, ok: boolean, error: string | null, finish: string | null) {
-  await ctx.db.query('INSERT INTO ai_calls (who_hash, model, input_tokens, output_tokens, cost_usd, ok, error, finish_reason) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)', [
+/** first: primeira chamada da resposta a uma mensagem; os limites diario e de rajada contam so estas. */
+async function record(ctx: AiTurnCtx, input: number, output: number, ok: boolean, error: string | null, finish: string | null, first: boolean) {
+  await ctx.db.query('INSERT INTO ai_calls (who_hash, model, input_tokens, output_tokens, cost_usd, ok, error, finish_reason, first_in_turn) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)', [
     whoHash(ctx.who),
     ctx.ai.model.slice(0, 80),
     input,
@@ -296,6 +307,7 @@ async function record(ctx: AiTurnCtx, input: number, output: number, ok: boolean
     ok,
     error ? redactSecrets(error, knownSecrets()).slice(0, 300) : null,
     finish?.slice(0, 40) ?? null,
+    first,
   ]);
 }
 
@@ -393,6 +405,8 @@ async function turn(ctx: AiTurnCtx, userText: string): Promise<AiTurn> {
   const cache = new Map<string, Record<string, unknown>>();
   let calls = 0;
   let denied = 0;
+  let retried = false;
+  let first = true;
 
   for (let round = 0; round < MAX_ROUNDS; round++) {
     let res;
@@ -400,16 +414,25 @@ async function turn(ctx: AiTurnCtx, userText: string): Promise<AiTurn> {
       res = await ctx.ai.generate({ system, contents, functions: FUNCTIONS, maxOutputTokens: MAX_OUTPUT_TOKENS });
     } catch (err) {
       const blocked = err instanceof AiBlocked;
-      await record(ctx, 0, 0, false, (err as Error).message, blocked ? 'INPUT_BLOCKED' : null);
+      await record(ctx, 0, 0, false, (err as Error).message, blocked ? 'INPUT_BLOCKED' : null, first);
+      first = false;
       if (blocked) {
         await securityEvent(ctx, { protection: 'model_filter', outcome: 'blocked', categories: ['input_blocked'] });
         await afterBlock(ctx);
         return { kind: 'refused', reason: 'model' };
       }
+      // Falha passageira (limite por minuto do Google, 5xx, rede): uma segunda tentativa na mesma rodada.
+      if (!retried) {
+        retried = true;
+        if (retryDelayMs > 0) await new Promise((r) => setTimeout(r, retryDelayMs));
+        round--;
+        continue;
+      }
       return { kind: 'unavailable' };
     }
     const finish = res.blockReason ?? res.finishReason ?? null;
-    await record(ctx, res.inputTokens, res.outputTokens, true, null, finish);
+    await record(ctx, res.inputTokens, res.outputTokens, true, null, finish, first);
+    first = false;
     // 4. Filtros do proprio Google (mais uma camada, nao a principal).
     if (res.blockReason || (res.finishReason && FINISH_BLOCKED.has(res.finishReason))) {
       await securityEvent(ctx, { protection: 'model_filter', outcome: 'blocked', categories: [`gemini:${String(finish).toLowerCase()}`] });
@@ -418,12 +441,22 @@ async function turn(ctx: AiTurnCtx, userText: string): Promise<AiTurn> {
     }
     const fnCalls = res.parts.filter((p): p is Extract<AiPart, { functionCall: unknown }> => 'functionCall' in p && Boolean(p.functionCall));
     if (!fnCalls.length) {
-      if (res.finishReason && FINISH_INVALID.has(res.finishReason)) return { kind: 'unavailable' };
+      // Resposta invalida ou vazia do modelo: tenta de novo uma vez antes de desistir.
+      const invalid = Boolean(res.finishReason && FINISH_INVALID.has(res.finishReason));
+      if (invalid && !retried) {
+        retried = true;
+        continue;
+      }
+      if (invalid) return { kind: 'unavailable' };
       let text = res.parts
         .map((p) => ('text' in p && typeof p.text === 'string' && !(p as { thought?: boolean }).thought ? p.text : ''))
         .join('')
         .trim();
       if (res.finishReason === 'MAX_TOKENS') text = completeSentences(text);
+      if (!text && !retried) {
+        retried = true;
+        continue;
+      }
       if (!text) return { kind: 'unavailable' };
       // 5. Saida: validada no servidor antes de ir ao WhatsApp.
       const out = checkOutput(text, { systemPrompt: system, knownSecrets: knownSecrets(), allowedHosts });

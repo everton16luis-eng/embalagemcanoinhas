@@ -21,8 +21,9 @@ Legenda: **HTTPS** = precisa da API publicada com certificado · **Você** = dep
 - [ ] **Você** Cópia dos backups para fora do servidor (depende da decisão do item de retenção abaixo).
 - [x] **Servidor** Fotos pelo computador no servidor: 7,8 MB subiu e 8,2 MB foi recusada com a mensagem do sistema,
       já com a correção do erro 500 acima de 8 MB (14/11/2026). Fotos do teste em `.local/fotos-teste/`.
-- [ ] **Servidor** Foto de produto tirada pelo celular, enviada pelo painel no servidor.
-- [ ] **Servidor** Depois de `systemctl restart loja-api` as fotos continuam aparecendo na loja e no painel.
+- [x] **Servidor** Foto de produto tirada pelo celular (botão "Tirar foto"), enviada pelo painel no servidor: 1 foto
+      gerou as 3 versões em `storage/` (15/11/2026).
+- [x] **Servidor** Depois de `systemctl restart loja-api` as fotos continuam aparecendo na loja e no painel (15/11/2026).
 - [ ] **Você** Onde guardar as cópias fora do servidor e por quanto tempo (retenção).
 - [x] **Servidor** E-mail da loja (passos 1 a 6 de [EMAIL.md](EMAIL.md)): domínio no Postfix, DKIM, DNS na Hostinger,
       script e socket das caixas, `nao-responda@` e `contato@` criadas pelo painel, SMTP no `.env` (14/11/2026).

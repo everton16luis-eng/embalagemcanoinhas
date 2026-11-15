@@ -16,7 +16,9 @@ Legenda: **HTTPS** = precisa da API publicada com certificado · **Você** = dep
 - [x] **HTTPS** Cookie de sessão com `Secure` e `HttpOnly` no navegador (14/11/2026).
 - [x] Backup e teste de restauração **local** (13/11/2026): `npm run backup` e `backup:restore-test` OK; arquivo
       adulterado detectado pelo `backup:verify`. Ver [BACKUP.md](BACKUP.md).
-- [ ] **HTTPS** Backup agendado no servidor, cópia para fora dele e teste de restauração lá.
+- [x] **Servidor** Backup agendado (`loja-backup.timer`) e teste de restauração no servidor: cópia
+      `20261115-123155` conferida e restaurada em banco temporário, 16 tabelas batendo com o manifesto (15/11/2026).
+- [ ] **Você** Cópia dos backups para fora do servidor (depende da decisão do item de retenção abaixo).
 - [x] **Servidor** Fotos pelo computador no servidor: 7,8 MB subiu e 8,2 MB foi recusada com a mensagem do sistema,
       já com a correção do erro 500 acima de 8 MB (14/11/2026). Fotos do teste em `.local/fotos-teste/`.
 - [ ] **Servidor** Foto de produto tirada pelo celular, enviada pelo painel no servidor.

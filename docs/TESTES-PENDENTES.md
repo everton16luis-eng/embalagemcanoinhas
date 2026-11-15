@@ -179,3 +179,15 @@ feito só com os simulados.
       reversão roda **antes** da primeira nota de homologação e do catálogo real.
 - [ ] **Você** Nome, logotipo, fotos, textos de trocas e privacidade, formas de entrega reais.
 - [ ] **Você** + **Contador** Liberar produção fiscal no painel só depois de tudo acima.
+
+## Importação de produtos por planilha ([14-importacao-produtos.md](14-importacao-produtos.md))
+
+- [ ] **Servidor** Publicar (roteiro de [IMPLANTACAO.md](IMPLANTACAO.md)): `npm run backup`, `git pull`, `npm ci`, `npm run migrate` (aplica a `0019_importacao_produtos`),
+      `npm run build -w apps/api && npm run build -w apps/web`, `sudo systemctl restart loja-api loja-web`.
+- [ ] **Você** Conferir as telas no painel (não verificadas no navegador durante o desenvolvimento): baixar o modelo,
+      abrir no Excel (listas suspensas de categoria, unidade e status; aba Instruções), enviar com 2 ou 3 produtos,
+      corrigir uma linha na prévia, decidir uma categoria nova, confirmar e baixar o relatório.
+- [ ] **Servidor** Envio de uma planilha perto de 5 MB passando por nginx e Next (limite de upload do proxy).
+- [ ] **Você** Testar a planilha aberta e salva no LibreOffice e no Google Planilhas (exportada como .xlsx).
+- [ ] **Você** Fotos em lote pelo SKU numa importação real (nomes de arquivo iguais aos SKUs).
+- [ ] **Você** Gerente ou funcionário que for importar: ativar a verificação em duas etapas (a permissão exige).

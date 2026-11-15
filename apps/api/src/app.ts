@@ -25,6 +25,7 @@ import { CART_COOKIE, cartRoutes, catalogRoutes, shippingQuoteRoutes } from './m
 import { companyRoutes, fiscalSettingsRoutes, storeSettingsRoutes } from './modules/company.js';
 import { fiscalRoutes, fiscalWebhookRoutes } from './modules/fiscal.js';
 import { productImageRoutes, publicImageRoutes } from './modules/images.js';
+import { productImportRoutes } from './modules/product-imports.js';
 import { productRoutes } from './modules/products.js';
 import { inventoryRoutes } from './modules/inventory.js';
 import { marketplaceAdminRoutes, marketplaceWebhookRoutes } from './modules/marketplaces.js';
@@ -169,6 +170,7 @@ export async function buildApp(opts: {
   await app.register(categoryRoutes, { prefix: '/api/v1/admin/categories' });
   await app.register(productRoutes, { prefix: '/api/v1/admin/products' });
   await app.register(productImageRoutes, { prefix: '/api/v1/admin/products' });
+  await app.register(productImportRoutes, { prefix: '/api/v1/admin/product-imports' });
   await app.register(companyRoutes, { prefix: '/api/v1/admin/company' });
   await app.register(fiscalSettingsRoutes, { prefix: '/api/v1/admin/fiscal/settings' });
   await app.register(fiscalRoutes, { prefix: '/api/v1/admin/fiscal' });

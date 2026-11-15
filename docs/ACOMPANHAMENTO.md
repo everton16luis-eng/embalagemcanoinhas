@@ -488,3 +488,22 @@ fica pendente (roteiro em [TESTES-PENDENTES.md](TESTES-PENDENTES.md)).
 - Decisões: cache de 60 s só para departamentos e dados da loja (preço e estoque sempre frescos). Cache da página
   inteira e segunda instância do Next ficam para depois da medição no VPS, por mudarem o que o cliente vê ou a
   infraestrutura.
+
+### Importação de produtos por planilha .xlsx (14/11/2026)
+
+Detalhes: [14-importacao-produtos.md](14-importacao-produtos.md).
+
+- Painel → Produtos → **Importar via Excel**: modelo oficial com listas suspensas (categoria, subcategoria,
+  unidade, status) e aba de instruções; envio com análise sem gravar nada; prévia com totais, filtros, correção
+  na tela, conferência de duplicados e decisão sobre categorias novas; confirmação em lotes transacionais com
+  andamento e retomada; relatório `.xlsx`, histórico e auditoria; fotos em lote pelo SKU depois da importação.
+- SKU gerado no backend a partir do nome (`COP-DES-300ML`, `CX-BOLO-N4`), com sufixo `-02`, `-03` em colisão,
+  nova tentativa quando o índice único recusa e sem mudar depois de gravado.
+- Duplicidade: SKU/EAN iguais = já existe; nome parecido = conferência; medidas diferentes nunca são duplicado.
+- Arquivo conferido pela assinatura ZIP/OOXML; macros, objetos incorporados e vínculos recusados; fórmulas nunca
+  calculadas.
+- Banco: migração `0019_importacao_produtos` (`product_imports`, `product_import_rows`). Permissão nova
+  `catalog.import`, com MFA, no padrão do proprietário e do gerente.
+- Biblioteca: `exceljs` 4.4.0 (versão fixa).
+- Testes: 23 novos em `test/product-import.test.ts`; suíte inteira com 287 passando.
+- Fora do modelo por não existirem no cadastro: preço promocional, palavras-chave e observações internas.

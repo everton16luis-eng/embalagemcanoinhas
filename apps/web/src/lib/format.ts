@@ -47,6 +47,7 @@ export const PERMISSION_LABELS: Record<string, string> = {
   'catalog.view': 'Ver catálogo',
   'catalog.manage': 'Cadastrar produtos',
   'prices.manage': 'Alterar preços',
+  'catalog.import': 'Importar produtos por planilha (Excel)',
   'stock.view': 'Ver estoque',
   'stock.manage': 'Movimentar estoque',
   'purchases.view': 'Ver compras',

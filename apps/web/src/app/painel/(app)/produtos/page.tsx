@@ -47,7 +47,12 @@ function ProductList() {
       <PageHeader
         title="Produtos"
         description="SKU, embalagens de venda e de compra, preços e classificação fiscal."
-        actions={can('catalog.manage') && <Link href="/painel/produtos/novo"><Button variant="primary">Novo produto</Button></Link>}
+        actions={
+          <>
+            {can('catalog.import') && can('catalog.manage') && <Link href="/painel/produtos/importar"><Button variant="secondary">Importar via Excel</Button></Link>}
+            {can('catalog.manage') && <Link href="/painel/produtos/novo"><Button variant="primary">Novo produto</Button></Link>}
+          </>
+        }
       />
       <div className="mb-4 flex flex-wrap gap-2">
         <Input aria-label="Buscar" placeholder="Buscar por nome, SKU ou código de barras" value={q} onChange={(e) => setQ(e.target.value)} className="max-w-sm" />

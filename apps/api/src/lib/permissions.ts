@@ -15,6 +15,8 @@ export const PERMISSIONS = [
   'catalog.view',
   'catalog.manage',
   'prices.manage',
+  // Importacao de produtos em massa por planilha (docs/14-importacao-produtos.md). Exige tambem catalog.manage.
+  'catalog.import',
   // Fases seguintes: entram aqui para que o painel ja possa mostrar e atribuir.
   'stock.view',
   'stock.manage',
@@ -41,7 +43,7 @@ export type Role = (typeof ROLES)[number];
 
 const ROLE_DEFAULTS: Record<Role, readonly Permission[]> = {
   owner: PERMISSIONS,
-  manager: ['users.view', 'audit.view', 'settings.manage', 'company.view', 'fiscal.view', 'catalog.view', 'catalog.manage', 'prices.manage', 'stock.view', 'stock.manage', 'purchases.view', 'purchases.manage', 'orders.view', 'orders.manage', 'shipping.manage', 'sales_desk.use', 'marketplaces.manage', 'finance.view', 'reports.view', 'email.view'],
+  manager: ['users.view', 'audit.view', 'settings.manage', 'company.view', 'fiscal.view', 'catalog.view', 'catalog.manage', 'prices.manage', 'catalog.import', 'stock.view', 'stock.manage', 'purchases.view', 'purchases.manage', 'orders.view', 'orders.manage', 'shipping.manage', 'sales_desk.use', 'marketplaces.manage', 'finance.view', 'reports.view', 'email.view'],
   sales: ['catalog.view', 'stock.view', 'orders.view', 'sales_desk.use'],
   stock: ['catalog.view', 'stock.view', 'stock.manage', 'purchases.view', 'purchases.manage'],
   // fiscal.validate fica so com quem o proprietario conceder (o contador ou responsavel tributario).
@@ -50,7 +52,7 @@ const ROLE_DEFAULTS: Record<Role, readonly Permission[]> = {
 };
 
 /** Permissoes que exigem verificacao em duas etapas ativa na conta. */
-export const MFA_REQUIRED: ReadonlySet<Permission> = new Set(['users.manage', 'settings.manage', 'company.manage', 'fiscal.manage', 'fiscal.validate', 'prices.manage', 'marketplaces.manage', 'email.manage', 'email.accounts', 'bot.manage']);
+export const MFA_REQUIRED: ReadonlySet<Permission> = new Set(['users.manage', 'settings.manage', 'company.manage', 'fiscal.manage', 'fiscal.validate', 'prices.manage', 'catalog.import', 'marketplaces.manage', 'email.manage', 'email.accounts', 'bot.manage']);
 
 export const roleDefaults = (role: string) => new Set<Permission>(ROLE_DEFAULTS[role as Role] ?? []);
 

@@ -1,4 +1,6 @@
-# Backup do banco e da pasta storage/ (docs/BACKUP.md). Disparado pelo loja-backup.timer.
+# Backup do banco e da pasta storage/, copia cifrada fora do servidor e retencao (docs/BACKUP.md).
+# Disparado pelo loja-backup.timer. Os passos rodam em ordem; se um falhar, os seguintes nao rodam e o servico
+# fica como falho (systemctl status loja-backup). Sem BACKUP_REMOTE no .env, a copia externa so avisa e segue.
 [Unit]
 Description=Loja de embalagens - backup diario
 Requires=loja-db.service
@@ -10,3 +12,5 @@ User=loja
 WorkingDirectory=/srv/loja-embalagens
 UMask=0077
 ExecStart=/usr/bin/node scripts/backup.mjs backup
+ExecStart=/usr/bin/node scripts/backup.mjs offsite
+ExecStart=/usr/bin/node scripts/backup.mjs prune

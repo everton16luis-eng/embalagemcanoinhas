@@ -4,13 +4,16 @@
 //   node scripts/backup.mjs backup [--out pasta]     cria backups/AAAAMMDD-HHMMSS/ com db.dump, storage/ e manifest.json
 //   node scripts/backup.mjs verify <pasta>           confere o sha256 de cada arquivo da copia
 //   node scripts/backup.mjs restore-test <pasta>     restaura num banco TEMPORARIO, compara contagens e hashes, apaga o temporario
+//   node scripts/backup.mjs prune [--dry-run]        apaga copias locais fora da retencao (7 diarias, 4 semanais, 12 mensais)
+//   node scripts/backup.mjs offsite [--dry-run]      envia as copias ao remoto cifrado do rclone (BACKUP_REMOTE) e aplica
+//                                                    a mesma retencao la
 //
 // Nunca restaura por cima do banco em uso. Restaurar de verdade (desastre) e manual e esta descrito em docs/BACKUP.md.
 // Credenciais vem do .env (dono das tabelas) e, para criar o banco temporario, de .local/credentials.json (cluster
 // local) ou das variaveis RESTORE_ADMIN_USER / RESTORE_ADMIN_PASSWORD.
 import { spawnSync } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -144,13 +147,114 @@ async function restoreTest(dir) {
   console.log('Teste de restauracao OK (banco temporario apagado).');
 }
 
+// ---------------------------------------------------------------------------------------------
+// Retencao e copia fora do servidor (docs/BACKUP.md). As pastas tem nome AAAAMMDD-HHMMSS (UTC).
+
+const STAMP = /^\d{8}-\d{6}$/;
+const keepN = (name, fallback) => {
+  const n = Number(env[name]);
+  return Number.isInteger(n) && n >= 1 ? n : fallback;
+};
+const RETENTION = { daily: keepN('BACKUP_KEEP_DAILY', 7), weekly: keepN('BACKUP_KEEP_WEEKLY', 4), monthly: keepN('BACKUP_KEEP_MONTHLY', 12) };
+
+function isoWeek(d) {
+  const t = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  const day = t.getUTCDay() || 7;
+  t.setUTCDate(t.getUTCDate() + 4 - day);
+  const start = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
+  return `${t.getUTCFullYear()}-W${Math.ceil(((t - start) / 86400000 + 1) / 7)}`;
+}
+
+/**
+ * Quais copias ficam: a mais nova de cada um dos ultimos N dias, semanas e meses que TEM copia. Conta pelas copias
+ * existentes, nao pelo relogio: se o backup parar, nada mais e apagado. A mais nova sempre fica.
+ */
+export function keepSet(names, r = RETENTION) {
+  const sorted = names.filter((n) => STAMP.test(n)).sort().reverse();
+  const keep = new Set(sorted.slice(0, 1));
+  const pick = (keyOf, limit) => {
+    const seen = new Set();
+    for (const n of sorted) {
+      const k = keyOf(n);
+      if (seen.has(k)) continue;
+      if (seen.size >= limit) break;
+      seen.add(k);
+      keep.add(n);
+    }
+  };
+  const date = (n) => new Date(Date.UTC(+n.slice(0, 4), +n.slice(4, 6) - 1, +n.slice(6, 8)));
+  pick((n) => n.slice(0, 8), r.daily);
+  pick((n) => isoWeek(date(n)), r.weekly);
+  pick((n) => n.slice(0, 6), r.monthly);
+  return keep;
+}
+
+const backupsDir = path.join(root, 'backups');
+const localBackups = () => (existsSync(backupsDir) ? readdirSync(backupsDir).filter((n) => STAMP.test(n) && existsSync(path.join(backupsDir, n, 'manifest.json'))) : []);
+
+function prune(dry) {
+  const names = localBackups();
+  const keep = keepSet(names);
+  const drop = names.filter((n) => !keep.has(n)).sort();
+  for (const n of drop) {
+    if (!dry) rmSync(path.join(backupsDir, n), { recursive: true, force: true });
+    console.log(`${dry ? '(simulacao) apagaria' : 'apagada'}: backups/${n}`);
+  }
+  console.log(`Retencao local: ${keep.size} copia(s) mantida(s), ${drop.length} ${dry ? 'a apagar' : 'apagada(s)'} (${RETENTION.daily} diarias, ${RETENTION.weekly} semanais, ${RETENTION.monthly} mensais).`);
+}
+
+function rclone(args) {
+  const res = spawnSync(env.RCLONE_BIN || 'rclone', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  if (res.status !== 0) throw new Error(`rclone ${args[0]} falhou (${res.status ?? res.error?.message}): ${(res.stderr || res.stdout || '').trim().slice(-800)}`);
+  return res.stdout;
+}
+
+function offsite(dry) {
+  const remote = (env.BACKUP_REMOTE ?? '').trim();
+  if (!remote) {
+    console.log('Copia fora do servidor desligada: BACKUP_REMOTE vazio no .env (docs/BACKUP.md).');
+    return;
+  }
+  const at = (n) => (remote.endsWith(':') || remote.endsWith('/') ? `${remote}${n}` : `${remote}/${n}`);
+  const names = localBackups().sort();
+  if (!names.length) throw new Error('Nenhuma copia local para enviar.');
+  const newest = names.at(-1);
+  const remoteDirs = () => new Set(rclone(['lsf', '--dirs-only', remote]).split(/\r?\n/).map((l) => l.replace(/\/$/, '').trim()).filter((n) => STAMP.test(n)));
+  const before = remoteDirs();
+  // So envia o que esta dentro da retencao: uma copia velha recem-apagada aqui nao volta a subir.
+  const send = [...keepSet(names)].filter((n) => !before.has(n) || n === newest).sort();
+  for (const n of send) {
+    if (dry) console.log(`(simulacao) enviaria backups/${n}`);
+    else {
+      rclone(['copy', path.join(backupsDir, n), at(n)]);
+      console.log(`enviada: backups/${n}`);
+    }
+  }
+  if (dry) return;
+  // Confere a mais nova pelo conteudo: o remoto cifrado e decifrado e comparado arquivo a arquivo.
+  rclone(['cryptcheck', '--one-way', path.join(backupsDir, newest), at(newest)]);
+  console.log(`conferida no remoto: ${newest}`);
+  const now = remoteDirs();
+  if (!now.has(newest)) throw new Error('A copia mais nova nao aparece no remoto; nada foi apagado la.');
+  const keep = keepSet([...now]);
+  const drop = [...now].filter((n) => !keep.has(n)).sort();
+  for (const n of drop) {
+    rclone(['purge', at(n)]);
+    console.log(`apagada no remoto: ${n}`);
+  }
+  console.log(`Remoto: ${keep.size} copia(s) mantida(s), ${drop.length} apagada(s).`);
+}
+
 const [cmd, arg, ...rest] = process.argv.slice(2);
 try {
   if (cmd === 'backup') await backup(arg === '--out' ? rest[0] : undefined);
   else if (cmd === 'verify' && arg) verify(path.resolve(arg));
   else if (cmd === 'restore-test' && arg) await restoreTest(path.resolve(arg));
+  else if (cmd === 'prune') prune(arg === '--dry-run');
+  else if (cmd === 'offsite') offsite(arg === '--dry-run');
+  else if (cmd === 'keep-test') console.log([...keepSet(readFileSync(0, 'utf8').split(/\s+/))].sort().join(' '));
   else {
-    console.error('Uso: node scripts/backup.mjs backup [--out pasta] | verify <pasta> | restore-test <pasta>');
+    console.error('Uso: node scripts/backup.mjs backup [--out pasta] | verify <pasta> | restore-test <pasta> | prune [--dry-run] | offsite [--dry-run]');
     process.exit(1);
   }
 } catch (err) {

@@ -18,13 +18,15 @@ Legenda: **HTTPS** = precisa da API publicada com certificado · **Você** = dep
       adulterado detectado pelo `backup:verify`. Ver [BACKUP.md](BACKUP.md).
 - [x] **Servidor** Backup agendado (`loja-backup.timer`) e teste de restauração no servidor: cópia
       `20261115-123155` conferida e restaurada em banco temporário, 16 tabelas batendo com o manifesto (15/11/2026).
-- [ ] **Você** Cópia dos backups para fora do servidor (depende da decisão do item de retenção abaixo).
+- [ ] **Servidor** Cópia cifrada no Google Drive ligada e conferida (passos 1 a 7 de "Cópia cifrada" em [BACKUP.md](BACKUP.md)),
+      senhas do `loja-cripto` guardadas fora do servidor e uma cópia baixada do Drive restaurada com `backup:restore-test`.
 - [x] **Servidor** Fotos pelo computador no servidor: 7,8 MB subiu e 8,2 MB foi recusada com a mensagem do sistema,
       já com a correção do erro 500 acima de 8 MB (14/11/2026). Fotos do teste em `.local/fotos-teste/`.
 - [x] **Servidor** Foto de produto tirada pelo celular (botão "Tirar foto"), enviada pelo painel no servidor: 1 foto
       gerou as 3 versões em `storage/` (15/11/2026).
 - [x] **Servidor** Depois de `systemctl restart loja-api` as fotos continuam aparecendo na loja e no painel (15/11/2026).
-- [ ] **Você** Onde guardar as cópias fora do servidor e por quanto tempo (retenção).
+- [x] **Você** Cópias fora do servidor: Google Drive de uma conta da loja, cifradas pelo rclone; retenção de 7 diárias,
+      4 semanais e 12 mensais (decidido em 15/11/2026, passo a passo em [BACKUP.md](BACKUP.md)).
 - [x] **Servidor** E-mail da loja (passos 1 a 6 de [EMAIL.md](EMAIL.md)): domínio no Postfix, DKIM, DNS na Hostinger,
       script e socket das caixas, `nao-responda@` e `contato@` criadas pelo painel, SMTP no `.env` (14/11/2026).
 - [x] **Servidor** `printf '{"acao":"info"}' | sudo -u loja nc -U -N /run/loja-contas-email.sock` mostra só caixas

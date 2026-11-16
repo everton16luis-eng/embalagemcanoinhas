@@ -389,8 +389,11 @@ No painel, com HTTPS:
   - O estoque da loja é o total (`on_hand − reserved` de `stock_balances`), como previsto no [requisito
     10](20-sglog-fase3.md). Com 2 UN no `TESTE-F3`, a loja mostrou 232 pacotes de 50 (11.600), e não 231.
   - A venda baixa do padrão. Se faltar mercadoria nele, a venda é recusada com o nome do depósito.
-- [ ] **Celular** Abrir as telas novas a 375 px, junto com o teste de 375 px pendente da Fase 1. O Chrome maximizado não
-      reduz a janela, e o site bloqueia iframe; a 375 px só foi conferido no banco local.
+- [x] **Navegador** Telas novas a 375 px (16/11/2026, aba do Chrome com simulação de 375 × 824):
+  - Estoque, detalhe do produto, Alertas, Solicitações, Depósitos, Transferências, nova transferência, detalhe da
+    transferência, Inventário, contagem e `/finalizar`;
+  - nenhuma passa da largura da tela (`scrollWidth` 375), e as tabelas largas rolam dentro do próprio quadro.
+- [ ] **Celular** Conferir num aparelho de verdade, junto com o teste de 375 px pendente da Fase 1 (opcional).
 
 Depois dos testes:
 

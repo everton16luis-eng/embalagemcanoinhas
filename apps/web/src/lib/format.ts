@@ -53,6 +53,8 @@ export const PERMISSION_LABELS: Record<string, string> = {
   'catalog.import': 'Importar produtos por planilha (Excel)',
   'stock.view': 'Ver estoque',
   'stock.manage': 'Movimentar estoque',
+  'stock.transfer': 'Transferir entre depósitos',
+  'stock.adjust': 'Ajustar estoque, perdas, avarias e estornos (exige verificação em duas etapas)',
   'purchases.view': 'Ver compras',
   'purchases.manage': 'Registrar compras',
   'suppliers.view': 'Ver fornecedores, ofertas e disponibilidade',

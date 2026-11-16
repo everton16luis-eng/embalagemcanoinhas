@@ -128,8 +128,11 @@ describe('saldo por depósito acompanha o saldo total', () => {
     const t = await totals(variantId);
     expect(t.total).toEqual(['85.000', '4.000']);
     expect(t.location).toEqual(t.total);
-    // Nenhum movimento novo grava deposito na Fase 1: todos ficam no padrao (nulo).
-    expect((await owner.query('SELECT count(*)::int AS n FROM stock_movements WHERE variant_id = $1 AND warehouse_id IS NOT NULL', [variantId])).rows[0].n).toBe(0);
+    // Todos os movimentos ficam no deposito padrao: nulo (codigo de pedido, reserva e compra) ou o padrao explicito
+    // (lancamentos manuais da Fase 3).
+    expect(
+      (await owner.query('SELECT count(*)::int AS n FROM stock_movements WHERE variant_id = $1 AND warehouse_id IS NOT NULL AND warehouse_id <> (SELECT id FROM warehouses WHERE is_default)', [variantId])).rows[0].n,
+    ).toBe(0);
     expect(await reconcile()).toEqual([]);
   });
 
@@ -214,8 +217,8 @@ describe('o papel da aplicação não altera depósitos, abertura nem conferênc
       appRole.query(`INSERT INTO stock_reconciliations (run_id, check_code, expected, found) VALUES (gen_random_uuid(), 'run', 0, 0)`),
       appRole.query('UPDATE stock_reconciliations SET found = 0'),
       appRole.query('DELETE FROM stock_reconciliations'),
-      appRole.query(`INSERT INTO warehouses (code, name) VALUES ('X1', 'Novo')`),
-      appRole.query(`UPDATE warehouses SET name = 'Outro'`),
+      // Cadastro de depositos pela aplicacao: liberado na Fase 3 (0022), com trava propria (sglog-fase3.test.ts).
+      appRole.query('DELETE FROM warehouses WHERE NOT is_default'),
       appRole.query('SELECT stock_opening_capture()'),
     ];
     for (const p of denied) expect((await pgError(p)).code).toBe('42501');
@@ -309,7 +312,8 @@ describe('referência de abertura', () => {
 describe('papéis novos (menor privilégio)', () => {
   // suppliers.* entrou na Fase 2 (docs/18-sglog-fase2.md, matriz aprovada em D2-4).
   const expected = {
-    logistics: ['catalog.view', 'orders.view', 'purchases.view', 'shipping.manage', 'stock.manage', 'stock.view', 'suppliers.view'],
+    // Fase 3 (D3-2): transferencia e ajuste com MFA (stock.adjust) para o gerente de logistica.
+    logistics: ['catalog.view', 'orders.view', 'purchases.view', 'shipping.manage', 'stock.adjust', 'stock.manage', 'stock.transfer', 'stock.view', 'suppliers.view'],
     buyer: ['catalog.view', 'purchases.manage', 'purchases.view', 'stock.view', 'suppliers.manage', 'suppliers.view'],
     finance: ['orders.view', 'purchases.view', 'reports.view', 'suppliers.view'],
   };
@@ -324,7 +328,7 @@ describe('papéis novos (menor privilégio)', () => {
     expect((await own.post('/api/v1/admin/users', { email: `y-${uid()}@teste.local`, name: 'Y Z', role: 'auditor' })).statusCode).toBe(400);
   });
 
-  it('cada papel recebe exatamente o seu padrão, sem permissão que exija MFA', async () => {
+  it('cada papel recebe exatamente o seu padrão (MFA só no ajuste de estoque do gerente de logística, Fase 3)', async () => {
     for (const [role, perms] of Object.entries(expected)) {
       const c = await loggedAs(app, role);
       const me = (await c.get('/api/v1/auth/me')).json();

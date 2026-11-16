@@ -10,7 +10,7 @@ beforeAll(async () => {
   app = await makeApp();
   await resetCatalog();
   // Gerente: estoque, compras e relatorios. Sem MFA basta, nada aqui e permissao sensivel.
-  boss = await loggedAs(app, 'manager');
+  boss = await loggedAs(app, 'manager', { mfa: true });
 });
 afterAll(async () => {
   await app.close();

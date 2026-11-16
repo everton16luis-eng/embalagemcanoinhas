@@ -313,6 +313,16 @@ cancelamento do rascunho nº 85, abaixo.
 Roteiro em [21-sglog-fase3-implantacao.md](21-sglog-fase3-implantacao.md). Versão anterior em
 `~/antes-sglog-fase3.txt` (`0ccdc74`).
 
+**Validação funcional: ENCERRADA em 16/11/2026, com ressalvas.** Movimentações aprovadas no navegador, 0022 aplicada
+e C1–C7 com 0 divergência. Continuam pendentes:
+
+- a MFA do gerente;
+- a solicitação de ajuste com dois usuários (Estoquista e Gerente);
+- os 3 papéis da Fase 1, o painel a 375 px da Fase 1 e o rascunho nº 85 da Fase 2, nas seções acima;
+- o teste opcional num celular de verdade.
+
+Os testes aprovados não se repetem.
+
 Resultados antes da implantação: suíte 381/381 depois do merge, typecheck e builds sem erros, e a 0022 aplicada sobre
 o banco de teste na 0021.
 

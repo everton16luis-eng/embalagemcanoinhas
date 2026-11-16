@@ -348,17 +348,20 @@ No painel, com HTTPS:
 - [x] **Navegador** Menu LOGÍSTICA (16/11/2026, proprietário com MFA): Estoque, Inventário, Transferências, Depósitos,
       Compras, Reposição e Fornecedores abrem nas URLs de antes, sem erro no console. Alertas e Solicitações também
       abrem, vazias.
-- [ ] **Navegador** Testar Depósitos:
-  - cadastrar um depósito de teste, com MFA;
-  - tentar desativá-lo com saldo: deve recusar;
-  - desativá-lo vazio: deve aceitar.
-- [ ] **Navegador** Testar a transferência:
-  - enviar 1 UN para o depósito de teste e ver "chegando" no destino;
-  - receber em parte, depois recusar o resto com motivo;
-  - fazer outra com "Já receber agora".
+- [x] **Navegador** Depósitos (16/11/2026):
+  - `TESTE-F3` cadastrado com MFA;
+  - a desativação com mercadoria chegando foi recusada (`WAREHOUSE_IN_USE`);
+  - depois de esvaziado, foi desativado sem erro.
+- [x] **Navegador** Transferência (16/11/2026, GDN-20X23-BRA):
+  - envio de 3 UN para o `TESTE-F3` (doc. TESTE-F3-1): o padrão caiu para 11.597 e o destino mostrou 3 chegando, fora
+    do vendável;
+  - recebimento parcial de 2 e devolução de 1 com motivo: "Encerrada com divergência", e o 1 voltou ao padrão;
+  - receber de novo foi recusado (`TRANSFER_CLOSED`), e enviar 5 com só 2 livres também (`INSUFFICIENT_STOCK`);
+  - devolução dos 2 ao padrão com "Já receber agora" (doc. TESTE-F3-2): recebida na hora.
 - [x] **Navegador** Bloqueio no GDN-20X23-BRA (16/11/2026): bloquear 1 UN levou o vendável de 11.600 a 11.599 e o
       bloqueado a 1; liberar voltou a 11.600 e 0.
-- [ ] **Navegador** Separar 1 UN como avariado e recuperar, conferindo que o vendável cai e volta.
+- [x] **Navegador** Avaria no GDN-20X23-BRA (16/11/2026): separar 1 UN levou o vendável de 11.600 a 11.599 e o
+      avariado a 1; recuperar voltou a 11.600 e 0.
 - [x] **Navegador** Estorno no GDN-20X23-BRA (16/11/2026):
   - o ajuste +1 (#2930) levou o saldo a 11.601;
   - o estorno (#2931) voltou a 11.600, e a linha original ficou "Estornado", sem o botão;
@@ -369,14 +372,29 @@ No painel, com HTTPS:
   - quem pediu não consegue aprovar.
   
   Precisa do login de dois papéis, junto com os testes de papéis pendentes da Fase 1.
-- [ ] **Navegador** Conferir os alertas: definir mínimo e máximo num depósito e ver o alerta em Estoque → Alertas.
-- [ ] **Navegador** Testar o inventário: abrir uma contagem no depósito de teste e ver que a do padrão não é afetada.
+- [x] **Navegador** Alertas no `TESTE-F3` (16/11/2026):
+  - mínimo 5 e máximo 10 com 2 UN: alerta de abaixo do mínimo;
+  - mínimo 5 com máximo 3: recusado (`INVALID_RANGE`);
+  - só máximo 1: alerta de acima do máximo, listado em Estoque → Alertas;
+  - os limites foram apagados no fim.
+- [x] **Navegador** Inventário (16/11/2026):
+  - com o padrão selecionado, "Abrir contagem" não aparece, porque ele já tem a contagem aberta da demonstração;
+  - contagem aberta no `TESTE-F3` (201 itens), com 2 contados para o GDN-20X23-BRA e fechada sem diferença nem reserva
+    descoberta;
+  - a contagem do padrão continuou aberta, com 7 de 12 itens contados.
 - [x] **Navegador** Loja (16/11/2026): busca "guardanapo", página do produto e carrinho sem erro; o item de teste foi
       tirado do carrinho em seguida.
-- [ ] **Navegador** Checkout até a tela de pagamento, sem pagar, conferindo que o estoque exibido continua sendo o
-      vendável do depósito padrão.
-- [ ] **Celular** Abrir as telas novas a 375 px, junto com o teste de 375 px pendente da Fase 1.
+- [x] **Navegador** Checkout (16/11/2026): `/finalizar` abre sem erro no console, com o resumo do carrinho. Parei antes
+      de preencher dados e de fazer o pedido.
+  - O estoque da loja é o total (`on_hand − reserved` de `stock_balances`), como previsto no [requisito
+    10](20-sglog-fase3.md). Com 2 UN no `TESTE-F3`, a loja mostrou 232 pacotes de 50 (11.600), e não 231.
+  - A venda baixa do padrão. Se faltar mercadoria nele, a venda é recusada com o nome do depósito.
+- [ ] **Celular** Abrir as telas novas a 375 px, junto com o teste de 375 px pendente da Fase 1. O Chrome maximizado não
+      reduz a janela, e o site bloqueia iframe; a 375 px só foi conferido no banco local.
 
 Depois dos testes:
 
-- [ ] **Você** Desativar o depósito de teste, devolvendo antes o saldo dele por transferência.
+- [x] **Navegador** Depósito de teste desativado (16/11/2026), depois de devolvido o saldo. No fim, o padrão tem
+      disponível 226.455 e reservado 13.976, os mesmos da etapa F. O GDN-20X23-BRA voltou a 11.600.
+- [ ] **Servidor** Rodar de novo o bloco 5.1 de [21-sglog-fase3-implantacao.md](21-sglog-fase3-implantacao.md):
+      `RESULTADO: OK`.

@@ -396,5 +396,8 @@ Depois dos testes:
 
 - [x] **Navegador** Depósito de teste desativado (16/11/2026), depois de devolvido o saldo. No fim, o padrão tem
       disponível 226.455 e reservado 13.976, os mesmos da etapa F. O GDN-20X23-BRA voltou a 11.600.
-- [ ] **Servidor** Rodar de novo o bloco 5.1 de [21-sglog-fase3-implantacao.md](21-sglog-fase3-implantacao.md):
-      `RESULTADO: OK`.
+- [x] **Servidor** Bloco 5.1 de [21-sglog-fase3-implantacao.md](21-sglog-fase3-implantacao.md) de novo, depois dos
+      testes (16/11/2026): `RESULTADO: OK`.
+  - `TESTE-F3` inativo, 2 transferências, 0 solicitação.
+  - Os 5 saldos com total = soma dos depósitos, iguais aos da etapa F.
+  - 0 negativo; C1–C7 com 204 variantes e 0 divergência.

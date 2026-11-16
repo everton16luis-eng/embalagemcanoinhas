@@ -223,7 +223,10 @@ de parada em [16-sglog-fase1-implantacao.md](16-sglog-fase1-implantacao.md).
 - [x] **Servidor** Depois da migration real: etapa F `RESULTADO: OK` (16/11/2026), repetida depois de um ajuste +1/−1
       no painel: depósito `PRINCIPAL`, saldo total = soma dos depósitos, 204 variantes conferidas, 0 divergência.
 - [ ] **Você** Criar um usuário de cada papel novo (logística, comprador, financeiro) e conferir as telas no painel.
-      Em 16/11/2026 só foi conferido que os 3 papéis aparecem no cadastro de usuários.
+      Em 16/11/2026 só foi conferido que os 3 papéis aparecem no cadastro de usuários. Ainda falta, com login
+      próprio de cada um: **Gerente de logística**, **Comprador** e **Financeiro** (menu esperado e telas recusadas).
+- [ ] **Você** Interface no celular depois da Fase 1 (375 px): loja (departamento sem quebrar palavra, preço do
+      carrinho numa linha) e painel (última coluna das tabelas com recuo). Em 16/11/2026 só foi testado no desktop.
 - [ ] **Você** (máquinas de desenvolvimento) Rodar `npm run migrate:test` uma vez para gravar a marca do banco de
       testes; sem ela a suíte se recusa a rodar.
 

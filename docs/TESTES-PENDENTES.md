@@ -222,11 +222,20 @@ de parada em [16-sglog-fase1-implantacao.md](16-sglog-fase1-implantacao.md).
       no servidor; a trava recusa banco sem a marca de testes de qualquer forma).
 - [x] **Servidor** Depois da migration real: etapa F `RESULTADO: OK` (16/11/2026), repetida depois de um ajuste +1/−1
       no painel: depósito `PRINCIPAL`, saldo total = soma dos depósitos, 204 variantes conferidas, 0 divergência.
-- [ ] **Você** Criar um usuário de cada papel novo (logística, comprador, financeiro) e conferir as telas no painel.
-      Em 16/11/2026 só foi conferido que os 3 papéis aparecem no cadastro de usuários. Ainda falta, com login
-      próprio de cada um: **Gerente de logística**, **Comprador** e **Financeiro** (menu esperado e telas recusadas).
-- [ ] **Você** Interface no celular depois da Fase 1 (375 px): loja (departamento sem quebrar palavra, preço do
-      carrinho numa linha) e painel (última coluna das tabelas com recuo). Em 16/11/2026 só foi testado no desktop.
+- [ ] **Você** Criar um usuário de cada papel novo e conferir, com login próprio, o menu e as recusas (já com as
+      permissões de fornecedores da Fase 2). Os 3 papéis aparecem no cadastro (16/11/2026). Roteiro:
+
+      | Papel | Menu esperado | Pode | Não pode (recusa ou sem botão) |
+      |---|---|---|---|
+      | Gerente de logística | Configuração inicial, Pedidos, Produtos, Categorias, Estoque, Inventário, Compras, Reposição, Fornecedores, Formas de entrega | Lançar ajuste no estoque; ver pedidos, compras e fornecedores | Cancelar pedido; criar pedido de compra; editar fornecedor; `/painel/vendas`, `/painel/usuarios` |
+      | Comprador | Configuração inicial, Produtos, Categorias, Estoque, Inventário, Compras, Reposição, Fornecedores | Criar pedido de compra; editar fornecedor e oferta | Lançar ajuste no estoque; `/painel/pedidos`, `/painel/vendas` |
+      | Financeiro | Configuração inicial, Pedidos, Compras, Reposição, Fornecedores, Formas de entrega, Vendas, Relatórios de estoque | Ver pedidos, compras, fornecedores e vendas | Criar pedido de compra; editar fornecedor; cancelar pedido; `/painel/estoque`, `/painel/produtos` |
+
+      Depois do teste, desativar os 3 usuários (não excluir).
+- [x] **Navegador** Loja em 375 px (navegador embutido, 16/11/2026): sem rolagem lateral; menu Departamentos com
+      cada nome numa linha; preço do item do carrinho numa linha.
+- [ ] **Você** Painel em 375 px (precisa do login): no Chrome, F12 e Ctrl+Shift+M (modo dispositivo, 375 px), ou no
+      celular. Conferir Estoque, Compras e Fornecedores: última coluna das tabelas com recuo e sem rolagem da página.
 - [ ] **Você** (máquinas de desenvolvimento) Rodar `npm run migrate:test` uma vez para gravar a marca do banco de
       testes; sem ela a suíte se recusa a rodar.
 
@@ -285,7 +294,10 @@ Integração: `sglog/fase2` com `--no-ff` na `main`, sem conflito; suíte 361/36
       com o motivo explicado (16/11/2026).
 - [x] **Navegador** Rascunho nº 83: "Comparar fornecedores" na edição mostra os fornecedores e o "neste pedido";
       edição fechada sem salvar, pedido intacto (16/11/2026).
-- [ ] **Você** Justificativa abaixo do mínimo no pedido de compra: nenhuma oferta tem mínimo cadastrado, então não dá
-      para disparar ainda. Testar quando houver um mínimo (coberto pela suíte e pelo teste local).
+- [x] **Navegador** Mínimo no pedido de compra (16/11/2026): oferta SKL-20X29 da Distribuidora Alfa com mínimo
+      temporário de 5; pedido novo com 1 embalagem recusado sem justificativa ("Há itens abaixo do mínimo…") e aceito
+      com ela (rascunho nº 85, justificativa no item). Mínimo restaurado para vazio (custo, data e prazo intactos). O
+      nº 84 foi consumido pela tentativa recusada.
+- [ ] **Você** Cancelar o rascunho de teste nº 85 ("PEDIDO DE TESTE SGLog") em Compras → nº 85 → Cancelar.
 - [ ] **Você** Opcional: marcar o fornecedor principal das 61 variantes com mais de um fornecedor; sem isso a escolha
       segue o critério automático (custo por unidade, depois prazo).

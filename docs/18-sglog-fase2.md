@@ -13,10 +13,12 @@ da Etapa 0 e a autorização de implantação. A 0021 só pode ir para produçã
 | `b0567c5` | Migration 0021 (up/down), relatório de códigos, ajustes de teste/demo |
 | `11cf250` | API de fornecedores, permissões `suppliers.*`, função de escolha, mínimo na compra, testes |
 | `2b45923` | Telas: lista, ficha com abas, comparação no produto, exceção de mínimo no pedido de compra |
-| (este) | Este documento |
+| `f3ff927` | Este documento (primeira versão) |
+| auditoria final | Rota antiga de ofertas, mensagem da reversão, relatório de códigos, regressão da reposição, comparação no pedido |
 
-A branch parte de `b5ff9f2` (Fase 1). Os três commits locais ainda não enviados do checkout principal (`f3b7998`,
-`eddd4e9`, `84eff18`) **não estão nesta branch** e não foram misturados.
+A branch parte de `b5ff9f2` (Fase 1). Dos três commits locais ainda não enviados do `main`, só o planejamento da Fase 2
+está aqui: `f7bea62` é o mesmo patch de `84eff18` (mesmo `patch-id`; o merge não duplica). `f3b7998` (roteiro da
+Fase 1) e `eddd4e9` (testes pendentes) **não estão nesta branch**.
 
 Não foram alterados: migrations 0019/0020, checkout, pagamentos, fiscal (emissão e importação de NF-e), pedidos de
 venda, marketplaces, vitrine, reposição e saldo de estoque.
@@ -106,10 +108,15 @@ node scripts/fornecedores-codigos.mjs --json
   - **D**: quantas NF-e de compra já importadas trazem cada código. Essa é a informação para decidir a correção sem
     quebrar a associação da nota.
 - Quem conhece o fornecedor decide e corrige no painel, antes de aplicar a 0021.
+- Mostra fornecedor, código, SKU, embalagem, id da oferta e a contagem de notas. **Não mostra CPF/CNPJ** (é usado só
+  para achar as notas do fornecedor).
+- Código de saída: **0** sem conflito; **2** quando há itens A ou B (para o passo de implantação parar sozinho).
 
 ## API (`/api/v1/admin/suppliers`)
 
-Leitura exige `suppliers.view` **ou** `purchases.view`. Escrita exige `suppliers.manage`. Erros seguem o formato
+Lista, ficha e ofertas (`GET /`, `GET /:id`, `GET /:id/offers`) aceitam `suppliers.view` **ou** `purchases.view`,
+como antes. Resumo, comparação, histórico de custo, disponibilidade e linha do tempo exigem `suppliers.view` (quem teve
+`suppliers.view` revogado continua só com o que via antes). Escrita exige `suppliers.manage`. Erros seguem o formato
 `{error:{code,message,details}}`.
 
 | Rota | O quê |
@@ -123,7 +130,7 @@ Leitura exige `suppliers.view` **ou** `purchases.view`. Escrita exige `suppliers
 | `POST /:id/archive`, `POST /:id/restore` | Arquivamento lógico, com motivo. Só arquiva fornecedor que não está ativo |
 | `GET /:id/offers?status=` | Ofertas do fornecedor |
 | `POST /:id/offers/item` | Cria uma oferta |
-| `PUT /:id/offers` (legado) | Grava a lista inteira. Embalagem repetida responde 409 `DUPLICATE_OFFER`; oferta encerrada na lista responde 409 `OFFER_ENDED`; ofertas omitidas viram **pausadas**, não são apagadas |
+| `PUT /:id/offers` (legado) | Substituição **completa e explícita** da lista (detalhes abaixo). Responde com o cabeçalho `Deprecation: true` |
 | `PATCH /offers/:offerId` | Altera uma oferta (com `version`). Mudança de custo aceita motivo e vai para o histórico |
 | `POST /offers/:offerId/end`, `…/reactivate` | Encerra ou reativa, sempre com motivo e auditoria |
 | `POST /offers/:offerId/primary` | Marca ou desmarca o principal. Trava as ofertas da variante em ordem fixa |
@@ -132,6 +139,36 @@ Leitura exige `suppliers.view` **ou** `purchases.view`. Escrita exige `suppliers
 | `GET /:id/history` | Linha do tempo: auditoria e custos |
 | `GET /variants/:variantId/comparison?need=` | Comparação e sugestão explicada para uma variante |
 | `GET/PUT /settings` | Parâmetros. O PUT exige `settings.manage` com verificação em duas etapas e `version` |
+
+### Rota antiga de ofertas (`PUT /:id/offers`)
+
+Consumidores encontrados (auditoria de 16/11/2026):
+- **Tela antiga de fornecedores** (`fornecedores/[id]`, até `b5ff9f2`): enviava sempre a lista inteira lida do
+  fornecedor, inclusive as inativas (com `active: false`). Foi substituída na Fase 2 pelas rotas por oferta; a tela nova
+  não chama mais esta rota.
+- **Testes** (`stock.test.ts`, `sglog-fase2.test.ts`): um deles omitia de propósito uma oferta para testar a
+  desativação por omissão.
+- Nenhum serviço interno, script, importação ou integração usa a rota.
+
+Contrato a partir da Fase 2:
+- É **substituição completa**: a lista precisa trazer **todas** as ofertas atuais (ativas e pausadas) do fornecedor.
+  Para pausar, a linha vem com `active: false`.
+- **Nenhuma oferta é pausada por omissão.** Lista parcial, ou desatualizada (alguém incluiu oferta depois da leitura),
+  responde **409 `OFFERS_OMITTED`** com as ofertas que faltam, e nada é gravado.
+- Encerrada: pode vir exatamente como estava (`active: false`, mesmo custo e código) e é ignorada, como a tela antiga
+  enviava; pode também ser omitida. Qualquer outra mudança nela responde 409 `OFFER_ENDED` (reativação só explícita).
+- `version` por linha continua opcional; quando vem, é conferida (409 `VERSION_CONFLICT`). O fornecedor e as ofertas
+  ficam travados, em ordem fixa, até o fim da transação.
+- Fornecedor arquivado: 409 `SUPPLIER_ARCHIVED`.
+- Salvar sem mudar o custo **não renova** a data da cotação (antes, toda gravação punha a data de hoje).
+- Oferta já existente cuja embalagem foi desativada depois pode continuar na lista (antes isso dava 422 e obrigava a
+  omiti-la, o que agora não é permitido).
+- Auditoria: `suppliers.offers_updated` com `metadata.route = 'legacy_full_list'`.
+
+Compatibilidade: a tela antiga continua funcionando (sempre mandou a lista inteira). O único comportamento que mudou é o
+da omissão, e ele **falha de forma explícita** (409, nada gravado) em vez de pausar em silêncio. Alternativas, se for
+preciso outra coisa: (a) desativar a rota (410) depois de um período com o cabeçalho `Deprecation`; (b) voltar à
+desativação por omissão, como antes da Fase 2 (não recomendado: é exatamente o risco de lista parcial).
 
 Códigos de erro novos:
 - `VERSION_CONFLICT`
@@ -145,6 +182,7 @@ Códigos de erro novos:
 - `USE_STATUS_ROUTE`
 - `DUPLICATE_OFFER`
 - `OFFER_ENDED`
+- `OFFERS_OMITTED`
 
 Toda escrita é **uma transação por operação**, com versão otimista. Um conflito é informado e nunca sobrescrito em
 silêncio.
@@ -212,21 +250,45 @@ silêncio.
   - Aviso por linha quando a quantidade fica abaixo do mínimo ou fora do múltiplo, e campo de justificativa.
   - Uma linha nova já começa com o mínimo do fornecedor.
   - A justificativa aparece também na visualização do pedido.
+  - "Comparar fornecedores" por linha (só com `suppliers.view`): fornecedor, situação da oferta, custo por unidade,
+    custo total para a quantidade da linha, mínimo, prazo e data da cotação, com o fornecedor do pedido e o sugerido
+    marcados. É só informativa: não troca o fornecedor, a quantidade nem o custo.
 
 ## Testes
 
-| Suíte | Resultado |
+Resultados da auditoria final (16/11/2026), todos no cluster isolado da worktree (porta 54331):
+
+| Verificação | Resultado |
 |---|---|
 | `test/supplier-choice.test.ts`: função de escolha, unitário | 26/26 |
-| `test/sglog-fase2.test.ts`: integração | 24/24 |
-| Suíte completa da API (23 arquivos) | **354/354** |
-| Código antigo (main) com a 0021 aplicada: compatibilidade | **304/304** |
+| `test/sglog-fase2.test.ts`: integração | 30/30 |
+| `test/reposicao-fase2.test.ts`: regressão da reposição | 1/1 (7 cenários) |
+| Suíte completa da API (24 arquivos) | **361/361** |
+| Código anterior (`b5ff9f2`) com a 0021 aplicada | **304/304** |
+| 0021 up → down → up, banco vazio | esquema idêntico; depois do down, igual ao de um banco só até a 0020 |
+| 0021 down com dados novos (demonstração) | recusado com o motivo; esquema e dados intactos |
 | Typecheck api e web | sem erros |
-| `next build` e build da API | ok |
+| Build da API e `next build` | ok |
 
-Itens obrigatórios cobertos pela integração:
-- migration e reversão (com recusa);
-- compatibilidade do PUT legado e do `active`;
+**Regressão da reposição.** O teste compara a rota com uma cópia congelada do cálculo anterior, que lê só as colunas
+antigas, e com valores calculados à mão. Cobre:
+- seleção do fornecedor e custo por unidade;
+- cobertura máxima e quantidade sugerida;
+- fornecedor inativo, bloqueado e arquivado;
+- oferta pausada e encerrada (e a volta ao estado anterior);
+- pedido enviado (conta como "a caminho"), mesmo abaixo do mínimo com justificativa, e rascunho (não conta).
+
+Ele também confirma que o que só a Fase 2 tem não muda nada:
+- mínimo, múltiplo e dropship;
+- preparo e transporte;
+- fornecedor principal;
+- disponibilidade informada;
+- parâmetros da comparação.
+
+**Itens obrigatórios cobertos pela integração:**
+- reversão recusada com o motivo;
+- compatibilidade da rota antiga e do `active`;
+- lista parcial e lista desatualizada na rota antiga;
 - concorrência com versão e principal disputado em paralelo;
 - histórico imutável e íntegro;
 - unicidade do código;
@@ -234,16 +296,16 @@ Itens obrigatórios cobertos pela integração:
 - permissões por papel e individuais;
 - exclusão lógica e reativação;
 - disponibilidade vencida;
-- separação do estoque (saldo e movimentos inalterados);
+- separação do estoque;
 - escolha determinística;
-- mínimo na compra;
-- fornecedor bloqueado.
+- mínimo na compra (exigido, validado, auditado, preservado na edição, protegido por permissão);
+- fornecedor bloqueado (inclusive ao trocar o fornecedor do rascunho).
 
-Verificação no navegador (servidor local da worktree, banco `loja_dev` isolado):
+**Verificação no navegador** (servidor local da worktree, banco `loja_dev` isolado):
 - lista e todas as abas da ficha;
 - comparação no produto;
-- pedido de compra abaixo do mínimo: 422 sem justificativa; aceito com justificativa, que aparece na edição e na
-  visualização.
+- comparação compacta no pedido de compra, inclusive em 375 px sem rolagem lateral da página;
+- pedido abaixo do mínimo: 422 sem justificativa; aceito com ela, que aparece na edição e na visualização.
 
 Nenhum erro no console.
 
@@ -253,16 +315,20 @@ Nenhum erro no console.
    houver código duplicado ou vazio, a migration para; a correção é manual e decidida por quem conhece o fornecedor.
 2. **Gatilhos novos em `suppliers` e `supplier_products`.** Código antigo que gravar `active=true` numa oferta
    encerrada passa a receber erro. Isso é intencional (D2-7), mas não há esse caminho no código atual.
-3. **PUT legado de ofertas.** Ofertas omitidas agora viram pausadas em vez de serem apagadas. Uma integração externa
-   que dependa da exclusão veria comportamento diferente. Não há integração conhecida que use essa rota.
-4. **Falta comparação compacta dentro do pedido de compra.** O componente aceita `compact`, mas ainda não está ligado
-   à tela.
-5. **Equivalência da reposição não tem teste dedicado.** A reposição não foi alterada (D2-6), mas não existe um teste
-   que compare a saída antes e depois da 0021.
+3. **Rota antiga de ofertas.** Omitir oferta agora dá 409 em vez de desativá-la. Nenhum consumidor conhecido depende da
+   omissão (a tela antiga sempre mandou a lista inteira), mas um cliente externo desconhecido receberia 409. Nada é
+   gravado nesse caso.
+4. **`PUT /:id` (cadastro) exige `version` desde a Fase 2.** Uma aba aberta com a tela antiga durante a implantação
+   recebe 400 ao salvar e precisa recarregar; nada é gravado.
+5. **Reversão só vale enquanto nada novo foi usado.** Depois do primeiro uso (oferta encerrada, histórico manual,
+   justificativa etc.), a 0021 down recusa com o motivo; o caminho é voltar só o código (o código antigo funciona com a
+   0021 aplicada — suíte do código anterior verde sobre a 0021).
 6. **Dropship sem operação.** O campo existe e a escolha o exclui. Não há fluxo de pedido em dropship.
 7. **Indicadores de 90 dias** (prazo real, entregas no prazo) dependem de recebimentos com data. Com poucos dados, os
    números são pouco representativos.
 8. **Histórico de custo começa na 0021.** Mudanças anteriores existem só na auditoria antiga.
+9. **A comparação usa o prazo efetivo (preparo + transporte) e a reposição continua com o prazo antigo** (D2-6). Os
+   dois números podem diferir na mesma tela; está documentado e coberto pelo teste de regressão.
 
 ## Implantação (quando autorizada, depois da 0020)
 
@@ -276,11 +342,12 @@ Nenhum erro no console.
 ## Checklist de aprovação antes do merge
 
 - [ ] Fase 1 (0020) implantada e estável em produção.
-- [ ] Revisão de código dos commits `b0567c5`, `11cf250`, `2b45923` e deste documento.
+- [ ] Revisão de código dos commits da branch (`b0567c5`, `11cf250`, `2b45923`, `f3ff927` e os da auditoria final).
 - [ ] Relatório de códigos rodado em produção, sem itens A ou B pendentes.
 - [ ] Ensaio da 0021 (up, down e up) numa cópia restaurada de produção.
 - [ ] Suíte completa verde na branch rebaseada sobre o `main` atualizado (incluindo os três commits locais pendentes).
 - [ ] Revisão da matriz de permissões (estoquista sem `suppliers.manage`) e das concessões individuais copiadas.
 - [ ] Aceite visual das telas por quem compra.
-- [ ] Decisão sobre as pendências 4 e 5 (fazer agora ou na Fase 3).
+- [ ] Aceite do novo contrato da rota antiga de ofertas (omissão → 409) e da exigência de `version` no cadastro.
+- [ ] Relatório de códigos com saída 0 em produção, como passo do roteiro de implantação.
 - [ ] Autorização expressa para merge, push e implantação.

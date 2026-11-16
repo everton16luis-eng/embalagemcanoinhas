@@ -145,6 +145,9 @@ export async function transferRoutes(app: FastifyInstance) {
     if (replay) return replay;
     try {
       await tx(auth.userId, async (db) => {
+        const st = (await db.query<{ status: string; number: number }>('SELECT status, number FROM stock_transfers WHERE id = $1', [id])).rows[0];
+        if (!st) throw notFound();
+        if (st.status !== 'in_transit' && st.status !== 'partial') throw new AppError(409, 'TRANSFER_CLOSED', `A transferência nº ${st.number} já foi encerrada.`);
         // Recebimento sem itens: tudo o que esta pendente.
         const list: TransferItemInput[] =
           b.items ??

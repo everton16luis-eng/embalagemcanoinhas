@@ -452,6 +452,8 @@ function OfferRow({ o, settings, editable, onChanged }: { o: any; settings: any;
   const [pending, setPending] = useState<null | 'end' | 'reactivate'>(null);
   const [reason, setReason] = useState('');
   const [showHistory, setShowHistory] = useState(false);
+  // Historico de custo exige suppliers.view (quem so tem purchases.view ve a oferta, como antes).
+  const canHistory = useMe().can('suppliers.view');
   const [msg, setMsg] = useState<Msg>(null);
   const [busy, setBusy] = useState(false);
   const call = async (fn: () => Promise<unknown>, ok?: string) => {
@@ -594,9 +596,11 @@ function OfferRow({ o, settings, editable, onChanged }: { o: any; settings: any;
                   </Button>
                 )}
                 {editable && ended && <Button onClick={() => setPending('reactivate')}>Reativar</Button>}
-                <Button variant="ghost" onClick={() => setShowHistory(!showHistory)}>
-                  {showHistory ? 'Fechar histórico' : 'Histórico de custo'}
-                </Button>
+                {canHistory && (
+                  <Button variant="ghost" onClick={() => setShowHistory(!showHistory)}>
+                    {showHistory ? 'Fechar histórico' : 'Histórico de custo'}
+                  </Button>
+                )}
               </>
             )}
           </div>

@@ -3,15 +3,17 @@
 import { Trash2 } from 'lucide-react';
 import Link from '@/components/painel-link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
-import { Suspense, useCallback, useEffect, useState, type FormEvent } from 'react';
+import { Fragment, Suspense, useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Guard, useMe } from '@/components/shell';
 import { newKey, packLabel, PackagingPicker, PO_STATUS } from '@/components/stock';
+import { SupplierComparisonCompact } from '@/components/suppliers';
 import { Badge, Button, Field, Input, Notice, PageHeader, Panel, Select, Textarea } from '@/components/ui';
 import { api } from '@/lib/api';
 import { centsToInput, money, parseMoney, parseQty, qty, qtyToInput, unitMoney, when } from '@/lib/format';
 
 type Item = {
   id: string;
+  variant_id: string;
   packaging_id: string;
   packaging_label: string;
   base_qty_per_pack: string;
@@ -46,7 +48,7 @@ type Order = {
   items: Item[];
   receipts: { id: string; invoice_ref: string | null; notes: string | null; received_at: string; received_by_name: string; items: { itemId: string; packs: string; baseQty: string; unitCostCents: string; allocatedExtraCents: string }[] }[];
 };
-type Line = { packagingId: string; label: string; productName: string; sku: string; baseQty: string; baseUnit: string; packs: string; cost: string; reason: string };
+type Line = { packagingId: string; variantId: string; label: string; productName: string; sku: string; baseQty: string; baseUnit: string; packs: string; cost: string; reason: string };
 type OfferTerms = { cost: string; min: string | null; multiple: string | null };
 
 /** Abaixo do minimo ou fora do multiplo do fornecedor: so aviso; para seguir, a justificativa (D2-11). */
@@ -62,7 +64,7 @@ function minIssue(l: Line, t: OfferTerms | undefined) {
 type Supplier = { id: string; name: string };
 
 const toLines = (o: Order): Line[] =>
-  o.items.map((i) => ({ packagingId: i.packaging_id, label: i.packaging_label, productName: i.product_name, sku: i.sku, baseQty: i.base_qty_per_pack, baseUnit: i.base_unit, packs: qtyToInput(i.packs), cost: centsToInput(i.pack_cost_cents), reason: i.min_exception_reason ?? '' }));
+  o.items.map((i) => ({ packagingId: i.packaging_id, variantId: i.variant_id, label: i.packaging_label, productName: i.product_name, sku: i.sku, baseQty: i.base_qty_per_pack, baseUnit: i.base_unit, packs: qtyToInput(i.packs), cost: centsToInput(i.pack_cost_cents), reason: i.min_exception_reason ?? '' }));
 
 function OrderForm({ order, onSaved }: { order: Order | null; onSaved: (o: Order) => void }) {
   const search = useSearchParams();
@@ -77,6 +79,9 @@ function OrderForm({ order, onSaved }: { order: Order | null; onSaved: (o: Order
   const [notes, setNotes] = useState(order?.notes ?? '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  // Comparacao por linha (so informativa; exige suppliers.view, como no produto).
+  const canCompare = useMe().can('suppliers.view');
+  const [compare, setCompare] = useState<string | null>(null);
 
   useEffect(() => {
     api('/admin/suppliers?active=true&pageSize=100').then((r) => setSuppliers(r.items), () => null);
@@ -154,7 +159,7 @@ function OrderForm({ order, onSaved }: { order: Order | null; onSaved: (o: Order
         <PackagingPicker
           onPick={(h) => {
             if (lines.some((l) => l.packagingId === h.id)) return;
-            setLines([...lines, { packagingId: h.id, label: h.label, productName: h.product_name, sku: h.sku, baseQty: h.base_qty, baseUnit: h.base_unit, packs: terms[h.id]?.min ? qtyToInput(terms[h.id]!.min!) : '1', cost: offerCost[h.id] ?? '', reason: '' }]);
+            setLines([...lines, { packagingId: h.id, variantId: h.variant_id, label: h.label, productName: h.product_name, sku: h.sku, baseQty: h.base_qty, baseUnit: h.base_unit, packs: terms[h.id]?.min ? qtyToInput(terms[h.id]!.min!) : '1', cost: offerCost[h.id] ?? '', reason: '' }]);
           }}
         />
         {lines.length > 0 && (
@@ -173,7 +178,8 @@ function OrderForm({ order, onSaved }: { order: Order | null; onSaved: (o: Order
                 {lines.map((l, i) => {
                   const packs = Number(parseQty(l.packs) || 0);
                   return (
-                    <tr key={l.packagingId}>
+                    <Fragment key={l.packagingId}>
+                    <tr>
                       <td className="py-2 pl-3">
                         <span className="block font-medium">{l.productName}</span>
                         <span className="block text-xs text-ink-faint">
@@ -184,6 +190,16 @@ function OrderForm({ order, onSaved }: { order: Order | null; onSaved: (o: Order
                             <span className="block text-xs text-warn">⚠ {minIssue(l, terms[l.packagingId])}. Para seguir assim, justifique:</span>
                             <Input aria-label="Justificativa da compra abaixo do mínimo" className="mt-1 max-w-xs" maxLength={300} placeholder="Ex.: fornecedor aceitou nesta compra" value={l.reason} onChange={(e) => setLine(i, { reason: e.target.value })} />
                           </span>
+                        )}
+                        {canCompare && (
+                          <button
+                            type="button"
+                            className="mt-1 text-xs text-act hover:underline"
+                            aria-expanded={compare === l.packagingId}
+                            onClick={() => setCompare(compare === l.packagingId ? null : l.packagingId)}
+                          >
+                            {compare === l.packagingId ? 'Fechar comparação' : 'Comparar fornecedores'}
+                          </button>
                         )}
                       </td>
                       <td className="py-2 pl-3">
@@ -199,6 +215,14 @@ function OrderForm({ order, onSaved }: { order: Order | null; onSaved: (o: Order
                         </Button>
                       </td>
                     </tr>
+                    {canCompare && compare === l.packagingId && (
+                      <tr>
+                        <td colSpan={5} className="bg-sunken/40 px-3 py-2">
+                          <SupplierComparisonCompact variantId={l.variantId} needBase={packs * Number(l.baseQty)} currentSupplierId={supplierId} />
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
                   );
                 })}
               </tbody>

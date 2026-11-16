@@ -8,7 +8,8 @@ Não repete as auditorias já concluídas. O diagnóstico completo, os códigos 
 feitos nas Fases 1 e 2, em 16/11/2026, e a VPS está em `0ccdc74` com a `0021`. Aqui há só uma conferência rápida de
 estado, mais o backup, o ensaio, a migração, o build, o reinício e a validação.
 
-- **Versão no GitHub:** merge `78ea278` (`sglog/fase3` integrada à `main`).
+- **Versão no GitHub:** `ae81f57` (teste do proprietário e este roteiro), logo depois do merge `78ea278`
+  (`sglog/fase3` integrada à `main`).
 - **Dependências:** `package.json` e `package-lock.json` iguais aos de `0ccdc74`, então não é preciso `npm ci`.
 - **Migração:** só a `0022_sglog_estoque`. A `0020` e a `0021` não mudaram.
 
@@ -30,7 +31,8 @@ Seguir para a etapa 2 só se tudo abaixo bater:
 
 - o `git status` está limpo, no ramo `main`;
 - a versão em uso é `0ccdc74`;
-- o `git log HEAD..origin/main` termina em `78ea278`;
+- o `git log HEAD..origin/main` mostra `78ea278` (merge da Fase 3) e começa por `ae81f57` ou por um commit
+  só de documentação depois dele;
 - a última migration é `0021_sglog_fornecedores`;
 - o disco livre é maior que 3× o tamanho de `pgdata`.
 

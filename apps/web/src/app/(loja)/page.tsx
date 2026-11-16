@@ -43,8 +43,8 @@ export default async function Home() {
           {depts.length > 0 && (
             <nav aria-label="Departamentos em destaque" className="grid grid-cols-2 content-center gap-2.5 sm:grid-cols-3">
               {depts.slice(0, 6).map((d) => (
-                <Link key={d.id} href={`/c/${d.slug}`} className="group flex min-h-28 flex-col justify-between border border-g-line bg-white p-3.5 hover:border-g-ink">
-                  <span className="cond text-[22px] leading-none font-extrabold uppercase [overflow-wrap:anywhere]">{d.name}</span>
+                <Link key={d.id} href={`/c/${d.slug}`} className="group @container flex min-h-28 flex-col justify-between border border-g-line bg-white p-3.5 hover:border-g-ink">
+                  <span className="cond text-[min(22px,13cqw)] leading-none font-extrabold uppercase [overflow-wrap:anywhere]">{d.name}</span>
                   <span className="mt-3 flex items-center justify-between text-[13px] font-semibold text-g-green">
                     {d.total} {d.total === 1 ? 'produto' : 'produtos'} <span aria-hidden>›</span>
                   </span>

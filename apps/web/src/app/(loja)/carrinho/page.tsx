@@ -67,7 +67,7 @@ function Line({ l, onChange }: { l: CartLine; onChange: (c: Cart) => void }) {
         </div>
       </div>
       <div className="col-span-2 hidden flex-col items-end gap-2 sm:col-span-1 sm:flex">
-        <p className="num text-lg font-bold">{reais(l.totalCents)}</p>
+        <p className="num text-lg font-bold whitespace-nowrap">{reais(l.totalCents)}</p>
         <Stepper l={l} set={set} busy={busy} />
       </div>
     </li>
@@ -91,7 +91,7 @@ function Stepper({ l, set, busy }: { l: CartLine; set: (n: number) => void; busy
       <button type="button" aria-label={`Remover ${l.productName}`} disabled={busy} onClick={() => set(0)} className="flex items-center gap-1 text-[13px] text-g-soft hover:text-g-red">
         <Trash2 size={15} /> <span className="sm:hidden">Remover</span>
       </button>
-      <span className="num ml-auto font-bold sm:hidden">{reais(l.totalCents)}</span>
+      <span className="num ml-auto font-bold whitespace-nowrap sm:hidden">{reais(l.totalCents)}</span>
     </>
   );
 }

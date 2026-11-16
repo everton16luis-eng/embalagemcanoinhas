@@ -277,10 +277,15 @@ Integração: `sglog/fase2` com `--no-ff` na `main`, sem conflito; suíte 361/36
 - [x] **Servidor** 0021 em `loja_prod`: bloqueio 1 ms, mesmo resumo do ensaio; builds e reinício sem erro; `/ready` ok.
 - [x] **Servidor** Conferência final: última migração 0021, 7 fornecedores, 274 ofertas, 274 linhas de histórico de
       custo, estoque com 0 divergência (16/11/2026).
-- [ ] **Você** Painel → Fornecedores: lista com os 7 e abas da ficha (cadastro, ofertas, histórico, indicadores).
-- [ ] **Você** Editar e salvar a observação de um fornecedor (aba antiga aberta antes do reinício pede para recarregar).
-- [ ] **Você** Comparação de fornecedores num produto com mais de um fornecedor.
-- [ ] **Você** Pedido de compra em rascunho: "Comparar fornecedores" na linha e justificativa exigida abaixo do mínimo
-      (sem enviar o pedido).
+- [x] **Navegador** Painel → Fornecedores: lista com os 7 e os indicadores; ficha com as 5 abas (visão geral,
+      cadastro, produtos e embalagens, disponibilidade, histórico) carregando, sem erro no console (16/11/2026).
+- [x] **Navegador** Observação da Distribuidora Alfa alterada e salva ("Fornecedor salvo."), depois devolvida ao
+      texto original e salva de novo (16/11/2026).
+- [x] **Navegador** Comparação na Forminha de papel nº 3 (FRM-3-BRA, 5.000 UN): sugere a Embalagens Eta, Alfa em 2º,
+      com o motivo explicado (16/11/2026).
+- [x] **Navegador** Rascunho nº 83: "Comparar fornecedores" na edição mostra os fornecedores e o "neste pedido";
+      edição fechada sem salvar, pedido intacto (16/11/2026).
+- [ ] **Você** Justificativa abaixo do mínimo no pedido de compra: nenhuma oferta tem mínimo cadastrado, então não dá
+      para disparar ainda. Testar quando houver um mínimo (coberto pela suíte e pelo teste local).
 - [ ] **Você** Opcional: marcar o fornecedor principal das 61 variantes com mais de um fornecedor; sem isso a escolha
       segue o critério automático (custo por unidade, depois prazo).

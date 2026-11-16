@@ -254,10 +254,33 @@ ensaio rodou da própria pasta, antes do build) e sem `npm ci` (`package-lock.js
 
 Pendências de manutenção encontradas (nenhuma bloqueia; cada uma em passo separado, com autorização):
 
-- [ ] `backups/sglog/` (3 cópias de 16/11) fica fora da retenção automática e do envio ao Drive: apagar à mão quando
+- [ ] `backups/sglog/` (4 cópias de 16/11) fica fora da retenção automática e do envio ao Drive: apagar à mão quando
       não for mais preciso.
 - [ ] Arquivo vazio `embalagemcanoinhas.inc.php,` (root) e `.env.antes-dominio` na pasta do sistema: decidir o destino.
 - [ ] 5 pastas de backup de 14/11 com dono root: trocar o dono para `loja` ou apagar.
 - [ ] `loja-web` termina com status 143 ao parar (SIGTERM do Next) e o systemd registra como falha; só cosmético.
       Ajuste possível: `SuccessExitStatus=143` em `deploy/systemd/loja-web.service`.
 - [ ] Reiniciar serviços sempre como root: como `loja`, o polkit pede a senha e a conexão D-Bus cai no meio.
+
+## SGLog Fase 2 — Gestão de Fornecedores ([18-sglog-fase2.md](18-sglog-fase2.md))
+
+**Situação: IMPLANTADA em 16/11/2026** (merge `0ccdc74`, 0021 aplicada às 20:14 UTC, serviços reiniciados às 20:15).
+Integração: `sglog/fase2` com `--no-ff` na `main`, sem conflito; suíte 361/361, typecheck e builds; push
+`b5ff9f2..0ccdc74`. Versão anterior em `~/antes-sglog-fase2.txt` (`b5ff9f2`); backup anterior à migração em
+`backups/sglog/20261116-201408`.
+
+- [x] **Servidor** Código `b5ff9f2` → `0ccdc74` por fast-forward; `package-lock.json` igual (sem `npm ci`) (16/11/2026).
+- [x] **Servidor** Relatório de códigos (`node scripts/fornecedores-codigos.mjs`): 274 ofertas, 0 duplicados, 0 vazios,
+      0 avisos, saída 0 (16/11/2026).
+- [x] **Servidor** Ensaio da 0021 na cópia: só a 0021, bloqueio 0 ms, 7 fornecedores, 274 ofertas, 61 variantes com
+      mais de um fornecedor, estoque 204 variantes e 0 divergência (16/11/2026).
+- [x] **Servidor** 0021 em `loja_prod`: bloqueio 1 ms, mesmo resumo do ensaio; builds e reinício sem erro; `/ready` ok.
+- [x] **Servidor** Conferência final: última migração 0021, 7 fornecedores, 274 ofertas, 274 linhas de histórico de
+      custo, estoque com 0 divergência (16/11/2026).
+- [ ] **Você** Painel → Fornecedores: lista com os 7 e abas da ficha (cadastro, ofertas, histórico, indicadores).
+- [ ] **Você** Editar e salvar a observação de um fornecedor (aba antiga aberta antes do reinício pede para recarregar).
+- [ ] **Você** Comparação de fornecedores num produto com mais de um fornecedor.
+- [ ] **Você** Pedido de compra em rascunho: "Comparar fornecedores" na linha e justificativa exigida abaixo do mínimo
+      (sem enviar o pedido).
+- [ ] **Você** Opcional: marcar o fornecedor principal das 61 variantes com mais de um fornecedor; sem isso a escolha
+      segue o critério automático (custo por unidade, depois prazo).

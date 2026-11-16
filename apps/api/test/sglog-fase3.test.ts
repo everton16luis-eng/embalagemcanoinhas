@@ -492,6 +492,36 @@ describe('privilégios e histórico', () => {
   });
 });
 
+describe('proprietário do sistema depois da atualização', () => {
+  it('sem MFA continua operando o estoque e pede ajuste; com MFA ajusta, estorna, cadastra depósito e aprova', async () => {
+    const { variantId } = await newProduct('10');
+    const g = await newWarehouse();
+    const plain = await loggedAs(app, 'owner');
+    // Sem verificação em duas etapas: consulta, transfere, bloqueia e pede ajuste; não ajusta direto nem cadastra depósito.
+    expect((await plain.get(`${S}/variants/${variantId}`)).statusCode).toBe(200);
+    expect((await plain.post(T, { fromWarehouseId: principal, toWarehouseId: g, items: [{ variantId, qty: '1' }], requestKey: key(), receiveNow: true })).statusCode).toBe(201);
+    expect((await plain.post(`${S}/holds`, { variantId, op: 'block', qty: '1', reason: 'Conferência', requestKey: key() })).statusCode).toBe(201);
+    expect((await plain.post(`${S}/holds`, { variantId, op: 'unblock', qty: '1', reason: 'Conferido', requestKey: key() })).statusCode).toBe(201);
+    expect((await plain.post(`${S}/movements`, { variantId, kind: 'adjustment', qty: '1', reason: 'Teste', requestKey: key() })).json().error.code).toBe('MFA_REQUIRED');
+    expect((await plain.post(W, { code: `X${uid()}`.slice(0, 12).toUpperCase(), name: `Sem MFA ${uid()}` })).json().error.code).toBe('MFA_REQUIRED');
+    const req = await plain.post(`${S}/adjustment-requests`, { variantId, kind: 'loss', qty: '1', reason: 'Pacote rasgado', requestKey: key() });
+    expect(req.statusCode, req.body).toBe(201);
+
+    // Com MFA: tudo o que é sensível, inclusive aprovar o pedido de outra pessoa.
+    const mfa = await loggedAs(app, 'owner', { mfa: true });
+    const adj = await mfa.post(`${S}/movements`, { variantId, kind: 'adjustment', qty: '2', reason: 'Achado na conferência', requestKey: key() });
+    expect(adj.statusCode, adj.body).toBe(201);
+    expect((await mfa.post(`${S}/movements/${adj.json().movement.id}/reverse`, { reason: 'Lançado errado', requestKey: key() })).statusCode).toBe(201);
+    expect((await mfa.post(W, { code: `Y${uid()}`.slice(0, 12).toUpperCase(), name: `Com MFA ${uid()}` })).statusCode).toBe(201);
+    const ok = await mfa.post(`${S}/adjustment-requests/${req.json().request.id}/approve`, {});
+    expect(ok.statusCode, ok.body).toBe(200);
+    expect(ok.json().request.status).toBe('approved');
+    // 10 − 1 transferido − 1 perda aprovada (ajuste e estorno se anulam).
+    expect((await loc(principal, variantId)).on_hand).toBe('8.000');
+    expect(await reconcile()).toEqual([]);
+  });
+});
+
 describe('migração 0022', () => {
   it('a reversão recusa quando já houve uso da Fase 3 (nada muda)', async () => {
     const { variantId } = await newProduct('2');

@@ -243,7 +243,7 @@ Fornecedores. URLs e permissões das telas antigas não mudaram. As telas novas 
 
 | Verificação | Resultado |
 |---|---|
-| Suíte da API (25 arquivos) | **380/380** (361 anteriores + 19 da Fase 3) |
+| Suíte da API (25 arquivos) | **381/381** depois do merge (361 anteriores + 20 da Fase 3) |
 | Typecheck da API e da web; build de produção da web | Sem erros |
 | 0022 em `loja_test` e `loja_dev` (cluster local isolado, porta 54331) | `up`, `down` e `up` sem erro; trava das tabelas de estoque 150–350 ms local |
 | Painel no navegador, `loja_dev`, proprietário fictício sem MFA | Ver lista abaixo |
@@ -318,7 +318,8 @@ verdes. Os únicos testes antigos alterados foram aqueles cujo resultado as deci
 
 ## 5. Implantação (quando autorizada, só por você)
 
-Nada foi executado no servidor. Roteiro sugerido, na mesma linha das Fases 1 e 2:
+Nada foi executado no servidor. Os comandos prontos, na ordem, estão em
+[21-sglog-fase3-implantacao.md](21-sglog-fase3-implantacao.md). Resumo:
 
 1. **Antes.**
    - Ativar a verificação em duas etapas do dono e do gerente.

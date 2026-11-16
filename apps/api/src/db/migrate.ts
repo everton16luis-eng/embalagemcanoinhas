@@ -6,11 +6,18 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 
+// Mesmo texto em test/env-guard.ts (este arquivo executa ao ser importado, entao nao e importado la).
+const TEST_DB_MARK = 'loja-embalagens: banco de TESTES (os testes apagam dados)';
 const dir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../migrations');
 const direction = process.argv.includes('down') ? 'down' : 'up';
 const database = process.argv.includes('--test') ? process.env.DB_NAME_TEST : process.env.DB_NAME;
 
 if (!database || !/^loja_[a-z]+$/.test(database)) throw new Error('DB_NAME/DB_NAME_TEST deve seguir o padrao loja_*');
+// Banco de testes: os testes apagam tabelas, entao nunca pode ser o banco da aplicacao (docs/15-sglog-fase1.md).
+const testRun = process.argv.includes('--test');
+if (testRun && (!database.endsWith('_test') || database === process.env.DB_NAME)) {
+  throw new Error('DB_NAME_TEST deve terminar em _test e ser diferente de DB_NAME');
+}
 
 const client = new pg.Client({
   host: process.env.DB_HOST,
@@ -20,6 +27,10 @@ const client = new pg.Client({
   database,
 });
 
+// Avisos das migrations (RAISE NOTICE), como o tempo de bloqueio e a diferenca herdada da 0020.
+client.on('notice', (n) => {
+  if (!n.message?.endsWith('skipping')) console.log(`${database} aviso: ${n.message}`);
+});
 await client.connect();
 try {
   const role = await client.query<{ rolsuper: boolean; rolbypassrls: boolean }>(`SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = 'loja_app'`);
@@ -50,6 +61,8 @@ try {
     }
   }
   if (!targets.length) console.log(`${database}: nada a aplicar`);
+  // Marca o banco de testes. Os testes so rodam num banco com esta marca (test/env-guard.ts).
+  if (testRun) await client.query(`COMMENT ON DATABASE ${database} IS '${TEST_DB_MARK}'`);
 } finally {
   await client.end();
 }

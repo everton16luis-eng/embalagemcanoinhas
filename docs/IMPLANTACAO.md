@@ -192,7 +192,10 @@ Com o sistema no ar, como `loja`:
 
 1. `npm run backup` e `npm run backup:restore-test -- backups/<pasta nova>`.
 2. Atualizar o código (`git pull` ou cópia) e `npm ci`.
-3. `npm run migrate` (as migrations só acrescentam; nota autorizada nunca é apagada).
+3. Se houver migration nova: `npm run backup:migrate-rehearsal -- backups/<pasta nova>` (ensaio numa cópia; ver
+   [BACKUP.md](BACKUP.md)) e depois `npm run migrate` (as migrations só acrescentam; nota autorizada nunca é apagada).
+   Leia os avisos da saída. A partir da 0020, confira o estoque como dono do banco:
+   `SELECT * FROM stock_reconcile();` deve trazer só a linha `run` com `found = 0` (ver [15-sglog-fase1.md](15-sglog-fase1.md)).
 4. `npm run build -w apps/api` e `npm run build -w apps/web`.
 5. Como administrador: `sudo systemctl restart loja-api loja-web`. Se `deploy/email/loja-contas-email.py` mudou, repita o
    `install` do passo 4 de [EMAIL.md](EMAIL.md).

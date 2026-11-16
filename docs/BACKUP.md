@@ -31,6 +31,16 @@ confere se cada arquivo fiscal registrado no banco está na cópia com o mesmo h
 toca no banco em uso. Para criar o banco temporário usa o superusuário do cluster local (`.local/credentials.json`)
 ou, no servidor, as variáveis `RESTORE_ADMIN_USER` e `RESTORE_ADMIN_PASSWORD` (papel com permissão de criar banco).
 
+```bash
+npm run backup:migrate-rehearsal -- backups/AAAAMMDD-HHMMSS
+```
+
+Ensaio das migrations pendentes antes de aplicá-las de verdade. Confere a cópia, restaura num banco temporário
+(`loja_ensaio`), aplica nele as migrations que faltam, mostra o tempo e os avisos (na 0020: tempo de bloqueio do saldo
+e diferença herdada da abertura do estoque, com valor e até 20 SKUs), compara as contagens antes e depois, roda a
+conferência do estoque e falha se houver divergência. O banco temporário é sempre apagado; o banco em uso não é tocado.
+Mesmas credenciais do `restore-test`. Ver [15-sglog-fase1.md](15-sglog-fase1.md).
+
 ## Rotina recomendada no servidor (Ubuntu)
 
 1. Backup diário de madrugada, por exemplo com cron do usuário da aplicação:

@@ -38,7 +38,7 @@ export const PERMISSIONS = [
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
-export const ROLES = ['owner', 'manager', 'sales', 'stock', 'fiscal', 'shipping'] as const;
+export const ROLES = ['owner', 'manager', 'sales', 'stock', 'fiscal', 'shipping', 'logistics', 'buyer', 'finance'] as const;
 export type Role = (typeof ROLES)[number];
 
 const ROLE_DEFAULTS: Record<Role, readonly Permission[]> = {
@@ -49,6 +49,15 @@ const ROLE_DEFAULTS: Record<Role, readonly Permission[]> = {
   // fiscal.validate fica so com quem o proprietario conceder (o contador ou responsavel tributario).
   fiscal: ['company.view', 'fiscal.view', 'fiscal.manage', 'catalog.view', 'orders.view'],
   shipping: ['catalog.view', 'orders.view', 'shipping.manage'],
+  // SGLog (docs/sglog-fase0-auditoria.md §10.3.1): menor privilegio, so permissoes que ja existem.
+  // Gerente de logistica: estoque, despacho e consulta de compras. Sem orders.manage (cancelar pedido mexe em
+  // cobranca e nota) e sem reports.view (faturamento).
+  logistics: ['catalog.view', 'stock.view', 'stock.manage', 'purchases.view', 'orders.view', 'shipping.manage'],
+  // Comprador: compras e fornecedores. Sem orders.view (dados pessoais de clientes) e sem stock.manage (ajustes e perdas).
+  buyer: ['catalog.view', 'stock.view', 'purchases.view', 'purchases.manage'],
+  // Financeiro: pedidos, compras e relatorios de venda, so leitura. finance.view fica de fora: hoje so mostra custo
+  // nas telas de estoque, que exigem stock.view.
+  finance: ['orders.view', 'purchases.view', 'reports.view'],
 };
 
 /** Permissoes que exigem verificacao em duas etapas ativa na conta. */

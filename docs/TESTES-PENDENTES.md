@@ -202,3 +202,21 @@ feito só com os simulados.
 - [ ] **Você** Testar a planilha aberta e salva no LibreOffice e no Google Planilhas (exportada como .xlsx).
 - [ ] **Você** Fotos em lote pelo SKU numa importação real (nomes de arquivo iguais aos SKUs).
 - [ ] **Você** Gerente ou funcionário que for importar: ativar a verificação em duas etapas (a permissão exige).
+
+## SGLog Fase 1 — depósitos e conferência do estoque ([15-sglog-fase1.md](15-sglog-fase1.md))
+
+Implantação **só com autorização expressa**. Testado localmente em 16/11/2026: suíte 304/304 e ensaio com dados de
+demonstração (bloqueio de 120 a 167 ms, 0 divergência e reversão com o histórico idêntico).
+
+- [ ] **Servidor** Conferir que a última migration aplicada em produção é a `0019_importacao_produtos`.
+- [ ] **Servidor** Espaço em disco para um backup e um banco temporário do tamanho do de produção.
+- [ ] **Servidor** `npm run backup:migrate-rehearsal -- backups/<pasta>` com a cópia de produção. Anotar o tempo de
+      bloqueio, a diferença herdada (quantidade, valor e SKUs) e o resultado da conferência.
+- [ ] **Você** Se houver diferença herdada, decidir se ela é aceita como está (ela fica registrada na abertura) ou se
+      os saldos são acertados antes, por ajuste com movimento.
+- [ ] **Servidor** `.env` do servidor: `DB_NAME_TEST` ausente ou apontando para banco `_test` (os testes não rodam
+      no servidor; a trava recusa banco sem a marca de testes de qualquer forma).
+- [ ] **Servidor** Depois da migration real: `SELECT * FROM stock_reconcile();` só com a linha `run` e `found = 0`.
+- [ ] **Você** Criar um usuário de cada papel novo (logística, comprador, financeiro) e conferir as telas no painel.
+- [ ] **Você** (máquinas de desenvolvimento) Rodar `npm run migrate:test` uma vez para gravar a marca do banco de
+      testes; sem ela a suíte se recusa a rodar.

@@ -1,4 +1,6 @@
 import { randomBytes, randomInt } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { parseEnv } from 'node:util';
 import type { FastifyInstance } from 'fastify';
 import { generate, generateSecret } from 'otplib';
 import pg from 'pg';
@@ -12,6 +14,7 @@ import type { AiProvider } from '../src/lib/gemini.js';
 import type { TypebotProvider } from '../src/lib/typebot.js';
 import type { PaymentProvider } from '../src/lib/payments.js';
 import { hashPassword } from '../src/modules/auth.js';
+import { ensureTestDatabase } from './env-guard.js';
 
 export const ORIGIN = process.env.APP_ORIGIN!;
 export const PASSWORD = 'Senha-de-teste-123';
@@ -107,11 +110,15 @@ export async function loggedAs(app: FastifyInstance, role: string, opts: { mfa?:
 
 /** Limpa os dados entre arquivos de teste. A auditoria e somente inclusao e nao e apagada. */
 export async function resetCatalog() {
-  // Movimentos e recebimentos sao imutaveis (gatilho por linha); no banco de teste o dono limpa com TRUNCATE.
+  // Segunda trava (a primeira e o globalSetup): nada e apagado sem confirmar que o banco e o de testes.
+  // DB_NAME e NODE_ENV aqui foram trocados pelo vitest.config; a conferencia usa os valores do arquivo .env.
+  await ensureTestDatabase(process.env, parseEnv(readFileSync(new URL('../../../.env', import.meta.url), 'utf8')));
+  // Movimentos, recebimentos, abertura e conferencias do estoque sao imutaveis (gatilho por linha, que o TRUNCATE nao
+  // dispara); no banco de teste o dono limpa com TRUNCATE. warehouses fica: o deposito padrao vem da migration.
   // Tabelas fiscais recusam TRUNCATE (guarda das notas); so no banco de teste o dono desliga a trava para limpar.
   await owner.query('ALTER TABLE fiscal_documents DISABLE TRIGGER fiscal_documents_no_truncate; ALTER TABLE fiscal_files DISABLE TRIGGER fiscal_files_no_truncate');
   await owner.query(
-    'TRUNCATE ai_calls, bot_security_events, bot_runs, bot_pending_documents, bot_verify_failures, bot_test_sessions,whatsapp_conversations, whatsapp_messages, whatsapp_inbound,whatsapp_optouts, whatsapp_templates, shipping_quote_cache, marketplace_notifications, marketplace_orders, marketplace_listings, marketplace_oauth_states, marketplace_accounts, quote_events, quote_items, quotes, purchase_invoices, fiscal_files, fiscal_document_events, fiscal_documents, fiscal_inutilizations, fiscal_webhook_notifications, fiscal_certificates, fiscal_rules_history, fiscal_rules, shipments, payment_notifications, payments, order_events, order_items, orders, cart_items, carts, customer_addresses, customer_sessions, customers, shipping_options, price_tiers, inventory_count_items, inventory_counts, purchase_receipt_items, purchase_receipts, purchase_order_items, purchase_orders, supplier_products, supplier_contacts, suppliers, stock_reservations, stock_movements, stock_balances',
+    'TRUNCATE ai_calls, bot_security_events, bot_runs, bot_pending_documents, bot_verify_failures, bot_test_sessions,whatsapp_conversations, whatsapp_messages, whatsapp_inbound,whatsapp_optouts, whatsapp_templates, shipping_quote_cache, marketplace_notifications, marketplace_orders, marketplace_listings, marketplace_oauth_states, marketplace_accounts, quote_events, quote_items, quotes, purchase_invoices, fiscal_files, fiscal_document_events, fiscal_documents, fiscal_inutilizations, fiscal_webhook_notifications, fiscal_certificates, fiscal_rules_history, fiscal_rules, shipments, payment_notifications, payments, order_events, order_items, orders, cart_items, carts, customer_addresses, customer_sessions, customers, shipping_options, price_tiers, inventory_count_items, inventory_counts, purchase_receipt_items, purchase_receipts, purchase_order_items, purchase_orders, supplier_products, supplier_contacts, suppliers, stock_reservations, stock_reconciliations, stock_opening_balances, stock_location_balances, stock_movements, stock_balances',
   );
   await owner.query('ALTER TABLE fiscal_documents ENABLE TRIGGER fiscal_documents_no_truncate; ALTER TABLE fiscal_files ENABLE TRIGGER fiscal_files_no_truncate');
   await owner.query(`UPDATE bot_settings SET audience = 'off', mode = 'menu', ai_plan = 'free', ai_monthly_limit_usd = 10, ai_daily_per_phone = 20, typebot_public_id = NULL, test_phones = '{}', hours = '{}', texts = '{}'`);

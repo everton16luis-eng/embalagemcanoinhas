@@ -32,6 +32,9 @@ export const ROLE_LABELS: Record<string, string> = {
   stock: 'Estoque e compras',
   fiscal: 'Fiscal',
   shipping: 'Expedição',
+  logistics: 'Gerente de logística',
+  buyer: 'Comprador',
+  finance: 'Financeiro',
 };
 
 export const PERMISSION_LABELS: Record<string, string> = {

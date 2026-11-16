@@ -4,6 +4,8 @@
 //   node scripts/backup.mjs backup [--out pasta]     cria backups/AAAAMMDD-HHMMSS/ com db.dump, storage/ e manifest.json
 //   node scripts/backup.mjs verify <pasta>           confere o sha256 de cada arquivo da copia
 //   node scripts/backup.mjs restore-test <pasta>     restaura num banco TEMPORARIO, compara contagens e hashes, apaga o temporario
+//   node scripts/backup.mjs migrate-rehearsal <pasta>  ensaio das migrations pendentes numa copia restaurada (banco
+//                                                    TEMPORARIO loja_ensaio): tempo, conferencia do estoque, contagens
 //   node scripts/backup.mjs prune [--dry-run]        apaga copias locais fora da retencao (7 diarias, 4 semanais, 12 mensais)
 //   node scripts/backup.mjs offsite [--dry-run]      envia as copias ao remoto cifrado do rclone (BACKUP_REMOTE) e aplica
 //                                                    a mesma retencao la
@@ -148,6 +150,82 @@ async function restoreTest(dir) {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Ensaio de migration (docs/15-sglog-fase1.md). Restaura a copia num banco temporario, aplica as migrations pendentes
+// NELE (nunca no banco em uso), mede o tempo, roda a conferencia do estoque (stock_reconcile, se existir), mostra a
+// diferenca herdada da abertura e confere que nenhuma tabela antiga perdeu ou ganhou linhas. Apaga o temporario no fim.
+
+const REHEARSAL_DB = 'loja_ensaio';
+const REHEARSAL_TABLES = [...CHECK_TABLES, 'stock_balances', 'stock_reservations', 'product_variants', 'shipments'];
+
+async function migrateRehearsal(dir) {
+  if (DB.name === REHEARSAL_DB) throw new Error(`DB_NAME e ${REHEARSAL_DB}: o ensaio usa esse nome para o banco temporario.`);
+  verify(dir);
+  const a = admin();
+  const q = (query) => sql(a.user, a.password, REHEARSAL_DB, query);
+  const exists = (rel) => q(`SELECT to_regclass('public.${rel}') IS NOT NULL`) === 't';
+  const countAll = () => Object.fromEntries(REHEARSAL_TABLES.filter((t) => exists(t)).map((t) => [t, Number(q(`SELECT count(*) FROM ${t}`))]));
+
+  // Sobra de um ensaio interrompido: o nome e reservado ao ensaio, entao pode ser apagado.
+  sql(a.user, a.password, 'postgres', `DROP DATABASE IF EXISTS ${REHEARSAL_DB} WITH (FORCE)`);
+  console.log(`Restaurando em banco temporario ${REHEARSAL_DB}...`);
+  sql(a.user, a.password, 'postgres', `CREATE DATABASE ${REHEARSAL_DB} OWNER ${DB.user} ENCODING 'UTF8' TEMPLATE template0`);
+  const problems = [];
+  try {
+    run('pg_restore', [...conn(a.user, REHEARSAL_DB), '--exit-on-error', '--no-owner', '--role', DB.user, path.join(dir, 'db.dump')], a.password);
+    const before = countAll();
+    const pending = q(`SELECT coalesce(string_agg(name, ',' ORDER BY name), '') FROM schema_migrations`).split(',').filter(Boolean);
+    console.log(`  migrations na copia: ${pending.length} (ultima: ${pending.at(-1) ?? 'nenhuma'})`);
+
+    const t0 = process.hrtime.bigint();
+    const mig = spawnSync(process.execPath, [path.join(root, 'node_modules/tsx/dist/cli.mjs'), 'src/db/migrate.ts', 'up'], {
+      cwd: path.join(root, 'apps/api'),
+      encoding: 'utf8',
+      env: { ...env, DB_NAME: REHEARSAL_DB },
+    });
+    const ms = Number((process.hrtime.bigint() - t0) / 1_000_000n);
+    for (const line of `${mig.stdout}${mig.stderr}`.split('\n').filter(Boolean)) console.log(`  | ${line}`);
+    if (mig.status !== 0) throw new Error('As migrations falharam na copia. Nada foi aplicado no banco em uso.');
+    console.log(`  migrations aplicadas na copia em ${ms} ms (processo inteiro; o tempo de bloqueio aparece nos avisos acima)`);
+
+    const after = countAll();
+    for (const [t, n] of Object.entries(before)) if (after[t] !== n) problems.push(`contagem de ${t} mudou: antes ${n}, depois ${after[t]}`);
+
+    if (exists('stock_opening_balances')) {
+      const [variants, withDiff, qtyDiff, costDiff] = q(
+        `SELECT count(*), count(*) FILTER (WHERE o.ledger_on_hand <> o.on_hand OR o.ledger_reserved <> o.reserved OR o.reservations_active <> o.reserved),
+                coalesce(sum(abs(o.ledger_on_hand - o.on_hand)), 0), coalesce(round(sum(abs(o.ledger_on_hand - o.on_hand) * b.avg_cost_cents) / 100, 2), 0)
+         FROM stock_opening_balances o JOIN stock_balances b ON b.variant_id = o.variant_id`,
+      ).split('|');
+      console.log(`  abertura do estoque: ${variants} variante(s); ${withDiff} com diferenca herdada`);
+      if (Number(withDiff)) {
+        console.log(`  diferenca herdada no fisico: ${qtyDiff} (unidades base, somadas em modulo), cerca de R$ ${costDiff} a custo medio`);
+        const sample = q(
+          `SELECT v.sku || ' saldo=' || o.on_hand || ' livro=' || o.ledger_on_hand || ' reservado=' || o.reserved || ' livro_res=' || o.ledger_reserved || ' reservas=' || o.reservations_active
+           FROM stock_opening_balances o JOIN product_variants v ON v.id = o.variant_id
+           WHERE o.ledger_on_hand <> o.on_hand OR o.ledger_reserved <> o.reserved OR o.reservations_active <> o.reserved ORDER BY v.sku LIMIT 20`,
+        );
+        for (const line of sample.split('\n').filter(Boolean)) console.log(`    ${line}`);
+      }
+    }
+    if (q(`SELECT to_regprocedure('stock_reconcile()') IS NOT NULL`) === 't') {
+      const rows = q(`SELECT check_code || '|' || coalesce(field, '') || '|' || expected || '|' || found FROM stock_reconcile()`).split('\n').filter(Boolean);
+      const run = rows.find((r) => r.startsWith('run|'));
+      const divs = rows.filter((r) => !r.startsWith('run|'));
+      console.log(`  conferencia do estoque (C1-C5): ${run ? Number(run.split('|')[2]) : '?'} variante(s) conferidas, ${divs.length} divergencia(s)`);
+      for (const d of divs.slice(0, 20)) console.log(`    ${d}`);
+      if (divs.length) problems.push(`${divs.length} divergencia(s) na conferencia do estoque depois da migration`);
+    }
+  } finally {
+    sql(a.user, a.password, 'postgres', `DROP DATABASE IF EXISTS ${REHEARSAL_DB} WITH (FORCE)`);
+  }
+  if (problems.length) {
+    for (const p of problems) console.error(`  ${p}`);
+    throw new Error('Ensaio de migration FALHOU (banco temporario apagado; o banco em uso nao foi tocado).');
+  }
+  console.log('Ensaio de migration OK (banco temporario apagado; o banco em uso nao foi tocado).');
+}
+
+// ---------------------------------------------------------------------------------------------
 // Retencao e copia fora do servidor (docs/BACKUP.md). As pastas tem nome AAAAMMDD-HHMMSS (UTC).
 
 const STAMP = /^\d{8}-\d{6}$/;
@@ -259,11 +337,12 @@ try {
   if (cmd === 'backup') await backup(arg === '--out' ? rest[0] : undefined);
   else if (cmd === 'verify' && arg) verify(path.resolve(arg));
   else if (cmd === 'restore-test' && arg) await restoreTest(path.resolve(arg));
+  else if (cmd === 'migrate-rehearsal' && arg) await migrateRehearsal(path.resolve(arg));
   else if (cmd === 'prune') prune(arg === '--dry-run');
   else if (cmd === 'offsite') offsite(arg === '--dry-run');
   else if (cmd === 'keep-test') console.log([...keepSet(readFileSync(0, 'utf8').split(/\s+/))].sort().join(' '));
   else {
-    console.error('Uso: node scripts/backup.mjs backup [--out pasta] | verify <pasta> | restore-test <pasta> | prune [--dry-run] | offsite [--dry-run]');
+    console.error('Uso: node scripts/backup.mjs backup [--out pasta] | verify <pasta> | restore-test <pasta> | migrate-rehearsal <pasta> | prune [--dry-run] | offsite [--dry-run]');
     process.exit(1);
   }
 } catch (err) {

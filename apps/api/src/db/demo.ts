@@ -954,7 +954,8 @@ async function seedDemo() {
 // (dado de referencia da migration) e o controle de migrations. As linhas de configuracao voltam ao padrao.
 /** Configuracoes de linha unica fora do KEEP: o reset as recria com os valores padrao. */
 const SINGLETONS = ['bot_settings', 'email_settings'];
-const KEEP = new Set(['users', 'user_permissions', 'sessions', 'audit_logs', 'units', 'schema_migrations', 'fiscal_settings', 'store_settings']);
+// warehouses (SGLog, 0020): o deposito padrao vem da migration e todo movimento de estoque depende dele.
+const KEEP = new Set(['users', 'user_permissions', 'sessions', 'audit_logs', 'units', 'schema_migrations', 'fiscal_settings', 'store_settings', 'warehouses']);
 
 async function resetAll() {
   if (confirm !== 'APAGAR-TUDO') throw new Error('Isto apaga todos os cadastros. Confirme com: npm run demo:reset -- --confirmar APAGAR-TUDO');

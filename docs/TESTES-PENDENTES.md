@@ -45,7 +45,7 @@ Legenda: **HTTPS** = precisa da API publicada com certificado · **Você** = dep
       1366 px e 375 px, loja até a tela de dados do checkout (sem fechar pedido) e painel só olhando. Corrigido: nome
       de departamento quebrando a palavra no celular e preço do carrinho em duas linhas (3adf217); prefetch do painel
       estourando o limite do nginx com respostas 429 (3f48328); última coluna das tabelas do painel sem recuo no
-      celular (980b0f5). Falta publicar esses commits. Ainda sem dados da empresa: logo "NOME DA LOJA" e rodapé
+      celular (980b0f5). Publicados no servidor com o SGLog Fase 1 em 16/11/2026. Ainda sem dados da empresa: logo "NOME DA LOJA" e rodapé
       pedindo cadastro (preencher em Configuração inicial).
 
 ## Pagamento — Mercado Pago (Fase 4)
@@ -211,50 +211,50 @@ na mesma data: deadlock da primeira versão corrigido; checklists de implantaç�
 [15-sglog-fase1.md](15-sglog-fase1.md). Enviado ao GitHub em 16/11/2026 (`b5ff9f2`); roteiro de implantação com pontos
 de parada em [16-sglog-fase1-implantacao.md](16-sglog-fase1-implantacao.md).
 
-- [ ] **Servidor** Etapa 0 do roteiro (diagnóstico só leitura): versão em uso, migrations, disco, prévia da diferença herdada.
-- [ ] **Servidor** Conferir a última migration aplicada em produção. Se for a 0018, a 0019 (importação de
-      produtos) é implantada e validada **separadamente**, com autorização própria (etapa A do roteiro).
-- [ ] **Servidor** Espaço em disco para um backup e um banco temporário do tamanho do de produção.
-- [ ] **Servidor** `npm run backup:migrate-rehearsal -- backups/<pasta>` com a cópia de produção. Anotar o tempo de
-      bloqueio, a diferença herdada (quantidade, valor e SKUs) e o resultado da conferência.
-- [ ] **Você** Se houver diferença herdada, decidir se ela é aceita como está (ela fica registrada na abertura) ou se
-      os saldos são acertados antes, por ajuste com movimento.
+- [x] **Servidor** Etapa 0 do roteiro (diagnóstico só leitura), 16/11/2026: `cac8397` no ar, banco `loja_prod`
+      (19 MB), 81 GB livres, serviços ativos, prévia da diferença herdada = 0.
+- [x] **Servidor** Última migration em produção: `0019_importacao_produtos` (15/11/2026). Etapa A dispensada.
+- [x] **Servidor** Espaço em disco: 81 GB livres para 74 MB de `.local/pgdata` (16/11/2026).
+- [x] **Servidor** Ensaio `backup:migrate-rehearsal` com a cópia `backups/sglog/20261116-190053` (16/11/2026): só a
+      0020, bloqueios em 0 ms (0 tentativas), saldo bloqueado 32 ms, 204 variantes, 0 diferença herdada, 0 divergência.
+- [x] **Você** Diferença herdada: não houve (0), nada a decidir.
 - [ ] **Servidor** `.env` do servidor: `DB_NAME_TEST` ausente ou apontando para banco `_test` (os testes não rodam
       no servidor; a trava recusa banco sem a marca de testes de qualquer forma).
-- [ ] **Servidor** Depois da migration real: validação da etapa F do roteiro (conferência só com a linha `run` e
-      `found = 0`; o banco da loja é o cluster próprio, consultado pelo `.env`, não pelo PostgreSQL do sistema).
+- [x] **Servidor** Depois da migration real: etapa F `RESULTADO: OK` (16/11/2026), repetida depois de um ajuste +1/−1
+      no painel: depósito `PRINCIPAL`, saldo total = soma dos depósitos, 204 variantes conferidas, 0 divergência.
 - [ ] **Você** Criar um usuário de cada papel novo (logística, comprador, financeiro) e conferir as telas no painel.
+      Em 16/11/2026 só foi conferido que os 3 papéis aparecem no cadastro de usuários.
 - [ ] **Você** (máquinas de desenvolvimento) Rodar `npm run migrate:test` uma vez para gravar a marca do banco de
       testes; sem ela a suíte se recusa a rodar.
 
 Acompanhamento passo a passo da validação no servidor: seção seguinte.
 
-## SGLog — Fase 1: validação pré-implantação no servidor
+## SGLog — Fase 1: implantação no servidor
 
-**Situação: PENDENTE — aguardando acesso ao servidor e autorização.**
-
-Referências:
-
-- Commit disponível no GitHub: `b5ff9f2`.
-- Roteiro: [16-sglog-fase1-implantacao.md](16-sglog-fase1-implantacao.md) (etapas 0 a F, com pontos de parada).
-- Implementação local: 304 testes aprovados (21 arquivos), typecheck e build da API e da web.
-- Produção: versão e última migração ainda desconhecidas.
-
-Regras: nenhuma etapa altera a produção sem autorização expressa. As atividades 1 a 6 são só de leitura ou fora da
-pasta do sistema. As atividades 7 e 8 dependem de autorização. A atividade 10 é o ponto de parada antes de qualquer
-mudança. Para registrar, marque `[x]` na coluna Situação e preencha a data (DD/MM/AAAA), o resultado (OK, PARAR ou
-N/A), a evidência (saída colada na conversa, arquivo ou print) e as observações.
+**Situação: IMPLANTADA em 16/11/2026** (`b5ff9f2`, 0020 aplicada às 19:05 UTC). A VPS é ambiente de testes com
+HTTPS, sem operação comercial; o roteiro foi encurtado com a sua autorização: sem a pasta de trabalho da etapa C (o
+ensaio rodou da própria pasta, antes do build) e sem `npm ci` (`package-lock.json` igual entre `cac8397` e `b5ff9f2`).
 
 | # | Situação | Atividade | Data | Resultado | Evidência | Observações |
 |---|---|---|---|---|---|---|
-| 1 | [ ] | **Servidor** Executar a Etapa 0 do roteiro, exclusivamente de leitura (transação `READ ONLY`; `git fetch` só atualiza referências) | | | | |
-| 2 | [ ] | **Servidor** Identificar o commit atualmente implantado (`git log -1`) e a última migração aplicada | | | | |
-| 3 | [ ] | **Servidor** Verificar espaço em disco (`df`, tamanho de `.local/pgdata` e `backups`), integridade dos serviços (`loja-api`, `loja-web`, `/ready`), reservas ativas, pedidos em andamento e usuários por papel | | | | |
-| 4 | [ ] | **Servidor** Verificar se a migração 0019 já está aplicada. Se a última for a 0018, a 0019 segue pela etapa A, separada e com autorização própria | | | | |
-| 5 | [ ] | **Servidor** Registrar a prévia das diferenças herdadas de estoque (variantes e quantidade física, da Etapa 0) | | | | |
-| 6 | [ ] | **Servidor** Validar o procedimento de worktree e links (etapa C) em ambiente Linux antes de depender dele no ensaio: criar a pasta de trabalho, conferir os links (`ls -l`), rodar a limpeza e conferir `git worktree list` e que `node_modules`, `.env` e `.local/credentials.json` originais continuam intactos | | | | |
-| 7 | [ ] | **Servidor** Preparar backup e restauração em banco isolado (`npm run backup` e `backup:restore-test`), mediante autorização | | | | |
-| 8 | [ ] | **Servidor** Executar o ensaio da 0020 em ambiente isolado (`migrate-rehearsal` na pasta de trabalho, banco temporário `loja_ensaio`), mediante autorização | | | | |
-| 9 | [ ] | **Servidor** Registrar o tempo de bloqueio (bloqueios obtidos e saldo bloqueado), divergências, diferença herdada (variantes, valor, SKUs) e o resultado da reconciliação C1–C5. Aplicar os critérios de parada da etapa D | | | | |
-| 10 | [ ] | **Você** Solicitar autorização expressa antes de qualquer alteração em produção (0019 pela etapa A, 0020 pela etapa E, reinício de serviços) | | | | |
-| 11 | [ ] | **Servidor** + **Você** Após futura implantação autorizada, executar a validação funcional (etapa F: banco, loja, painel, papéis novos) e registrar os resultados | | | | |
+| 1 | [x] | **Servidor** Etapa 0, só leitura | 16/11/2026 | OK | Saída na conversa | 2 arquivos não rastreados na pasta: `.env.antes-dominio` (0600) e `embalagemcanoinhas.inc.php,` (vazio, root). 5 pastas de backup de 14/11 são do root (a retenção do `loja` as ignora). `.git` com escrita para o grupo |
+| 2 | [x] | **Servidor** Commit e última migração | 16/11/2026 | OK | `cac8397`; `0019_importacao_produtos` | |
+| 3 | [x] | **Servidor** Disco, serviços, reservas, pedidos, papéis | 16/11/2026 | OK | 81 GB livres; `/ready` ok; 77 reservas ativas; 449 pedidos | Portas 54330, 4010 e 3047 só em 127.0.0.1 |
+| 4 | [x] | **Servidor** 0019 aplicada | 16/11/2026 | OK | 15/11/2026 12:33 | Etapa A dispensada |
+| 5 | [x] | **Servidor** Prévia da diferença herdada | 16/11/2026 | OK | 0 variantes, 0 unidades | |
+| 6 | [x] | **Servidor** Pasta de trabalho da etapa C | 16/11/2026 | N/A | — | Dispensada: ensaio rodou da pasta do sistema, código atualizado e serviços ainda no build antigo |
+| 7 | [x] | **Servidor** Backup e restauração isolada | 16/11/2026 | OK | `backups/sglog/20261116-190053` | 16 tabelas batendo com o manifesto. A cópia foi feita como root e teve o dono trocado para `loja` |
+| 8 | [x] | **Servidor** Ensaio da 0020 (`loja_ensaio`) | 16/11/2026 | OK | Saída na conversa | Banco temporário apagado pelo script |
+| 9 | [x] | **Servidor** Bloqueio, divergências, diferença herdada, C1–C5 | 16/11/2026 | OK | Ensaio: 0 ms / 32 ms; real: 0 ms / 154 ms | 204 variantes, 0 diferença, 0 divergência |
+| 10 | [x] | **Você** Autorização | 16/11/2026 | OK | Na conversa | Backup do instante anterior: `backups/sglog/20261116-190552`. Versão anterior em `~/antes-sglog-fase1.txt` (`cac8397`) |
+| 11 | [x] | **Servidor** + **Você** Validação (etapa F) | 16/11/2026 | OK | Etapa F `RESULTADO: OK` duas vezes; navegador | Painel: estoque e ajuste +1/−1 com motivo. Loja: busca, produto e carrinho sem erro no console. Papéis novos no cadastro. Falta: menus de cada papel novo com login próprio, e a loja no celular |
+
+Pendências de manutenção encontradas (nenhuma bloqueia; cada uma em passo separado, com autorização):
+
+- [ ] `backups/sglog/` (3 cópias de 16/11) fica fora da retenção automática e do envio ao Drive: apagar à mão quando
+      não for mais preciso.
+- [ ] Arquivo vazio `embalagemcanoinhas.inc.php,` (root) e `.env.antes-dominio` na pasta do sistema: decidir o destino.
+- [ ] 5 pastas de backup de 14/11 com dono root: trocar o dono para `loja` ou apagar.
+- [ ] `loja-web` termina com status 143 ao parar (SIGTERM do Next) e o systemd registra como falha; só cosmético.
+      Ajuste possível: `SuccessExitStatus=143` em `deploy/systemd/loja-web.service`.
+- [ ] Reiniciar serviços sempre como root: como `loja`, o polkit pede a senha e a conexão D-Bus cai no meio.

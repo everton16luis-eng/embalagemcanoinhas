@@ -182,6 +182,11 @@ export async function purchaseRoutes(app: FastifyInstance) {
       if (!['draft', 'sent'].includes(o.status)) throw new AppError(409, 'ORDER_LOCKED', 'Pedido com recebimento, encerrado ou cancelado não pode ser alterado.');
       if (b.version !== undefined && b.version !== o.version) throw new AppError(409, 'VERSION_CONFLICT', 'Outra pessoa alterou este pedido. Recarregue para ver a versão atual.');
       if (b.supplierId !== o.supplier_id && o.status !== 'draft') throw new AppError(409, 'ORDER_LOCKED', 'Pedido já enviado não muda de fornecedor.');
+      if (b.supplierId !== o.supplier_id) {
+        // Trocar o rascunho para um fornecedor bloqueado seria o mesmo que criar pedido novo para ele.
+        const st = (await db.query<{ status: string }>('SELECT status FROM suppliers WHERE id = $1', [b.supplierId])).rows[0];
+        if (st?.status === 'blocked') throw new AppError(422, 'SUPPLIER_BLOCKED', 'Fornecedor bloqueado: não recebe pedido de compra novo.');
+      }
       const before = await load(db, id);
       await db.query(
         `UPDATE purchase_orders SET supplier_id = $2, expected_at = $3, freight_cents = $4, other_costs_cents = $5, notes = $6, version = version + 1, updated_at = now() WHERE id = $1`,

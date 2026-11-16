@@ -31,29 +31,29 @@ DO $$
 DECLARE motivos text[] := '{}';
 BEGIN
   IF EXISTS (SELECT 1 FROM suppliers WHERE status = 'blocked' OR archived_at IS NOT NULL) THEN
-    motivos := motivos || 'ha fornecedor bloqueado ou arquivado'; END IF;
+    motivos := array_append(motivos, 'ha fornecedor bloqueado ou arquivado'); END IF;
   IF EXISTS (SELECT 1 FROM suppliers WHERE cep IS NOT NULL OR street IS NOT NULL OR number IS NOT NULL OR complement IS NOT NULL
              OR district IS NOT NULL OR prep_days IS NOT NULL OR delivery_days IS NOT NULL OR return_policy IS NOT NULL
              OR return_days IS NOT NULL OR order_freight_cents IS NOT NULL OR order_extra_cents IS NOT NULL OR dropship_enabled) THEN
-    motivos := motivos || 'ha endereco, prazo, devolucao, custo de pedido ou dropshipping preenchido em fornecedor'; END IF;
+    motivos := array_append(motivos, 'ha endereco, prazo, devolucao, custo de pedido ou dropshipping preenchido em fornecedor'); END IF;
   IF EXISTS (SELECT 1 FROM supplier_contacts WHERE whatsapp IS NOT NULL OR is_primary) THEN
-    motivos := motivos || 'ha WhatsApp ou contato principal preenchido'; END IF;
+    motivos := array_append(motivos, 'ha WhatsApp ou contato principal preenchido'); END IF;
   IF EXISTS (SELECT 1 FROM supplier_products WHERE status = 'ended' OR is_primary OR min_order_packs IS NOT NULL
              OR order_multiple_packs IS NOT NULL OR prep_days IS NOT NULL OR dropship_allowed) THEN
-    motivos := motivos || 'ha oferta encerrada, principal, ou com minimo, multiplo, preparo ou dropshipping preenchido'; END IF;
+    motivos := array_append(motivos, 'ha oferta encerrada, principal, ou com minimo, multiplo, preparo ou dropshipping preenchido'); END IF;
   IF EXISTS (SELECT 1 FROM supplier_price_history WHERE source <> 'migration') THEN
-    motivos := motivos || 'ha historico de custo registrado depois da migration'; END IF;
+    motivos := array_append(motivos, 'ha historico de custo registrado depois da migration'); END IF;
   IF EXISTS (SELECT 1 FROM supplier_availability) THEN
-    motivos := motivos || 'ha disponibilidade informada'; END IF;
+    motivos := array_append(motivos, 'ha disponibilidade informada'); END IF;
   IF EXISTS (SELECT 1 FROM supplier_settings WHERE version > 1) THEN
-    motivos := motivos || 'os parametros de fornecedores foram alterados'; END IF;
+    motivos := array_append(motivos, 'os parametros de fornecedores foram alterados'); END IF;
   IF EXISTS (SELECT 1 FROM purchase_order_items WHERE min_order_packs IS NOT NULL OR order_multiple_packs IS NOT NULL OR min_exception_reason IS NOT NULL) THEN
-    motivos := motivos || 'ha item de pedido de compra com minimo ou justificativa registrados'; END IF;
+    motivos := array_append(motivos, 'ha item de pedido de compra com minimo ou justificativa registrados'); END IF;
   -- suppliers.* que nao sejam copia exata de purchases.* foram concedidas depois da migration.
   IF EXISTS (SELECT 1 FROM user_permissions s WHERE s.permission LIKE 'suppliers.%' AND NOT EXISTS (
                SELECT 1 FROM user_permissions p WHERE p.user_id = s.user_id
                AND p.permission = replace(s.permission, 'suppliers.', 'purchases.') AND p.granted = s.granted)) THEN
-    motivos := motivos || 'ha permissao individual de fornecedores diferente da de compras'; END IF;
+    motivos := array_append(motivos, 'ha permissao individual de fornecedores diferente da de compras'); END IF;
   IF cardinality(motivos) > 0 THEN
     RAISE EXCEPTION '0021 down recusado, nada foi alterado: %. Volte so o codigo (a 0021 e compativel com o codigo antigo).', array_to_string(motivos, '; ')
       USING ERRCODE = 'check_violation';

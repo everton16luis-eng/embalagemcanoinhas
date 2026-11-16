@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // SGLog Fase 2: relatorio dos codigos do fornecedor (supplier_sku) antes da 0021. SO LEITURA.
-// Uso: node scripts/fornecedores-codigos.mjs [--json]
+// Uso: node scripts/fornecedores-codigos.mjs [--json]   (saida 0: sem conflito; 2: ha itens que bloqueiam a 0021)
 // Conecta com o papel da aplicacao (loja_app), numa transacao READ ONLY, no banco de DB_NAME do .env.
 // Funciona antes e depois da 0021 (usa so colunas que ja existiam). Nao corrige nada: a NF-e de compra casa o item
 // pelo codigo EXATO do fornecedor, entao toda correcao e decisao de quem conhece o fornecedor (docs/18-sglog-fase2.md).
@@ -64,6 +64,8 @@ try {
       )[0];
       r.invoices_exact = n.exact;
       r.invoices_equivalent = n.loose;
+      // O CPF/CNPJ do fornecedor so serve para achar as notas: nao sai no relatorio (CPF e dado pessoal).
+      delete r.supplier_document;
     }
     return rows;
   };
@@ -75,6 +77,9 @@ try {
     warnings: { case_or_space_variants: await impact(caseVariants) },
   };
   await client.query('ROLLBACK');
+  const blocking = report.blocking.duplicates.length + report.blocking.blank_or_spaced.length;
+  // Codigo de saida para automacao: 0 sem conflito, 2 com itens que bloqueiam a 0021.
+  process.exitCode = blocking ? 2 : 0;
 
   if (asJson) {
     console.log(JSON.stringify(report, null, 2));
@@ -95,7 +100,6 @@ try {
       'vazio -> nulo; com espaco -> o codigo como aparece na NF-e do fornecedor.');
     show('C. Iguais exceto maiusculas ou espacos (so aviso)', report.warnings.case_or_space_variants,
       'conferir com a NF-e qual grafia o fornecedor usa; a 0021 nao bloqueia.');
-    const blocking = report.blocking.duplicates.length + report.blocking.blank_or_spaced.length;
     console.log(blocking ? `\nResultado: ${blocking} oferta(s) a corrigir antes da 0021. Nada foi alterado.` : '\nResultado: nenhum conflito; a 0021 pode seguir. Nada foi alterado.');
   }
 } finally {

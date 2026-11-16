@@ -754,44 +754,90 @@ export async function supplierRoutes(app: FastifyInstance) {
   });
 
   /**
-   * Lista de precos (contrato antigo). Substitui a lista: embalagem fora do envio fica pausada (a encerrada continua
-   * encerrada). Toda mudanca de custo entra no historico com origem 'legacy_list'. Oferta encerrada na lista: 409
-   * (a reativacao e explicita). `version` por linha e opcional; quando vem, e conferida.
+   * Lista de precos (contrato antigo, mantido por compatibilidade; a tela usa as rotas por oferta). E SUBSTITUICAO
+   * COMPLETA e explicita: a lista precisa trazer TODAS as ofertas atuais (ativas e pausadas) do fornecedor; para pausar,
+   * a linha vem com `active: false`. Lista parcial (ou desatualizada: alguem incluiu oferta depois da leitura) recebe
+   * 409 OFFERS_OMITTED e nada e gravado. Nenhuma oferta e pausada por omissao.
+   * Encerrada: pode vir como estava (`active: false`, mesmo custo e codigo) e e ignorada, como o cliente antigo envia a
+   * lista inteira; qualquer outra mudanca nela e 409 OFFER_ENDED (a reativacao e explicita, D2-7).
+   * Toda mudanca de custo entra no historico com origem 'legacy_list'. `version` por linha e opcional; quando vem, e
+   * conferida. Fornecedor e ofertas ficam travados (em ordem fixa) ate o fim da transacao.
    */
-  app.put('/:id/offers', async (req) => {
+  app.put('/:id/offers', async (req, reply) => {
     const auth = requirePermission(req, 'suppliers.manage');
     const { id } = idParams.parse(req.params);
     const offers = z.array(legacyOfferSchema).max(500).parse(req.body);
     if (new Set(offers.map((o) => o.packagingId)).size !== offers.length) throw new AppError(409, 'DUPLICATE_OFFER', 'Embalagem repetida na lista do fornecedor.');
+    reply.header('Deprecation', 'true');
     try {
       const supplier = await tx(auth.userId, async (db) => {
-        await lockSupplier(db, id);
+        const sup = await lockSupplier(db, id);
+        if (sup.archived_at) throw new AppError(409, 'SUPPLIER_ARCHIVED', 'Fornecedor arquivado: restaure antes de alterar as ofertas.');
         const before = await load(db, id);
-        const ids = offers.map((o) => o.packagingId);
-        const found = (await db.query<{ id: string }>('SELECT id FROM packagings WHERE id = ANY($1) AND active', [ids])).rows.map((r) => r.id);
-        const missing = ids.filter((x) => !found.includes(x));
-        if (missing.length) throw new AppError(422, 'INVALID_PACKAGING', 'Embalagem inexistente ou inativa na lista do fornecedor.', { missing });
         const existing = new Map(
-          (await db.query<{ packaging_id: string; status: string; version: number }>('SELECT packaging_id, status, version FROM supplier_products WHERE supplier_id = $1 ORDER BY id FOR UPDATE', [id])).rows.map((r) => [r.packaging_id, r]),
+          (
+            await db.query<{ packaging_id: string; status: string; version: number; cost_cents: string; supplier_sku: string | null; label: string; sku: string }>(
+              `SELECT sp.packaging_id, sp.status, sp.version, sp.cost_cents, sp.supplier_sku, k.label, v.sku
+               FROM supplier_products sp JOIN packagings k ON k.id = sp.packaging_id JOIN product_variants v ON v.id = sp.variant_id
+               WHERE sp.supplier_id = $1 ORDER BY sp.id FOR UPDATE OF sp`,
+              [id],
+            )
+          ).rows.map((r) => [r.packaging_id, r]),
         );
+        const sent = new Set(offers.map((o) => o.packagingId));
+        const omitted = [...existing.values()].filter((r) => r.status !== 'ended' && !sent.has(r.packaging_id));
+        if (omitted.length) {
+          throw new AppError(
+            409,
+            'OFFERS_OMITTED',
+            'A lista substitui todas as ofertas do fornecedor e veio sem algumas delas (ou está desatualizada). Inclua todas, com active: false para pausar, ou use as rotas por oferta. Nada foi gravado.',
+            { omitted: omitted.map((r) => ({ packagingId: r.packaging_id, sku: r.sku, label: r.label, status: r.status })) },
+          );
+        }
+        const skipped = new Set<string>();
         for (const o of offers) {
           const cur = existing.get(o.packagingId);
           if (cur && o.version !== undefined && cur.version !== o.version) throw conflict(cur.version);
-          if (cur?.status === 'ended') throw new AppError(409, 'OFFER_ENDED', 'A lista traz uma oferta encerrada: reative-a explicitamente antes.', { packagingId: o.packagingId });
+          if (cur?.status === 'ended') {
+            const unchanged = !o.active && o.costCents === Number(cur.cost_cents) && (o.supplierSku ?? null) === cur.supplier_sku;
+            if (!unchanged) throw new AppError(409, 'OFFER_ENDED', 'A lista altera ou reativa uma oferta encerrada: reative-a explicitamente antes.', { packagingId: o.packagingId });
+            skipped.add(o.packagingId);
+          }
         }
+        const ids = offers.filter((o) => !skipped.has(o.packagingId)).map((o) => o.packagingId);
+        // Embalagem nova precisa estar ativa; a ja ofertada pode ter sido desativada depois (a oferta continua valendo
+        // para o historico, como antes, e a sugestao a ignora).
+        const fresh = ids.filter((x) => !existing.has(x));
+        const found = (await db.query<{ id: string }>('SELECT id FROM packagings WHERE id = ANY($1) AND active', [fresh])).rows.map((r) => r.id);
+        const missing = fresh.filter((x) => !found.includes(x));
+        if (missing.length) throw new AppError(422, 'INVALID_PACKAGING', 'Embalagem inexistente ou inativa na lista do fornecedor.', { missing });
         await setCostSource(db, 'legacy_list', null);
-        await db.query(`UPDATE supplier_products SET status = 'paused' WHERE supplier_id = $1 AND status = 'active' AND NOT (packaging_id = ANY($2))`, [id, ids]);
         for (const o of offers) {
+          if (skipped.has(o.packagingId)) continue;
           await db.query(
             `INSERT INTO supplier_products (supplier_id, packaging_id, supplier_sku, cost_cents, lead_time_days, quoted_at, status)
              VALUES ($1, $2, $3, $4, $5, coalesce($6::date, current_date), $7)
              ON CONFLICT (supplier_id, packaging_id) DO UPDATE SET supplier_sku = EXCLUDED.supplier_sku, cost_cents = EXCLUDED.cost_cents,
-               lead_time_days = EXCLUDED.lead_time_days, quoted_at = EXCLUDED.quoted_at, status = EXCLUDED.status`,
+               lead_time_days = EXCLUDED.lead_time_days, status = EXCLUDED.status,
+               -- Data da cotacao: a informada; sem ela, hoje so quando o custo mudou (salvar a lista sem mexer no
+               -- preco nao "renova" uma cotacao antiga).
+               quoted_at = CASE WHEN $6::date IS NOT NULL THEN $6::date
+                                WHEN supplier_products.cost_cents IS DISTINCT FROM EXCLUDED.cost_cents THEN current_date
+                                ELSE supplier_products.quoted_at END`,
             [id, o.packagingId, o.supplierSku ?? null, o.costCents, o.leadTimeDays ?? null, o.quotedAt ?? null, o.active ? 'active' : 'paused'],
           );
         }
         const after = await load(db, id);
-        await audit(db, { actorId: auth.userId, action: 'suppliers.offers_updated', entity: 'supplier', entityId: id, before: before.offers, after: after!.offers, ip: req.ip });
+        await audit(db, {
+          actorId: auth.userId,
+          action: 'suppliers.offers_updated',
+          entity: 'supplier',
+          entityId: id,
+          before: before.offers,
+          after: after!.offers,
+          metadata: { route: 'legacy_full_list', endedKept: [...skipped] },
+          ip: req.ip,
+        });
         return after;
       });
       return { supplier };

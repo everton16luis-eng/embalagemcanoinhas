@@ -1,4 +1,5 @@
 // SGLog Fase 2: gestao de fornecedores (docs/18-sglog-fase2.md). Banco de testes com a 0021 aplicada.
+import { readFileSync } from 'node:fs';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { pool } from '../src/db/pool.js';
@@ -122,6 +123,26 @@ describe('permissões (no servidor, por papel e individuais)', () => {
     expect((await own.put(`${SUP}/settings`, { tieTolerancePct: 4, staleQuoteDays: 60, availabilityWarningDays: 2, version: cfg.version })).json().error?.code).toBe('VERSION_CONFLICT');
     const back = await own.put(`${SUP}/settings`, { tieTolerancePct: 3, staleQuoteDays: 90, availabilityWarningDays: 3, version: ok.json().settings.version });
     expect(back.statusCode).toBe(200);
+  });
+});
+
+describe('reversão da 0021', () => {
+  it('com dado novo, recusa sem mudar nada e diz o motivo', async () => {
+    const s = await newSupplier();
+    const { purchase } = await newProduct();
+    const o = await newOffer(s.id, purchase.id);
+    await boss.post(`${OFF}/${o.id}/end`, { reason: 'Saiu de linha', version: o.version });
+    const down = readFileSync(new URL('../migrations/0021_sglog_fornecedores.down.sql', import.meta.url), 'utf8');
+    const c = await owner.connect();
+    try {
+      await c.query('BEGIN');
+      await expect(c.query(down)).rejects.toMatchObject({ code: '23514', message: expect.stringMatching(/0021 down recusado, nada foi alterado: .*oferta encerrada/) });
+      await c.query('ROLLBACK');
+    } finally {
+      c.release();
+    }
+    expect((await offerRow(o.id)).status).toBe('ended');
+    expect((await owner.query(`SELECT to_regclass('supplier_price_history') IS NOT NULL AS ok`)).rows[0].ok).toBe(true);
   });
 });
 
@@ -358,6 +379,96 @@ describe('códigos do fornecedor e NF-e de compra', () => {
   });
 });
 
+describe('rota antiga de ofertas (PUT /:id/offers, substituição completa)', () => {
+  it('lista parcial não pausa nada: 409 com as que faltam e nada gravado; lista completa pausa só o que vem com active: false', async () => {
+    const s = await newSupplier();
+    const a = await newProduct();
+    const b = await newProduct();
+    const oa = await newOffer(s.id, a.purchase.id, { costCents: 1000 });
+    const ob = await newOffer(s.id, b.purchase.id, { costCents: 2000 });
+    const snapshot = async () => (await owner.query('SELECT id, status, cost_cents, version FROM supplier_products WHERE supplier_id = $1 ORDER BY id', [s.id])).rows;
+    const before = await snapshot();
+    const partial = await boss.put(`${SUP}/${s.id}/offers`, [{ packagingId: a.purchase.id, costCents: 1100 }]);
+    expect(partial.statusCode).toBe(409);
+    expect(partial.json().error.code).toBe('OFFERS_OMITTED');
+    expect(partial.json().error.details.omitted).toEqual([expect.objectContaining({ packagingId: b.purchase.id, status: 'active' })]);
+    // Nada mudou: nem o custo da linha enviada, nem a omitida, nem o historico.
+    expect(await snapshot()).toEqual(before);
+    expect(await historyOf(oa.id)).toHaveLength(1);
+    // Completa: a enviada com active: false pausa; a outra continua ativa, com o custo novo e uma linha de historico.
+    const full = await boss.put(`${SUP}/${s.id}/offers`, [
+      { packagingId: a.purchase.id, costCents: 1100 },
+      { packagingId: b.purchase.id, costCents: 2000, active: false },
+    ]);
+    expect(full.statusCode, full.body).toBe(200);
+    expect(full.headers.deprecation).toBe('true');
+    expect([(await offerRow(oa.id)).status, (await offerRow(ob.id)).status]).toEqual(['active', 'paused']);
+    expect(await historyOf(oa.id)).toHaveLength(2);
+    expect(await historyOf(ob.id)).toHaveLength(1);
+    const log = (await owner.query(`SELECT metadata FROM audit_logs WHERE action = 'suppliers.offers_updated' AND entity_id = $1`, [s.id])).rows;
+    expect(log.map((l) => l.metadata.route)).toEqual(['legacy_full_list']);
+  });
+
+  it('lista desatualizada (oferta incluída por outra pessoa depois da leitura) é recusada; versão por linha é conferida', async () => {
+    const s = await newSupplier();
+    const a = await newProduct();
+    const b = await newProduct();
+    const oa = await newOffer(s.id, a.purchase.id);
+    // O cliente antigo leu a lista com uma oferta; outra pessoa inclui a segunda.
+    const read = (await boss.get(`${SUP}/${s.id}`)).json().supplier.offers;
+    await newOffer(s.id, b.purchase.id);
+    const stale = read.map((o: { packaging_id: string; cost_cents: string }) => ({ packagingId: o.packaging_id, costCents: Number(o.cost_cents) + 1 }));
+    expect((await boss.put(`${SUP}/${s.id}/offers`, stale)).json().error?.code).toBe('OFFERS_OMITTED');
+    expect((await offerRow(oa.id)).cost_cents).toBe('2000');
+    const withOldVersion = [
+      { packagingId: a.purchase.id, costCents: 2100, version: oa.version },
+      { packagingId: b.purchase.id, costCents: 2000 },
+    ];
+    await boss.patch(`${OFF}/${oa.id}`, { leadTimeDays: 9, version: oa.version });
+    expect((await boss.put(`${SUP}/${s.id}/offers`, withOldVersion)).json().error?.code).toBe('VERSION_CONFLICT');
+    expect((await offerRow(oa.id)).cost_cents).toBe('2000');
+  });
+
+  it('cliente antigo que reenvia a lista inteira com a encerrada intacta continua funcionando; mudar a encerrada é 409', async () => {
+    const s = await newSupplier();
+    const a = await newProduct();
+    const b = await newProduct();
+    const oa = await newOffer(s.id, a.purchase.id, { supplierSku: 'E-1' });
+    await newOffer(s.id, b.purchase.id);
+    await boss.post(`${OFF}/${oa.id}/end`, { reason: 'Saiu de linha', version: oa.version });
+    const ended = await offerRow(oa.id);
+    // Como a tela antiga mandava: todas as ofertas lidas, a encerrada como inativa.
+    const legacy = (await boss.get(`${SUP}/${s.id}`)).json().supplier.offers.map((o: { packaging_id: string; cost_cents: string; supplier_sku: string | null; active: boolean }) => ({
+      packagingId: o.packaging_id,
+      costCents: Number(o.cost_cents),
+      supplierSku: o.supplier_sku,
+      active: o.active,
+    }));
+    const ok = await boss.put(`${SUP}/${s.id}/offers`, legacy);
+    expect(ok.statusCode, ok.body).toBe(200);
+    expect(await offerRow(oa.id)).toMatchObject({ status: 'ended', version: ended.version, end_reason: 'Saiu de linha' });
+    // A encerrada pode ser omitida.
+    expect((await boss.put(`${SUP}/${s.id}/offers`, legacy.filter((o: { packagingId: string }) => o.packagingId !== a.purchase.id))).statusCode).toBe(200);
+    const changed = legacy.map((o: { packagingId: string; costCents: number }) => (o.packagingId === a.purchase.id ? { ...o, costCents: o.costCents + 1 } : o));
+    expect((await boss.put(`${SUP}/${s.id}/offers`, changed)).json().error?.code).toBe('OFFER_ENDED');
+  });
+
+  it('salvar a lista sem mudar o custo não renova a data da cotação; fornecedor arquivado é recusado', async () => {
+    const s = await newSupplier();
+    const { purchase } = await newProduct();
+    const o = await newOffer(s.id, purchase.id, { quotedAt: '2026-01-10' });
+    expect((await boss.put(`${SUP}/${s.id}/offers`, [{ packagingId: purchase.id, costCents: 2000 }])).statusCode).toBe(200);
+    expect((await owner.query(`SELECT quoted_at::text AS q FROM supplier_products WHERE id = $1`, [o.id])).rows[0].q).toBe('2026-01-10');
+    const today = (await owner.query(`SELECT current_date::text AS d`)).rows[0].d;
+    await boss.put(`${SUP}/${s.id}/offers`, [{ packagingId: purchase.id, costCents: 2050 }]);
+    expect((await owner.query(`SELECT quoted_at::text AS q FROM supplier_products WHERE id = $1`, [o.id])).rows[0].q).toBe(today);
+    const sup = await supplierRow(s.id);
+    const off = await boss.post(`${SUP}/${s.id}/status`, { status: 'inactive', version: sup.version });
+    await boss.post(`${SUP}/${s.id}/archive`, { reason: 'Encerrou atividades', version: off.json().supplier.version });
+    expect((await boss.put(`${SUP}/${s.id}/offers`, [{ packagingId: purchase.id, costCents: 2050 }])).json().error?.code).toBe('SUPPLIER_ARCHIVED');
+  });
+});
+
 describe('integridade produto–variante–embalagem', () => {
   it('a variante da oferta é sempre a da embalagem; fornecedor e embalagem não mudam', async () => {
     const s = await newSupplier();
@@ -456,6 +567,33 @@ describe('compra abaixo do mínimo ou fora do múltiplo', () => {
     expect(just.json().order.items[0].min_exception_reason).toBe('Fornecedor aceitou fracionar nesta compra');
     const log = (await owner.query(`SELECT metadata FROM audit_logs WHERE action = 'purchases.min_exception' AND entity_id = $1`, [just.json().order.id])).rows;
     expect(log[0].metadata.items[0].reason).toBe('Fornecedor aceitou fracionar nesta compra');
+  });
+
+  it('justificativa: preservada na edição, exigida de novo se apagada, só quem gerencia compras altera; rascunho não troca para bloqueado', async () => {
+    const s = await newSupplier();
+    const { purchase } = await newProduct();
+    await newOffer(s.id, purchase.id, { minOrderPacks: '5' });
+    const why = 'Teste de produto novo com o cliente';
+    const order = (await boss.post(PO, { supplierId: s.id, items: [{ packagingId: purchase.id, packs: '2', minExceptionReason: why }] })).json().order;
+    // Edicao que reenvia a justificativa (como a tela faz): continua gravada e auditada de novo.
+    const edited = await boss.put(`${PO}/${order.id}`, { supplierId: s.id, notes: 'x', items: [{ packagingId: purchase.id, packs: '3', minExceptionReason: why }], version: order.version });
+    expect(edited.statusCode, edited.body).toBe(200);
+    expect(edited.json().order.items[0].min_exception_reason).toBe(why);
+    expect((await owner.query(`SELECT count(*)::int AS n FROM audit_logs WHERE action = 'purchases.min_exception' AND entity_id = $1`, [order.id])).rows[0].n).toBe(2);
+    // Sem a justificativa, a edicao e recusada e nada muda.
+    const cleared = await boss.put(`${PO}/${order.id}`, { supplierId: s.id, items: [{ packagingId: purchase.id, packs: '3' }], version: edited.json().order.version });
+    expect(cleared.json().error?.code).toBe('BELOW_MINIMUM');
+    expect((await owner.query('SELECT min_exception_reason, packs FROM purchase_order_items WHERE order_id = $1', [order.id])).rows[0]).toMatchObject({ min_exception_reason: why, packs: '3.000' });
+    // Quem nao gerencia compras nao altera.
+    const fin = await loggedAs(app, 'finance');
+    expect((await fin.put(`${PO}/${order.id}`, { supplierId: s.id, items: [{ packagingId: purchase.id, packs: '5' }], version: edited.json().order.version })).statusCode).toBe(403);
+    // Trocar o rascunho para fornecedor bloqueado: recusado como criar pedido novo.
+    const other = await newSupplier();
+    await newOffer(other.id, purchase.id);
+    const blocked = await boss.post(`${SUP}/${other.id}/status`, { status: 'blocked', reason: 'Entrega com avaria', version: other.version });
+    expect(blocked.statusCode, blocked.body).toBe(200);
+    const swap = await boss.put(`${PO}/${order.id}`, { supplierId: other.id, items: [{ packagingId: purchase.id, packs: '5' }], version: edited.json().order.version });
+    expect(swap.json().error?.code).toBe('SUPPLIER_BLOCKED');
   });
 });
 

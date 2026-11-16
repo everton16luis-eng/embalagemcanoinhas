@@ -208,8 +208,10 @@ feito só com os simulados.
 Implantação **só com autorização expressa**. Testado localmente em 16/11/2026: suíte 304/304 e ensaio com dados de
 demonstração (bloqueio de 120 a 168 ms, 0 divergência e reversão com o histórico idêntico). Auditoria de prontidão
 na mesma data: deadlock da primeira versão corrigido; checklists de implantação, validação e reversão em
-[15-sglog-fase1.md](15-sglog-fase1.md).
+[15-sglog-fase1.md](15-sglog-fase1.md). Enviado ao GitHub em 16/11/2026 (`b5ff9f2`); roteiro de implantação com pontos
+de parada em [16-sglog-fase1-implantacao.md](16-sglog-fase1-implantacao.md).
 
+- [ ] **Servidor** Etapa 0 do roteiro (diagnóstico só leitura): versão em uso, migrations, disco, prévia da diferença herdada.
 - [ ] **Servidor** Conferir a última migration aplicada em produção. Se for a 0018, a 0019 (importação de
       produtos) entra junto nesta implantação.
 - [ ] **Servidor** Espaço em disco para um backup e um banco temporário do tamanho do de produção.

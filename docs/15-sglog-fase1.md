@@ -202,48 +202,12 @@ Também conferido:
   funciona com a 0020 aplicada, e o novo funciona sem ela (exceto os papéis novos), então a janela entre migrar e
   reiniciar é segura.
 
-## Checklist de implantação (não executar sem autorização expressa)
+## Implantação e validação
 
-Antes, no computador:
-
-- [ ] Autorização para **enviar ao GitHub** os 11 commits locais (os 7 anteriores e os 4 do SGLog). O servidor
-      atualiza por `git pull`.
-
-No servidor, como `loja`, em `/srv/loja-embalagens`, em horário de pouco movimento:
-
-1. [ ] Anotar a versão em uso, para a reversão: `git rev-parse HEAD > ~/antes-sglog-fase1.txt`.
-2. [ ] Ver as migrations aplicadas:
-       `sudo -u postgres psql -d loja_prod -Atc "SELECT name FROM schema_migrations ORDER BY name DESC LIMIT 3"`.
-       Se a última for a 0018, a 0019 (importação de produtos) também vai entrar nesta implantação. Ela já está no
-       código publicado; ver [14-importacao-produtos.md](14-importacao-produtos.md).
-3. [ ] `df -h /srv` com espaço para um backup e uma cópia temporária do banco.
-4. [ ] `npm run backup` e `npm run backup:restore-test -- backups/<pasta nova>`.
-5. [ ] `git pull` e `npm ci`.
-6. [ ] `npm run backup:migrate-rehearsal -- backups/<pasta nova>`. **Parar** se:
-       - houver divergência;
-       - os bloqueios precisarem de muitas tentativas;
-       - o saldo ficar bloqueado por mais de 2 s;
-       - a diferença herdada listar SKUs que você não reconhece.
-7. [ ] `npm run migrate`. Guardar os 3 avisos `0020:`. Se sair `tabelas de estoque ocupadas`, nada mudou: repetir.
-8. [ ] `npm run build -w apps/api` e `npm run build -w apps/web`.
-9. [ ] Como administrador: `sudo systemctl restart loja-api loja-web`.
-
-## Checklist de validação depois da implantação
-
-- [ ] `curl -s http://127.0.0.1:4010/ready` e `systemctl status loja-api loja-web` sem erro;
-      `journalctl -u loja-api -n 50` sem erro novo.
-- [ ] Migrations: `SELECT name FROM schema_migrations ORDER BY name DESC LIMIT 1` dá `0020_sglog_depositos`.
-- [ ] Conferência como dono do banco:
-      `sudo -u postgres psql -d loja_prod -c "SELECT check_code, field, variant_id, expected, found FROM stock_reconcile()"`.
-      Deve sair só a linha `run`, com `found = 0`.
-- [ ] Depósito: `SELECT code, is_default FROM warehouses` dá só `PRINCIPAL | t`. Saldo total igual à soma por depósito:
-      `SELECT (SELECT sum(on_hand) FROM stock_balances) = (SELECT sum(on_hand) FROM stock_location_balances)`.
-- [ ] Loja: abrir um produto, pôr no carrinho, conferir o estoque exibido.
-- [ ] Painel: estoque de um produto, um ajuste pequeno com motivo, e o ajuste desfeito; depois repetir a conferência.
-- [ ] Um pedido de teste completo (pagamento de teste, preparo, despacho), se o provedor de teste estiver ativo.
-- [ ] Criar um usuário de cada papel novo e conferir as telas permitidas e as recusadas. Para reverter a 0020 depois,
-      esses usuários precisam trocar de papel ou ser desativados com outro papel.
-- [ ] Marcar em [TESTES-PENDENTES.md](TESTES-PENDENTES.md).
+O roteiro passo a passo, com pontos de parada e as consultas ao banco de produção, está em
+[16-sglog-fase1-implantacao.md](16-sglog-fase1-implantacao.md). Ele substitui o checklist que estava aqui: esse
+checklist usava `sudo -u postgres psql`, que não alcança o cluster próprio da loja, e atualizava a pasta do sistema
+antes do ensaio.
 
 ## Plano de reversão
 
@@ -251,11 +215,11 @@ Decidir pelo que falhou:
 
 | O que falhou | O que fazer |
 |---|---|
-| Ensaio (passo 6) | Nada a desfazer: o banco real não foi tocado. Voltar o código (`git checkout $(cat ~/antes-sglog-fase1.txt)` e `npm ci`) ou só não seguir. |
+| Ensaio (etapa C do roteiro) | Nada a desfazer: o ensaio roda numa pasta separada e numa cópia do banco. |
 | `npm run migrate` deu erro | A transação desfez a migration com erro (as anteriores, se houver, ficam). Ler o erro; os serviços continuam no código antigo. Voltar o código como acima se não for continuar. |
-| Build ou serviço com erro, com a 0020 aplicada | Voltar só o código: `git checkout $(cat ~/antes-sglog-fase1.txt)`, `npm ci`, build e restart. **A 0020 pode ficar**: o código antigo funciona com ela (a suíte e o ensaio rodaram assim). |
+| Build ou serviço com erro, com a 0020 aplicada | Voltar só o código: `git checkout --detach $(cat ~/antes-sglog-fase1.txt)`, `npm ci`, build e restart. **A 0020 pode ficar**: o código antigo funciona com ela (a suíte e o ensaio rodaram assim). |
 | Problema da própria 0020 (conferência com divergência nova, erro de estoque) | Reverter a 0020 (abaixo). |
-| Dado perdido ou corrompido (não esperado: a 0020 não altera linha antiga) | Restauração do backup do passo 4 em **banco novo** e troca só com sua autorização ([BACKUP.md](BACKUP.md) §Restauração de verdade). Nunca restaurar por cima do banco original. |
+| Dado perdido ou corrompido (não esperado: a 0020 não altera linha antiga) | Restauração do backup da etapa E em **banco novo** e troca só com sua autorização ([BACKUP.md](BACKUP.md) §Restauração de verdade). Nunca restaurar por cima do banco original. |
 
 ### Reversão da 0020 (procedimento exato)
 
@@ -270,7 +234,7 @@ Passos no servidor, como `loja`, com a 0020 sendo a **última** migration aplica
 1. `npm run backup` e `npm run backup:verify -- backups/<pasta nova>`.
 2. `npm run migrate -- down`. Isso reverte **só a última** migration; confira na saída `down: 0020_sglog_depositos`.
    Se sair `tabelas ocupadas`, nada mudou: repetir.
-3. Voltar o código: `git checkout $(cat ~/antes-sglog-fase1.txt)`, `npm ci`,
+3. Voltar o código: `git checkout --detach $(cat ~/antes-sglog-fase1.txt)`, `npm ci`,
    `npm run build -w apps/api && npm run build -w apps/web` e `sudo systemctl restart loja-api loja-web`.
 4. Conferir `/ready`, o painel e o estoque de um produto.
    `SELECT name FROM schema_migrations ORDER BY name DESC LIMIT 1` deve dar `0019_importacao_produtos`.
@@ -285,8 +249,8 @@ histórico de conferências. Ao reaplicar a 0020, uma nova abertura é tirada.
 
 | Risco | Gravidade | Tratamento |
 |---|---|---|
-| Diferença herdada em produção ainda desconhecida | Média | O passo 6 mostra quantidade, valor e SKUs antes da migration real; você decide se aceita ou acerta antes, com movimento |
-| Tempo de bloqueio em produção ainda não medido | Baixa | Local: 143 a 168 ms com 213 variantes. O passo 6 mede com o tamanho real; teto de 10 s com desistência limpa |
+| Diferença herdada em produção ainda desconhecida | Média | O ensaio (etapa C do roteiro) mostra quantidade, valor e SKUs antes da migration real; você decide se aceita ou acerta antes, com movimento |
+| Tempo de bloqueio em produção ainda não medido | Baixa | Local: 143 a 168 ms com 213 variantes. O ensaio mede com o tamanho real; teto de 10 s com desistência limpa |
 | Manutenção como dono do banco ainda muda saldo sem movimento | Baixa | Intencional (seed, manutenção); a conferência aponta (C1/C2/C3/C5) |
 | A conferência não roda sozinha | Baixa | Na Fase 1 é manual; agendamento e tela ficam para fase seguinte |
 | `next build` sobrescreve o `.next` com o `loja-web` no ar | Baixa (já existia) | Mesmo procedimento das implantações anteriores; o restart vem logo depois |

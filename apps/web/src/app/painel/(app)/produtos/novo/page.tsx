@@ -1,6 +1,6 @@
 'use client';
 
-import Link from 'next/link';
+import Link from '@/components/painel-link';
 import { useMemo, useRef } from 'react';
 import { PHOTO_ISSUES_KEY, ProductImages, type PendingImages } from '@/components/product-images';
 import { emptyProduct, ProductEditor } from '@/components/product-form';

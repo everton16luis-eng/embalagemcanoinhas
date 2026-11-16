@@ -1,7 +1,7 @@
 'use client';
 
 import { Download, ImagePlus } from 'lucide-react';
-import Link from 'next/link';
+import Link from '@/components/painel-link';
 import { useParams } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Guard } from '@/components/shell';

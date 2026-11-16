@@ -1,6 +1,6 @@
 'use client';
 
-import Link from 'next/link';
+import Link from '@/components/painel-link';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { BUYER_KIND, CERT_ALERT, DESTINATION, DOC_STATUS, PRESENCE } from '@/components/fiscal';
 import { Guard, useMe } from '@/components/shell';

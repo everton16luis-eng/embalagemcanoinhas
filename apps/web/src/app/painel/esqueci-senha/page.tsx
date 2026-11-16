@@ -1,6 +1,6 @@
 'use client';
 
-import Link from 'next/link';
+import Link from '@/components/painel-link';
 import { useState, type FormEvent } from 'react';
 import { Button, Field, Input, Notice } from '@/components/ui';
 import { api } from '@/lib/api';

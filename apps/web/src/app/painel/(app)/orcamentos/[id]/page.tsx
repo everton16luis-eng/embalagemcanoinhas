@@ -1,7 +1,7 @@
 'use client';
 
 import { Copy, MessageCircle } from 'lucide-react';
-import Link from 'next/link';
+import Link from '@/components/painel-link';
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState, type FormEvent } from 'react';
 import { ORDER_STATUS } from '@/components/orders';

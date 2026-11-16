@@ -1,7 +1,7 @@
 'use client';
 
 import { BarChart3, Blocks, Mail, MessageCircle, TrendingUp, Boxes, Building2, ClipboardCheck, ClipboardList, FileText, FolderTree, History, LogOut, MapPinned, Menu, Package, ReceiptText, RefreshCw, Search, Settings, ShoppingCart, Store, Truck, UserRound, Users, Warehouse, X } from 'lucide-react';
-import Link from 'next/link';
+import Link from '@/components/painel-link';
 import { usePathname, useRouter } from 'next/navigation';
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import { api, ApiError } from '@/lib/api';

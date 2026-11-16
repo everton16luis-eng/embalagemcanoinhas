@@ -1,7 +1,7 @@
 'use client';
 
 import { Check, Clock, Circle } from 'lucide-react';
-import Link from 'next/link';
+import Link from '@/components/painel-link';
 import { useEffect, useState } from 'react';
 import { Badge, Notice, PageHeader, Panel } from '@/components/ui';
 import { api } from '@/lib/api';

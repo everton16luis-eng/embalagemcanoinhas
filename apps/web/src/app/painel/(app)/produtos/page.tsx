@@ -1,7 +1,7 @@
 'use client';
 
 import { ImageOff } from 'lucide-react';
-import Link from 'next/link';
+import Link from '@/components/painel-link';
 import { useEffect, useState } from 'react';
 import { Guard, useMe } from '@/components/shell';
 import { Badge, Button, Empty, FISCAL_STATUS, Input, Notice, PageHeader, PRODUCT_STATUS, Select } from '@/components/ui';

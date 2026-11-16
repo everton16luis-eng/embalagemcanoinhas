@@ -1,6 +1,6 @@
 'use client';
 
-import Link from 'next/link';
+import Link from '@/components/painel-link';
 import { useEffect, useState } from 'react';
 import { Guard, useMe } from '@/components/shell';
 import { Badge, Button, Empty, Input, Notice, PageHeader } from '@/components/ui';

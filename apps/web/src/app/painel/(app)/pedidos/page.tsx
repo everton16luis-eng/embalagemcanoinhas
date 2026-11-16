@@ -1,6 +1,6 @@
 'use client';
 
-import Link from 'next/link';
+import Link from '@/components/painel-link';
 import { useEffect, useState } from 'react';
 import { CHANNEL_LABEL, INVOICE_STATUS, METHOD_LABEL, ORDER_STATUS } from '@/components/orders';
 import { Guard } from '@/components/shell';

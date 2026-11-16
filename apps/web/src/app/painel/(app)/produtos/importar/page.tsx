@@ -1,7 +1,7 @@
 'use client';
 
 import { Download, FileSpreadsheet, Upload } from 'lucide-react';
-import Link from 'next/link';
+import Link from '@/components/painel-link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { Guard } from '@/components/shell';

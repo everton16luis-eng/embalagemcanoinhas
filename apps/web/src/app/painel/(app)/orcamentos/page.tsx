@@ -1,6 +1,6 @@
 'use client';
 
-import Link from 'next/link';
+import Link from '@/components/painel-link';
 import { useEffect, useState } from 'react';
 import { phoneText, QUOTE_STATUS, quoteState } from '@/components/sales';
 import { Guard } from '@/components/shell';

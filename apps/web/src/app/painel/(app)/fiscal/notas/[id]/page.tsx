@@ -1,6 +1,6 @@
 'use client';
 
-import Link from 'next/link';
+import Link from '@/components/painel-link';
 import { useParams } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import { accessKey, DOC_STATUS, EVENT_LABEL, FILE_LABEL } from '@/components/fiscal';

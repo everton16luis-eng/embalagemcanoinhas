@@ -278,6 +278,10 @@ Integração: `sglog/fase2` com `--no-ff` na `main`, sem conflito; suíte 361/36
 `b5ff9f2..0ccdc74`. Versão anterior em `~/antes-sglog-fase2.txt` (`b5ff9f2`); backup anterior à migração em
 `backups/sglog/20261116-201408`.
 
+**Validação funcional: CONCLUÍDA em 16/11/2026, no ambiente HTTPS, com ressalvas.** Ficam com você: o login dos 3
+papéis novos (Gerente de logística, Comprador, Financeiro) e o painel em 375 px, na seção da Fase 1, e o
+cancelamento do rascunho nº 85, abaixo.
+
 - [x] **Servidor** Código `b5ff9f2` → `0ccdc74` por fast-forward; `package-lock.json` igual (sem `npm ci`) (16/11/2026).
 - [x] **Servidor** Relatório de códigos (`node scripts/fornecedores-codigos.mjs`): 274 ofertas, 0 duplicados, 0 vazios,
       0 avisos, saída 0 (16/11/2026).
@@ -299,5 +303,6 @@ Integração: `sglog/fase2` com `--no-ff` na `main`, sem conflito; suíte 361/36
       com ela (rascunho nº 85, justificativa no item). Mínimo restaurado para vazio (custo, data e prazo intactos). O
       nº 84 foi consumido pela tentativa recusada.
 - [ ] **Você** Cancelar o rascunho de teste nº 85 ("PEDIDO DE TESTE SGLog") em Compras → nº 85 → Cancelar.
+      Fica pendente até você confirmar o cancelamento.
 - [ ] **Você** Opcional: marcar o fornecedor principal das 61 variantes com mais de um fornecedor; sem isso a escolha
       segue o critério automático (custo por unidade, depois prazo).

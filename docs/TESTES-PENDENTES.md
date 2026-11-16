@@ -38,7 +38,9 @@ Legenda: **HTTPS** = precisa da API publicada com certificado · **Você** = dep
       marca da loja, login de `contato@` (14/11/2026).
 - [x] **Servidor** `webmail.barbasystem.com.br` continua com a marca dele; `certbot renew --dry-run --cert-name
       webmail.embalagemcanoinhas.com.br` sem erro (14/11/2026).
-- [ ] **Você** Caixa criada pelo painel entra no celular (IMAP 993 e SMTP 587 em `mail.portalplanaltonorte.com.br`).
+- [x] **Você** Caixa criada pelo painel entra no celular (IMAP 993 e SMTP 587 em `mail.portalplanaltonorte.com.br`),
+      envio e recebimento conferidos no app do Gmail (16/11/2026). Atenção: o app preenche sozinho o servidor com o
+      domínio da loja e mostra aviso de certificado; apagar e digitar `mail.portalplanaltonorte.com.br` nas duas telas.
 - [ ] Inspeção visual por captura de tela (painel e loja, desktop e celular): até aqui a verificação foi por texto e
       medidas.
 

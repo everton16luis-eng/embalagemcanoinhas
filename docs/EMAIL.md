@@ -28,6 +28,9 @@ A tela tem três abas.
 - Cria caixas (com gerador de senha), troca senha, suspende, reativa e exclui.
 - Cria, altera e exclui apelidos.
 - Mostra os dados para configurar a caixa no celular ou no Outlook.
+  No celular, o app do Gmail sugere `embalagemcanoinhas.com.br` como servidor: apague e digite
+  `mail.portalplanaltonorte.com.br` na entrada (993, SSL/TLS) e na saída (587, STARTTLS). Com o nome sugerido aparece
+  aviso de certificado — não aceite; se já aceitou, remova a conta do app e cadastre de novo.
 
 **Envio e textos**
 - Mostra a situação do SMTP.

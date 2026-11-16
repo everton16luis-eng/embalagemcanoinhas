@@ -41,8 +41,12 @@ Legenda: **HTTPS** = precisa da API publicada com certificado · **Você** = dep
 - [x] **Você** Caixa criada pelo painel entra no celular (IMAP 993 e SMTP 587 em `mail.portalplanaltonorte.com.br`),
       envio e recebimento conferidos no app do Gmail (16/11/2026). Atenção: o app preenche sozinho o servidor com o
       domínio da loja e mostra aviso de certificado; apagar e digitar `mail.portalplanaltonorte.com.br` nas duas telas.
-- [ ] Inspeção visual por captura de tela (painel e loja, desktop e celular): até aqui a verificação foi por texto e
-      medidas.
+- [x] Inspeção visual por captura de tela (painel e loja, desktop e celular): feita em 16/11/2026 no navegador embutido,
+      1366 px e 375 px, loja até a tela de dados do checkout (sem fechar pedido) e painel só olhando. Corrigido: nome
+      de departamento quebrando a palavra no celular e preço do carrinho em duas linhas (3adf217); prefetch do painel
+      estourando o limite do nginx com respostas 429 (3f48328); última coluna das tabelas do painel sem recuo no
+      celular (980b0f5). Falta publicar esses commits. Ainda sem dados da empresa: logo "NOME DA LOJA" e rodapé
+      pedindo cadastro (preencher em Configuração inicial).
 
 ## Pagamento — Mercado Pago (Fase 4)
 

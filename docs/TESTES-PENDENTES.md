@@ -213,7 +213,7 @@ de parada em [16-sglog-fase1-implantacao.md](16-sglog-fase1-implantacao.md).
 
 - [ ] **Servidor** Etapa 0 do roteiro (diagnóstico só leitura): versão em uso, migrations, disco, prévia da diferença herdada.
 - [ ] **Servidor** Conferir a última migration aplicada em produção. Se for a 0018, a 0019 (importação de
-      produtos) entra junto nesta implantação.
+      produtos) é implantada e validada **separadamente**, com autorização própria (etapa A do roteiro).
 - [ ] **Servidor** Espaço em disco para um backup e um banco temporário do tamanho do de produção.
 - [ ] **Servidor** `npm run backup:migrate-rehearsal -- backups/<pasta>` com a cópia de produção. Anotar o tempo de
       bloqueio, a diferença herdada (quantidade, valor e SKUs) e o resultado da conferência.
@@ -221,7 +221,40 @@ de parada em [16-sglog-fase1-implantacao.md](16-sglog-fase1-implantacao.md).
       os saldos são acertados antes, por ajuste com movimento.
 - [ ] **Servidor** `.env` do servidor: `DB_NAME_TEST` ausente ou apontando para banco `_test` (os testes não rodam
       no servidor; a trava recusa banco sem a marca de testes de qualquer forma).
-- [ ] **Servidor** Depois da migration real: `SELECT * FROM stock_reconcile();` só com a linha `run` e `found = 0`.
+- [ ] **Servidor** Depois da migration real: validação da etapa F do roteiro (conferência só com a linha `run` e
+      `found = 0`; o banco da loja é o cluster próprio, consultado pelo `.env`, não pelo PostgreSQL do sistema).
 - [ ] **Você** Criar um usuário de cada papel novo (logística, comprador, financeiro) e conferir as telas no painel.
 - [ ] **Você** (máquinas de desenvolvimento) Rodar `npm run migrate:test` uma vez para gravar a marca do banco de
       testes; sem ela a suíte se recusa a rodar.
+
+Acompanhamento passo a passo da validação no servidor: seção seguinte.
+
+## SGLog — Fase 1: validação pré-implantação no servidor
+
+**Situação: PENDENTE — aguardando acesso ao servidor e autorização.**
+
+Referências:
+
+- Commit disponível no GitHub: `b5ff9f2`.
+- Roteiro: [16-sglog-fase1-implantacao.md](16-sglog-fase1-implantacao.md) (etapas 0 a F, com pontos de parada).
+- Implementação local: 304 testes aprovados (21 arquivos), typecheck e build da API e da web.
+- Produção: versão e última migração ainda desconhecidas.
+
+Regras: nenhuma etapa altera a produção sem autorização expressa. As atividades 1 a 6 são só de leitura ou fora da
+pasta do sistema. As atividades 7 e 8 dependem de autorização. A atividade 10 é o ponto de parada antes de qualquer
+mudança. Para registrar, marque `[x]` na coluna Situação e preencha a data (DD/MM/AAAA), o resultado (OK, PARAR ou
+N/A), a evidência (saída colada na conversa, arquivo ou print) e as observações.
+
+| # | Situação | Atividade | Data | Resultado | Evidência | Observações |
+|---|---|---|---|---|---|---|
+| 1 | [ ] | **Servidor** Executar a Etapa 0 do roteiro, exclusivamente de leitura (transação `READ ONLY`; `git fetch` só atualiza referências) | | | | |
+| 2 | [ ] | **Servidor** Identificar o commit atualmente implantado (`git log -1`) e a última migração aplicada | | | | |
+| 3 | [ ] | **Servidor** Verificar espaço em disco (`df`, tamanho de `.local/pgdata` e `backups`), integridade dos serviços (`loja-api`, `loja-web`, `/ready`), reservas ativas, pedidos em andamento e usuários por papel | | | | |
+| 4 | [ ] | **Servidor** Verificar se a migração 0019 já está aplicada. Se a última for a 0018, a 0019 segue pela etapa A, separada e com autorização própria | | | | |
+| 5 | [ ] | **Servidor** Registrar a prévia das diferenças herdadas de estoque (variantes e quantidade física, da Etapa 0) | | | | |
+| 6 | [ ] | **Servidor** Validar o procedimento de worktree e links (etapa C) em ambiente Linux antes de depender dele no ensaio: criar a pasta de trabalho, conferir os links (`ls -l`), rodar a limpeza e conferir `git worktree list` e que `node_modules`, `.env` e `.local/credentials.json` originais continuam intactos | | | | |
+| 7 | [ ] | **Servidor** Preparar backup e restauração em banco isolado (`npm run backup` e `backup:restore-test`), mediante autorização | | | | |
+| 8 | [ ] | **Servidor** Executar o ensaio da 0020 em ambiente isolado (`migrate-rehearsal` na pasta de trabalho, banco temporário `loja_ensaio`), mediante autorização | | | | |
+| 9 | [ ] | **Servidor** Registrar o tempo de bloqueio (bloqueios obtidos e saldo bloqueado), divergências, diferença herdada (variantes, valor, SKUs) e o resultado da reconciliação C1–C5. Aplicar os critérios de parada da etapa D | | | | |
+| 10 | [ ] | **Você** Solicitar autorização expressa antes de qualquer alteração em produção (0019 pela etapa A, 0020 pela etapa E, reinício de serviços) | | | | |
+| 11 | [ ] | **Servidor** + **Você** Após futura implantação autorizada, executar a validação funcional (etapa F: banco, loja, painel, papéis novos) e registrar os resultados | | | | |

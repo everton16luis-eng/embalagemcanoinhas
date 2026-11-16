@@ -4,6 +4,30 @@
 
 SET LOCAL lock_timeout = '10s';
 
+-- Bloqueios antes de tudo, sem esperar um segurando outro (mesma tecnica da 0020 up: espera so o saldo,
+-- as demais com NOWAIT; ocupada, solta tudo e tenta de novo em 20 ms; teto de 10 s). DROP TRIGGER, DROP COLUMN
+-- e a remocao das FKs exigem ACCESS EXCLUSIVE: a loja fica sem ler saldo e variantes durante a reversao (< 1 s).
+DO $$
+DECLARE deadline timestamptz := clock_timestamp() + interval '10 seconds'; tries integer := 0;
+BEGIN
+  LOOP
+    BEGIN
+      LOCK TABLE stock_balances IN ACCESS EXCLUSIVE MODE;
+      LOCK TABLE stock_movements IN ACCESS EXCLUSIVE MODE NOWAIT;
+      LOCK TABLE product_variants IN ACCESS EXCLUSIVE MODE NOWAIT;
+      LOCK TABLE users IN ACCESS EXCLUSIVE MODE NOWAIT;
+      EXIT;
+    EXCEPTION WHEN lock_not_available THEN
+      tries := tries + 1;
+      IF clock_timestamp() > deadline THEN
+        RAISE EXCEPTION 'Reversao da 0020: tabelas ocupadas por mais de 10 s (% tentativas); nada foi alterado, tente de novo', tries
+          USING ERRCODE = 'lock_not_available';
+      END IF;
+      PERFORM pg_sleep(0.02);
+    END;
+  END LOOP;
+END $$;
+
 DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM users WHERE role IN ('logistics', 'buyer', 'finance')) THEN
@@ -16,8 +40,6 @@ BEGIN
   END IF;
 END $$;
 
--- Mesma ordem de bloqueio da aplicacao: saldo total antes do livro.
-LOCK TABLE stock_balances IN SHARE MODE;
 
 ALTER TABLE users DROP CONSTRAINT users_role_check;
 ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('owner', 'manager', 'sales', 'stock', 'fiscal', 'shipping'));

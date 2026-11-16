@@ -13,6 +13,7 @@ ambiente local isolado. **Nada foi implantado nem migrado em produção.**
 | Trava contra rodar testes fora do banco de testes | `apps/api/test/env-guard.ts`, `global-setup.ts`, `helpers.ts`, `vitest.config.ts` |
 | Reset de demonstração preserva o depósito padrão | `apps/api/src/db/demo.ts` (`KEEP`) |
 | Ensaio de migration numa cópia restaurada | `scripts/backup.mjs migrate-rehearsal`, `npm run backup:migrate-rehearsal` |
+| Ensaio local com carga, deadlock e reversão (só no cluster local) | `scripts/ensaio-0020-local.mjs` |
 | Testes da fase (17) | `apps/api/test/sglog-fase1.test.ts` |
 
 Checkout, pagamentos, emissão fiscal, pedidos, marketplaces, vitrine e cadastro de produtos **não foram alterados**.
@@ -63,10 +64,30 @@ continua sendo o que a loja, os marketplaces e os relatórios leem.
 - **Privilégios**: `loja_app` só lê as 4 tabelas novas e executa `stock_reconcile()`. Não grava em nenhuma delas e
   não executa `stock_opening_capture()`.
 
-Ordem de bloqueio: a migration faz `LOCK TABLE stock_balances IN SHARE MODE` antes de tudo, na mesma ordem da
-aplicação (saldo total antes do livro), por isso não há deadlock com vendas em andamento. O `lock_timeout` é de 10 s:
-se não conseguir o bloqueio nesse prazo, a migration desiste e desfaz tudo. A migration imprime dois avisos: o tempo
-de bloqueio até ali e o resultado da abertura (variantes e diferença herdada).
+**Bloqueios (sem deadlock).** A migration altera quatro tabelas que a aplicação usa: `stock_balances`,
+`stock_movements` (coluna e gatilho), `product_variants` (FKs novas) e `users` (CHECK de papéis). A aplicação pode
+tocar `users`, o livro ou as variantes **antes** do saldo. Exemplos:
+
+- a idempotência do ajuste lê o livro antes do `moveStock`;
+- pedidos e orçamentos gravam com FK para `users` antes de reservar.
+
+Por isso a 0020 pega todos os bloqueios antes de alterar qualquer coisa, sem nunca esperar um lock segurando outro:
+
+1. Espera só o saldo, sem segurar nada.
+2. Pede as outras três tabelas com `NOWAIT`.
+3. Se alguma estiver ocupada, a subtransação desfaz e solta tudo; a migration espera 20 ms e tenta de novo, com teto
+   de 10 s. Passado o teto, ela desiste e nada muda.
+
+A reversão usa a mesma técnica e só confere usuários e movimentos depois de ter os bloqueios.
+
+A migration imprime três avisos:
+
+- o tempo para obter os bloqueios e o número de novas tentativas;
+- o tempo com o saldo bloqueado;
+- o resultado da abertura (variantes e diferença herdada).
+
+Durante a migration a loja continua lendo saldo e variantes; quem grava estoque espera até o COMMIT. Na reversão, até
+a leitura espera (ACCESS EXCLUSIVE), por menos de 1 s.
 
 ## Papéis novos (menor privilégio)
 
@@ -115,6 +136,8 @@ conferências) e mantém o depósito padrão. Depois do reset, as variantes conf
 | Suíte completa | **304/304** (21 arquivos): as 287 anteriores sem alteração + 17 novas |
 | Typecheck api e web | sem erros |
 | `loja_test`: up → down → up (várias vezes) | OK; bloqueio de 82 a 216 ms |
+| `loja_test` com a versão final: down → up → down → up | OK; bloqueios em 1 ms, saldo bloqueado ~125 ms |
+| `build` da API e `next build` da web com os 7 commits anteriores | OK |
 
 Os testes novos cobrem:
 
@@ -131,82 +154,143 @@ Os testes novos cobrem:
 - **Papéis**: os 3 papéis, com o efeito real das permissões nas rotas.
 - **Travas do ambiente de testes**: unitárias e a marca do banco.
 
-### Ensaio local com dados realistas
+### Ensaios locais com dados realistas
 
-O ensaio foi feito num banco local `loja_semente`, que fica igual à produção antes da Fase 1: schema até a 0019 e o
-seed de demonstração com 102 produtos, 213 variantes, 449 pedidos e 3.012 movimentos. Depois o banco foi apagado.
+Os ensaios rodaram num banco local `loja_semente`, que fica igual à produção antes da Fase 1: schema até a 0019 e o
+seed de demonstração com 102 produtos, 213 variantes (9 sem linha de saldo), 449 pedidos, 3.012 movimentos e
+**73 reservas ativas**. Entre os pedidos, **30 estavam em andamento** (aguardando pagamento, pago, em preparo,
+pronto, enviado). Havia 7 usuários com 6 papéis existentes. O banco é apagado no fim de cada ensaio.
 
-| Ensaio | Resultado |
+Para reproduzir: `node scripts/ensaio-0020-local.mjs create`, depois `deadlock up`, `load` etc. Ele só roda no
+cluster local.
+
+| Ensaio | Resultado (versão final da 0020) |
 |---|---|
-| `backup` + `migrate-rehearsal` (cópia restaurada) | 0020 em 740 ms; **saldo bloqueado 140 ms**; abertura de 204 variantes, **0 diferença herdada**; C1–C5: 0 divergência |
-| Migration com 6 vendas simultâneas pelo `loja_app` | 999 ms; bloqueio de 120 a 167 ms; **maior espera de uma venda: 159 a 209 ms**; 1.693 a 1.895 vendas durante o ensaio, nenhuma falhou; 0 divergência depois |
-| Reversão com dados (down → up) | down 499 ms, up 580 ms; hash do livro, dos saldos e das reservas **idêntico** antes, depois do down e depois do up; 0 divergência |
+| `backup` + `migrate-rehearsal` (cópia restaurada) | 0020 em 821 ms; bloqueios em 1 ms; **saldo bloqueado 143 ms**; abertura de 204 variantes, **0 diferença herdada**; C1–C5: 0 divergência |
+| Migration com 6 vendas simultâneas pelo `loja_app` | **1.674 vendas durante o ensaio, nenhuma falhou**; maior espera de uma venda 229 ms; saldo bloqueado 166 ms; 0 divergência depois |
+| Deadlock: venda toca `users`, o livro ou variantes antes do saldo, durante a 0020 (up e down) | **6/6 sem deadlock**; venda espera 11 a 33 ms; migration conclui |
+| Reversão com dados (down → up) | down 803 ms, up 869 ms; hash do livro, dos saldos e das reservas **idêntico**; 0 divergência |
+| Reversão com usuário `buyer` | recusada; nada muda (0020 continua aplicada, abertura intacta) |
+| Reservas ativas na abertura | reservado (13.127) = reservas ativas (13.127) nas 204 variantes |
 | `demo:reset` e `demo:seed` com a 0020 | depósito padrão mantido; conferência sem divergência depois de cada um |
-| Venda segurando o bloqueio por mais de 10 s | a migration desistiu (`55P03 lock_not_available`) e desfez tudo; o banco ficou na 0019 |
+| Venda segurando o saldo por mais de 10 s | a migration desiste (`55P03`) e desfaz tudo; o banco fica na 0019 |
 
-O último caso aconteceu por um defeito do primeiro script de ensaio, que congelava a venda no meio da transação. Ele
-prova a saída segura: a migration nunca fica pendurada segurando as vendas.
+## Auditoria de prontidão (16/11/2026)
 
-As 9 variantes sem linha de saldo no seed ficaram fora da abertura e conferem por C5.
+Feita antes de pedir a implantação.
 
-## Reversão (procedimento exato)
+**Falha encontrada e corrigida.** A primeira versão da 0020 bloqueava só o saldo no início e pegava `users`, o livro e
+as variantes no meio da execução. O ensaio de deadlock reproduziu o problema nos 3 cenários: `deadlock detected`.
+Nesses testes a vítima foi a migration, que desfez tudo. Com outro momento de chegada a vítima pode ser a venda, e o
+cliente veria erro no checkout. A versão final usa a técnica de bloqueio descrita em
+[Banco (0020)](#banco-0020): 6/6 cenários sem deadlock, mais carga, reversão e cópia restaurada refeitos.
+
+Também conferido:
+
+- **Commit sem segredo.** Nenhuma senha, token, chave, `.env`, `.local/`, dump ou backup no commit nem rastreado pelo
+  git. A única senha nos testes é a de teste que já existia em `helpers.ts`.
+- **Escritas no saldo.** Só `lib/stock.ts`, além da linha zerada do inventário. Nenhum processo da aplicação conecta
+  como dono do banco. O papel da aplicação é fixo (`APP_DB_USER` = `loja_app` em `config.ts`), então a trava vale em
+  produção. `loja_app` não tem TRUNCATE em nenhuma das 84 tabelas.
+- **Transações.** O migrador aplica cada migration numa transação própria (`BEGIN`/`COMMIT`; `ROLLBACK` no erro), e
+  o `SET LOCAL lock_timeout` vale. Com 0019 e 0020 pendentes, cada uma é atômica.
+- **Trava dos testes de ponta a ponta.** O vitest foi rodado de verdade contra bancos descartáveis e abortou antes de
+  qualquer teste nos 4 casos: banco `_test` sem marca, nome fora do padrão, `NODE_ENV=production`, `DB_NAME_TEST`
+  igual a `DB_NAME`. Os bancos continuaram vazios. O `migrate:test` também recusou os dois casos de nome.
+- **Compatibilidade.** Os 7 commits locais anteriores mexem só na web, na documentação e em `backup.mjs`, sem
+  migration. A 0019 já está no GitHub. `build` da API e da web (`next build`) passam com tudo junto. O código antigo
+  funciona com a 0020 aplicada, e o novo funciona sem ela (exceto os papéis novos), então a janela entre migrar e
+  reiniciar é segura.
+
+## Checklist de implantação (não executar sem autorização expressa)
+
+Antes, no computador:
+
+- [ ] Autorização para **enviar ao GitHub** os 11 commits locais (os 7 anteriores e os 4 do SGLog). O servidor
+      atualiza por `git pull`.
+
+No servidor, como `loja`, em `/srv/loja-embalagens`, em horário de pouco movimento:
+
+1. [ ] Anotar a versão em uso, para a reversão: `git rev-parse HEAD > ~/antes-sglog-fase1.txt`.
+2. [ ] Ver as migrations aplicadas:
+       `sudo -u postgres psql -d loja_prod -Atc "SELECT name FROM schema_migrations ORDER BY name DESC LIMIT 3"`.
+       Se a última for a 0018, a 0019 (importação de produtos) também vai entrar nesta implantação. Ela já está no
+       código publicado; ver [14-importacao-produtos.md](14-importacao-produtos.md).
+3. [ ] `df -h /srv` com espaço para um backup e uma cópia temporária do banco.
+4. [ ] `npm run backup` e `npm run backup:restore-test -- backups/<pasta nova>`.
+5. [ ] `git pull` e `npm ci`.
+6. [ ] `npm run backup:migrate-rehearsal -- backups/<pasta nova>`. **Parar** se:
+       - houver divergência;
+       - os bloqueios precisarem de muitas tentativas;
+       - o saldo ficar bloqueado por mais de 2 s;
+       - a diferença herdada listar SKUs que você não reconhece.
+7. [ ] `npm run migrate`. Guardar os 3 avisos `0020:`. Se sair `tabelas de estoque ocupadas`, nada mudou: repetir.
+8. [ ] `npm run build -w apps/api` e `npm run build -w apps/web`.
+9. [ ] Como administrador: `sudo systemctl restart loja-api loja-web`.
+
+## Checklist de validação depois da implantação
+
+- [ ] `curl -s http://127.0.0.1:4010/ready` e `systemctl status loja-api loja-web` sem erro;
+      `journalctl -u loja-api -n 50` sem erro novo.
+- [ ] Migrations: `SELECT name FROM schema_migrations ORDER BY name DESC LIMIT 1` dá `0020_sglog_depositos`.
+- [ ] Conferência como dono do banco:
+      `sudo -u postgres psql -d loja_prod -c "SELECT check_code, field, variant_id, expected, found FROM stock_reconcile()"`.
+      Deve sair só a linha `run`, com `found = 0`.
+- [ ] Depósito: `SELECT code, is_default FROM warehouses` dá só `PRINCIPAL | t`. Saldo total igual à soma por depósito:
+      `SELECT (SELECT sum(on_hand) FROM stock_balances) = (SELECT sum(on_hand) FROM stock_location_balances)`.
+- [ ] Loja: abrir um produto, pôr no carrinho, conferir o estoque exibido.
+- [ ] Painel: estoque de um produto, um ajuste pequeno com motivo, e o ajuste desfeito; depois repetir a conferência.
+- [ ] Um pedido de teste completo (pagamento de teste, preparo, despacho), se o provedor de teste estiver ativo.
+- [ ] Criar um usuário de cada papel novo e conferir as telas permitidas e as recusadas. Para reverter a 0020 depois,
+      esses usuários precisam trocar de papel ou ser desativados com outro papel.
+- [ ] Marcar em [TESTES-PENDENTES.md](TESTES-PENDENTES.md).
+
+## Plano de reversão
+
+Decidir pelo que falhou:
+
+| O que falhou | O que fazer |
+|---|---|
+| Ensaio (passo 6) | Nada a desfazer: o banco real não foi tocado. Voltar o código (`git checkout $(cat ~/antes-sglog-fase1.txt)` e `npm ci`) ou só não seguir. |
+| `npm run migrate` deu erro | A transação desfez a migration com erro (as anteriores, se houver, ficam). Ler o erro; os serviços continuam no código antigo. Voltar o código como acima se não for continuar. |
+| Build ou serviço com erro, com a 0020 aplicada | Voltar só o código: `git checkout $(cat ~/antes-sglog-fase1.txt)`, `npm ci`, build e restart. **A 0020 pode ficar**: o código antigo funciona com ela (a suíte e o ensaio rodaram assim). |
+| Problema da própria 0020 (conferência com divergência nova, erro de estoque) | Reverter a 0020 (abaixo). |
+| Dado perdido ou corrompido (não esperado: a 0020 não altera linha antiga) | Restauração do backup do passo 4 em **banco novo** e troca só com sua autorização ([BACKUP.md](BACKUP.md) §Restauração de verdade). Nunca restaurar por cima do banco original. |
+
+### Reversão da 0020 (procedimento exato)
 
 A reversão só remove o que a 0020 criou. Ela **não toca** em nenhuma linha de `stock_movements`, `stock_balances`
-nem `stock_reservations`, como o ensaio provou pelo hash. Ela se recusa a rodar se:
+nem `stock_reservations`, como o ensaio provou pelo hash. Ela se recusa a rodar, sem mudar nada, se:
 
 - algum usuário tiver papel `logistics`, `buyer` ou `finance`. Antes, troque o papel deles no painel.
 - algum movimento tiver `warehouse_id` gravado. Isso não acontece na Fase 1.
 
-Passos no servidor, como `loja`, com a 0020 sendo a última migration aplicada:
+Passos no servidor, como `loja`, com a 0020 sendo a **última** migration aplicada:
 
 1. `npm run backup` e `npm run backup:verify -- backups/<pasta nova>`.
-2. Voltar o código para a versão anterior à Fase 1 (o commit antes desta fase). O código da Fase 1 funciona sem a 0020,
-   exceto os papéis novos, mas o esperado é voltar os dois juntos.
-3. `npm run migrate -- down`. Isso reverte **só a última** migration; confira na saída que foi
-   `down: 0020_sglog_depositos`.
-4. `npm run build -w apps/api && npm run build -w apps/web` e `sudo systemctl restart loja-api loja-web`.
-5. Conferir `/ready`, o painel e o estoque de um produto.
+2. `npm run migrate -- down`. Isso reverte **só a última** migration; confira na saída `down: 0020_sglog_depositos`.
+   Se sair `tabelas ocupadas`, nada mudou: repetir.
+3. Voltar o código: `git checkout $(cat ~/antes-sglog-fase1.txt)`, `npm ci`,
+   `npm run build -w apps/api && npm run build -w apps/web` e `sudo systemctl restart loja-api loja-web`.
+4. Conferir `/ready`, o painel e o estoque de um produto.
+   `SELECT name FROM schema_migrations ORDER BY name DESC LIMIT 1` deve dar `0019_importacao_produtos`.
 
-O que se perde: o saldo por depósito (é derivado do livro e pode ser recalculado), a referência de abertura e o
+O `git checkout` de uma versão deixa o repositório sem ramo ("detached HEAD"). Para voltar a atualizar depois:
+`git checkout main` e o roteiro normal.
+
+O que se perde: o saldo por depósito (derivado do livro, recalculado ao reaplicar), a referência de abertura e o
 histórico de conferências. Ao reaplicar a 0020, uma nova abertura é tirada.
-
-## Implantação (não executada — aguarda autorização expressa)
-
-Pré-condições:
-
-- conferir no servidor que a última migration aplicada é a `0019_importacao_produtos`, consultando
-  `schema_migrations`;
-- espaço em disco para um backup e uma cópia temporária.
-
-1. `npm run backup` e `npm run backup:restore-test -- backups/<pasta nova>`.
-2. `git pull` e `npm ci`.
-3. **Ensaio na cópia do servidor**: `npm run backup:migrate-rehearsal -- backups/<pasta nova>`. Ele restaura num banco
-   temporário (`loja_ensaio`), aplica a 0020 nele, mostra o tempo de bloqueio, a diferença herdada (quantidade,
-   valor pelo custo médio, até 20 SKUs) e a conferência, e apaga o banco temporário. Ele usa `RESTORE_ADMIN_USER` e
-   `RESTORE_ADMIN_PASSWORD`, como o `restore-test`. **Não continuar se der divergência ou se o bloqueio passar de 2 s.**
-   Se houver diferença herdada, avaliar antes os SKUs listados.
-4. `npm run migrate` em horário de pouco movimento. Guardar os dois avisos `0020:` da saída.
-5. `npm run build -w apps/api && npm run build -w apps/web` e `sudo systemctl restart loja-api loja-web`.
-6. Conferir:
-   - `/ready`;
-   - o painel;
-   - um pedido de teste;
-   - como dono do banco: `SELECT check_code, field, variant_id, expected, found FROM stock_reconcile();`. Deve
-     sair só a linha `run`, com `found = 0`.
 
 ## Riscos restantes
 
-- **Manutenção como dono do banco** continua podendo mudar saldo sem movimento. A trava vale só para o `loja_app`;
-  nesse caso a conferência aponta (C1/C2/C3/C5), mas não impede. É intencional, para não quebrar manutenção e seed.
-- **A conferência não roda sozinha.** Na Fase 1 ela é executada à mão (ou pelos testes). Agendamento e tela ficam para
-  uma fase seguinte.
-- **Bloqueio durante a migration.** No ensaio local ficou em 120 a 167 ms, com 213 variantes. Em produção depende do
-  tamanho real, que será medido pelo `migrate-rehearsal` no servidor. O teto é de 10 s, e aí ela desiste sozinha.
-- **Diferença herdada em produção** ainda não é conhecida: o ensaio no servidor (passo 3) mostra a lista antes da
-  migration real.
-- **Bancos de testes locais antigos** sem a marca fazem a suíte se recusar a rodar até `npm run migrate:test`. É o
-  comportamento esperado.
-- **`loja_dev` local** não foi migrado para a 0020 nesta fase, para não interferir com a outra sessão de testes.
-  Rode `npm run migrate` quando quiser.
-- **TRUNCATE ignora os gatilhos de imutabilidade.** Isso já valia para as tabelas imutáveis anteriores. Só o dono do
-  banco pode executar TRUNCATE; o `loja_app` não pode.
+| Risco | Gravidade | Tratamento |
+|---|---|---|
+| Diferença herdada em produção ainda desconhecida | Média | O passo 6 mostra quantidade, valor e SKUs antes da migration real; você decide se aceita ou acerta antes, com movimento |
+| Tempo de bloqueio em produção ainda não medido | Baixa | Local: 143 a 168 ms com 213 variantes. O passo 6 mede com o tamanho real; teto de 10 s com desistência limpa |
+| Manutenção como dono do banco ainda muda saldo sem movimento | Baixa | Intencional (seed, manutenção); a conferência aponta (C1/C2/C3/C5) |
+| A conferência não roda sozinha | Baixa | Na Fase 1 é manual; agendamento e tela ficam para fase seguinte |
+| `next build` sobrescreve o `.next` com o `loja-web` no ar | Baixa (já existia) | Mesmo procedimento das implantações anteriores; o restart vem logo depois |
+| Reversão bloqueia a leitura de saldo e variantes | Baixa | Menos de 1 s; só se a reversão for necessária |
+| Bancos de testes locais antigos sem a marca | Baixa | A suíte se recusa até `npm run migrate:test`; comportamento esperado |
+| TRUNCATE ignora os gatilhos de imutabilidade | Baixa (já existia) | Só o dono do banco pode; `loja_app` não tem TRUNCATE em nenhuma tabela |
+| `loja_dev` local não migrado para a 0020 | Nenhuma em produção | Não migrei para não interferir na outra sessão de testes; `npm run migrate` quando quiser |

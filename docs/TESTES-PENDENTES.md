@@ -206,9 +206,12 @@ feito só com os simulados.
 ## SGLog Fase 1 — depósitos e conferência do estoque ([15-sglog-fase1.md](15-sglog-fase1.md))
 
 Implantação **só com autorização expressa**. Testado localmente em 16/11/2026: suíte 304/304 e ensaio com dados de
-demonstração (bloqueio de 120 a 167 ms, 0 divergência e reversão com o histórico idêntico).
+demonstração (bloqueio de 120 a 168 ms, 0 divergência e reversão com o histórico idêntico). Auditoria de prontidão
+na mesma data: deadlock da primeira versão corrigido; checklists de implantação, validação e reversão em
+[15-sglog-fase1.md](15-sglog-fase1.md).
 
-- [ ] **Servidor** Conferir que a última migration aplicada em produção é a `0019_importacao_produtos`.
+- [ ] **Servidor** Conferir a última migration aplicada em produção. Se for a 0018, a 0019 (importação de
+      produtos) entra junto nesta implantação.
 - [ ] **Servidor** Espaço em disco para um backup e um banco temporário do tamanho do de produção.
 - [ ] **Servidor** `npm run backup:migrate-rehearsal -- backups/<pasta>` com a cópia de produção. Anotar o tempo de
       bloqueio, a diferença herdada (quantidade, valor e SKUs) e o resultado da conferência.

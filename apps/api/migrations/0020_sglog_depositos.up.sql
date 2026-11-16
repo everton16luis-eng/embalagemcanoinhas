@@ -4,11 +4,39 @@
 -- os marketplaces e os relatorios leem, e moveStock() continua sendo o unico caminho da aplicacao.
 -- O livro (stock_movements) nao e reescrito: as linhas antigas ficam com warehouse_id nulo (= deposito padrao).
 
--- Mesma ordem de bloqueio da aplicacao (saldo total antes do livro): sem deadlock com vendas em andamento.
--- SHARE espera as gravacoes de saldo em curso terminarem e segura as novas ate o fim da migracao.
+-- Bloqueios, todos antes de qualquer alteracao, sem nunca esperar um segurando outro (sem deadlock com vendas).
+-- A aplicacao pode tocar users (FK), stock_movements (idempotencia) ou product_variants ANTES do saldo, e
+-- grava o saldo antes do livro. Por isso: espera so o saldo (sem segurar nada); as demais tabelas vem com
+-- NOWAIT; se alguma estiver ocupada, a subtransacao desfaz e solta tudo, espera 20 ms e tenta de novo.
+-- Teto de 10 s: depois disso a migration desiste e nada muda. O saldo fica bloqueado para gravacao ate o COMMIT.
+--   stock_balances    SHARE ROW EXCLUSIVE  retrato consistente + CREATE TRIGGER (leitura da loja continua)
+--   stock_movements   ACCESS EXCLUSIVE     ADD COLUMN e CREATE TRIGGER
+--   product_variants  SHARE ROW EXCLUSIVE  FKs novas (leitura continua)
+--   users             ACCESS EXCLUSIVE     troca do CHECK de papeis
 SET LOCAL lock_timeout = '10s';
+DO $$
+DECLARE deadline timestamptz := clock_timestamp() + interval '10 seconds'; tries integer := 0; waited numeric;
+BEGIN
+  LOOP
+    BEGIN
+      LOCK TABLE stock_balances IN SHARE ROW EXCLUSIVE MODE;
+      LOCK TABLE stock_movements IN ACCESS EXCLUSIVE MODE NOWAIT;
+      LOCK TABLE product_variants IN SHARE ROW EXCLUSIVE MODE NOWAIT;
+      LOCK TABLE users IN ACCESS EXCLUSIVE MODE NOWAIT;
+      EXIT;
+    EXCEPTION WHEN lock_not_available THEN
+      tries := tries + 1;
+      IF clock_timestamp() > deadline THEN
+        RAISE EXCEPTION '0020: tabelas de estoque ocupadas por mais de 10 s (% tentativas); nada foi alterado, tente de novo', tries
+          USING ERRCODE = 'lock_not_available';
+      END IF;
+      PERFORM pg_sleep(0.02);
+    END;
+  END LOOP;
+  waited := round(extract(epoch FROM clock_timestamp() - (deadline - interval '10 seconds')) * 1000);
+  RAISE NOTICE '0020: bloqueios obtidos em % ms (% nova(s) tentativa(s))', waited, tries;
+END $$;
 SELECT set_config('sglog.t0', clock_timestamp()::text, true);
-LOCK TABLE stock_balances IN SHARE MODE;
 
 -- Depositos. A Fase 1 cria so o padrao, sem endereco (informado pelo painel na Fase 3; nada inventado).
 CREATE TABLE warehouses (

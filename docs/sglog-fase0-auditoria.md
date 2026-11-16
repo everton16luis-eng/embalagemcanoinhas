@@ -22,7 +22,7 @@ A auditoria foi só leitura: nenhuma migração foi executada e nenhum dado foi 
 
 ### Restrições permanentes da implementação
 
-- Os 287 testes atuais continuam passando em todas as fases, sem regressão. Linha de base conferida em 16/11/2026: 20 arquivos, 287/287, banco `loja_test`.
+- Os 287 testes atuais continuam passando em todas as fases, sem regressão. Linha de base: 20 arquivos de teste e 287 testes, 287 passando (§1, "Testes existentes").
 - Nenhum teste, carga, seed ou homologação roda no banco de produção (`loja_prod`). A trava técnica está na §12.
 - Contratação de frete e compra de etiqueta reais ficam desligadas até autorização expressa (Fase 8).
 - Checkout, pagamentos, emissão fiscal e funções existentes não mudam sem necessidade técnica demonstrada e registrada neste documento.
@@ -162,7 +162,7 @@ A auditoria foi só leitura: nenhuma migração foi executada e nenhum dado foi 
 
 ### Testes existentes
 
-- **Suíte vitest** em `apps/api/test`, com 21 arquivos e cerca de 287 casos.
+- **Suíte vitest** em `apps/api/test`: **20 arquivos de teste (`*.test.ts`) e 287 testes, todos passando**. Executada em 16/11/2026 às 09:12 no banco `loja_test` local; o vitest relatou `Test Files 20 passed (20)` e `Tests 287 passed (287)` em 164 s. A pasta também tem `helpers.ts`, que é apoio e não arquivo de teste.
   - Roda contra o banco `loja_test`. O pool do dono prepara os cenários e a API conecta como `loja_app`, o que prova o que ela **não** consegue fazer.
   - Os provedores Fake são injetados.
   - `stock.test.ts` tem 12 casos (concorrência de reserva, imutabilidade e custo médio).
@@ -219,7 +219,7 @@ A auditoria foi só leitura: nenhuma migração foi executada e nenhum dado foi 
 13. **Painel.**
     - Menu LOGÍSTICA com 10 seções.
     - Rotas `/painel/logistica/*`. As telas atuais de Estoque, Fornecedores, Compras e Inventário podem ficar como estão ou ser movidas para baixo de LOGÍSTICA, sem duplicar.
-14. **Reconciliação de estoque.** A função `stock_reconcile()` compara a soma do livro com o saldo e grava o resultado em `stock_reconciliations`. A correção é por lançamento compensatório.
+14. **Conferência de estoque.** A função `stock_reconcile()` confere o saldo contra a referência de abertura e os movimentos posteriores (§5.1.1) e grava o resultado em `stock_reconciliations`. A correção é física, por inventário com justificativa, nunca editando o histórico.
 
 ---
 
@@ -239,7 +239,7 @@ A auditoria foi só leitura: nenhuma migração foi executada e nenhum dado foi 
 | R10 | **Inventário é uma contagem aberta no sistema todo** | índice `inventory_counts_one_open` | Trocar por uma aberta por depósito |
 | R11 | **`supplier_products ON DELETE CASCADE`**, `GRANT DELETE` em fornecedores e ofertas, e PUT de ofertas que apaga e regrava | 0004, `suppliers.ts` | Trocar para `RESTRICT`, revogar DELETE e usar exclusão lógica (`status`). O PUT de ofertas passa a fazer *upsert* e gravar histórico de preço por gatilho |
 | R12 | **WhatsApp `UNIQUE (order_id, event)`** só permite um aviso de despacho por pedido | 0010 | Adicionar `shipment_id` e trocar a unicidade para (pedido, evento, remessa). O modelo aprovado na Meta continua o mesmo |
-| R13 | **Pedidos de marketplace** (Mercado Livre e Shopee) usam a logística do marketplace | `marketplaces.ts` | Proposta: entram no SGLog só para separação e conferência do estoque próprio. Frete e etiqueta ficam no marketplace. **Confirmar com você** |
+| R13 | **Pedidos de marketplace** (Mercado Livre e Shopee) usam a logística do marketplace | `marketplaces.ts` | **Decidido (D4).** Entram no SGLog só para separação e conferência do estoque próprio (Fases 5 e 7). Não recebem cotação, contratação de frete, etiqueta nem rastreio do SGLog: frete, etiqueta e rastreio continuam com o marketplace. A remessa registra só o código informado pelo marketplace, quando houver |
 | R14 | **Cotação tem origem fixa** no CEP da empresa | `quoteShipping` | O adaptador recebe a origem da remessa (depósito ou fornecedor). **Não presumir** que o Melhor Envio, a Frenet ou a Kangu aceitam terceiro como remetente: isso é configuração por adaptador, conferida na documentação oficial antes de ativar |
 | R15 | **Custos externos.** Compra de frete e etiqueta custam dinheiro | — | Sem contratação nem chamada paga sem sua autorização. Primeiro, operação manual mais adaptador Fake. Os adaptadores reais ficam atrás de chave de configuração desligada |
 | R16 | **Numeração de migrações e sessões paralelas.** 0019 está no GitHub, mas não está confirmada no servidor (§6.0.1) | — | SGLog a partir de 0020, depois de a 0019 estar confirmada no servidor |
@@ -250,7 +250,7 @@ A auditoria foi só leitura: nenhuma migração foi executada e nenhum dado foi 
 
 ## 5. Proposta de estrutura de banco de dados
 
-Este é o **modelo-alvo** completo, mostrado para conferir a coerência do conjunto. As subseções 5.1 a 5.7 descrevem o destino; elas **não** são o conteúdo de uma migração. A divisão real por fase está na §6: cada fase cria só o que ela usa.
+Este é o **modelo-alvo**. Cada subseção corresponde a **uma** migração do cronograma da §6.0, com o mesmo número, nome e fase. Nenhuma migração cria tabela de outra fase. Os números são os previstos hoje e só mudam se outra entrega criar migração antes; nesse caso, as duas seções são renumeradas juntas.
 
 Segue as convenções do projeto:
 
@@ -261,40 +261,80 @@ Segue as convenções do projeto:
 - CHECKs, `created_at`/`updated_at`, `forbid_mutation` nos históricos;
 - GRANTs mínimos para `loja_app`.
 
-### 5.1 Estoque (0020_sglog_estoque)
+### 5.1 Fase 1 — `0020_sglog_depositos`
 
 ```
 warehouses
-  id, code UNIQUE, name, kind ('own'), cep, street, number, complement, district, city, uf,
+  id, code UNIQUE, name, cep, street, number, complement, district, city, uf (endereço anulável),
   is_default (UNIQUE parcial: um só), active, created_at, updated_at
-  -- a migração cria o depósito padrão "PRINCIPAL" (endereço preenchido pelo painel, sem inventar)
+  -- cria só o depósito padrão "PRINCIPAL", sem endereço (preenchido pelo painel na Fase 3)
+  -- loja_app: SELECT
 
 stock_location_balances                    -- saldo por depósito × variante
-  warehouse_id, variant_id (PK composta),
-  on_hand ≥0, reserved ≥0, blocked ≥0, damaged ≥0, in_transit ≥0,
-  bin text (localização), min_qty, max_qty (CHECK max ≥ min), updated_at
-  -- disponível = on_hand - reserved (mesma regra de hoje)
+  warehouse_id, variant_id (PK composta), on_hand ≥0, reserved ≥0, updated_at
+  -- mantida SÓ pelo gatilho stock_movements_location (SECURITY DEFINER); loja_app: SELECT
 
-stock_balances (existente)                 -- continua sendo o TOTAL por variante (on_hand e reserved = soma dos depósitos)
+stock_movements (existente) + warehouse_id NULL (nulo = depósito padrão; linhas antigas não são reescritas)
 
-stock_movements (existente) + colunas:
-  warehouse_id NULL (nulo = histórico anterior, depósito padrão),
-  counter_warehouse_id (destino/origem na transferência),
-  blocked_delta, damaged_delta, in_transit_delta (default 0),
-  document_ref text, reverses_id bigint REFERENCES stock_movements (estorno),
-  kind += 'transfer_out','transfer_in','block','unblock','quarantine','release_quarantine','reversal'
-  source_type += 'fulfillment','shipment','return','supplier_request'
-  CHECK: estorno exige reverses_id e motivo; transferência exige counter_warehouse_id
+stock_opening_balances (imutável)          -- referência de abertura da conferência (§5.1.1)
+  variant_id PK, warehouse_id, on_hand, reserved, last_movement_id (maior id do livro na abertura, ou NULL),
+  ledger_on_hand, ledger_reserved, reservations_active, taken_at
 
-stock_reservations (existente) + colunas: warehouse_id, allocation_id
+stock_reconciliations (imutável)           -- cada execução e cada divergência encontrada
+  id, run_id, variant_id NULL, warehouse_id NULL, check_code, expected, found, created_at, created_by
 
-inventory_counts + warehouse_id; índice "uma aberta" passa a ser por depósito
+stock_reconcile()                          -- só lê e grava em stock_reconciliations; não corrige saldo
 
-stock_reconciliations (imutável)           -- resultado de cada conferência livro × saldo
-  id, warehouse_id, variant_id, ledger_on_hand, balance_on_hand, diff, checked_at, checked_by, fixed_by_movement_id
+users.role: CHECK passa a aceitar 'logistics', 'buyer', 'finance'
 ```
 
-### 5.2 Fornecedores (0021_sglog_fornecedores)
+#### 5.1.1 Conferência do estoque e referência de abertura
+
+**O que o código garante hoje (conferido por inspeção, §13.2):**
+
+- O único lugar do código da API que altera `stock_balances` é `moveStock()` (`lib/stock.ts:81`). Ele grava o movimento na mesma transação, com `on_hand_after` e `reserved_after` iguais ao saldo resultante.
+- As demais escritas são `INSERT … ON CONFLICT DO NOTHING` com saldo zero (`lib/stock.ts:76` e `:135`, `modules/inventory.ts:127`), que não criam saldo sem movimento.
+- A importação por planilha lança o estoque inicial por `moveStock` (`modules/product-imports.ts:251`). O inventário também ajusta por `moveStock`.
+- `loja_app` não tem DELETE em `stock_balances` e não consegue UPDATE nem DELETE em `stock_movements`.
+- **Conclusão:** para tudo o que foi gravado pela aplicação, Σ `on_hand_delta` = `on_hand` e Σ `reserved_delta` = `reserved` em cada variante.
+
+**Onde essa garantia não vale (por isso a soma pura não basta):**
+
+1. **Seed de demonstração.** `demo:seed` (`db/demo.ts:862-866`) grava movimentos e saldos **direto, em lote**, como dono do banco. A quantidade é calculada em ponto flutuante em JavaScript e arredondada por linha para `numeric(14,3)`. Em unidades fracionadas (KG, L, M), a soma das linhas arredondadas pode diferir do saldo gravado. `demo:reset` apaga tudo com `TRUNCATE`, mas não sei se houve seed em produção depois do último reset.
+2. **SQL manual como dono do banco** no servidor. Não há como descartar isso sem consultar o banco.
+3. **Restauração de backup parcial ou manual.** Mesmo caso.
+
+Se `stock_reconcile()` comparasse sempre o saldo com a soma de **todo** o histórico, uma diferença antiga apareceria como divergência em toda execução, para sempre. Seria uma divergência artificial, que ninguém conseguiria corrigir sem mexer no histórico ou no saldo real.
+
+**Proposta: referência de abertura, sem alterar o histórico.**
+
+- **Abertura.** Na migração 0020, dentro da mesma transação e com a tabela de saldos bloqueada (`LOCK TABLE stock_balances IN SHARE MODE`), grava-se **uma linha por variante** em `stock_opening_balances`:
+  - o saldo daquele instante;
+  - o maior `id` do livro naquele instante;
+  - a soma do livro até ali;
+  - a soma das reservas ativas.
+
+  É um retrato, somente inclusão e imutável. Nenhum movimento é criado ou alterado.
+- **Diferença herdada.** `ledger_on_hand − on_hand` (e o mesmo para `reserved`) registra a diferença que já existia antes do SGLog.
+  - Ela é mostrada **uma vez**, no ensaio (§11.2) e no relatório da fase, como "diferença herdada".
+  - **Não entra** nas execuções seguintes como divergência nova.
+  - Você decide o tratamento. A correção, se houver, é física: contagem de inventário na Fase 3, que lança movimento `inventory` com justificativa. Nunca se edita o histórico.
+- **Verificações de `stock_reconcile()` a partir da abertura.** Para cada variante:
+
+| Código | Verificação |
+|---|---|
+| `C1` | `stock_balances.on_hand` = abertura.`on_hand` + Σ `on_hand_delta` dos movimentos com `id >` abertura.`last_movement_id` (e o mesmo para `reserved`) |
+| `C2` | `stock_balances` = Σ `stock_location_balances` da variante |
+| `C3` | Se houve movimento depois da abertura: `on_hand_after` e `reserved_after` do último movimento = saldo atual |
+| `C4` | Σ `qty` das reservas ativas = `reserved` (comparado com a mesma diferença registrada na abertura) |
+| `C5` | Variante sem linha de abertura (criada depois) só pode ter saldo vindo de movimentos: abertura implícita zero |
+
+- **Corrida com a migração.** O `LOCK` e a mesma transação garantem que nenhum movimento entra entre o retrato e a gravação do `last_movement_id`. A janela de bloqueio é curta: só a cópia dos saldos.
+- **Resultado esperado.**
+  - Em `loja_test` e em banco limpo, a diferença herdada é zero.
+  - Em produção, o valor real só se conhece no ensaio (§11.2). Ele é relatado antes da aplicação.
+
+### 5.2 Fase 2 — `0021_sglog_fornecedores`
 
 ```
 suppliers + trade_name, cep, street, number, complement, district,
@@ -317,11 +357,32 @@ supplier_availability (imutável; a última linha é a vigente)
   -- "vencida" = valid_until < now(): o motor sinaliza confirmação manual
 ```
 
-### 5.3 Atendimento e remessas (0022_sglog_atendimento)
+### 5.3 Fase 3 — `0022_sglog_estoque`
+
+```
+stock_location_balances + blocked ≥0, damaged ≥0, in_transit ≥0, bin text, min_qty, max_qty (CHECK max ≥ min)
+  -- disponível = on_hand - reserved (mesma regra de hoje)
+
+stock_movements + counter_warehouse_id, blocked_delta, damaged_delta, in_transit_delta (default 0),
+  document_ref text, reverses_id bigint REFERENCES stock_movements (estorno)
+  kind += 'transfer_out','transfer_in','block','unblock','quarantine','release_quarantine','reversal'
+  CHECK: estorno exige reverses_id e motivo; transferência exige counter_warehouse_id
+
+stock_reservations + warehouse_id
+inventory_counts + warehouse_id; índice "uma aberta" passa a ser por depósito
+warehouses: loja_app ganha INSERT/UPDATE (cadastro de depósitos e endereço pelo painel)
+stock_reconcile(): verificações C1–C5 passam a cobrir também os saldos novos
+```
+
+### 5.4 Fase 4 — `0023_sglog_distribuicao`
 
 ```
 orders + logistics_status ('awaiting','analysis','processing','partially_shipped','shipped',
-                           'partially_delivered','completed','canceled') NULL até pago
+                           'partially_delivered','completed','canceled') NULL até pago   (D1)
+
+logistics_settings (linha única)           -- trava do dropshipping (D3)
+  dropship_status ('blocked','enabled') DEFAULT 'blocked', fiscal_validator_name, validated_by, validated_at
+  CHECK: 'enabled' exige validador, autor e data
 
 fulfillments                               -- um atendimento por origem
   id, order_id, source_kind ('own','supplier'), warehouse_id NULL, supplier_id NULL,
@@ -336,25 +397,23 @@ fulfillment_allocations                    -- item × origem × quantidade
   -- gatilho: soma das alocações ativas de um item ≤ packs × base_qty_per_pack do item
 
 allocation_changes (imutável)              -- troca de origem antes da confirmação, com justificativa
+stock_reservations + allocation_id
+```
 
+### 5.5 Fase 5 — `0024_sglog_remessas`
+
+```
 shipments (existente): remover UNIQUE(order_id); + fulfillment_id, status (12 estados da spec),
-  origin_cep, service, freight_cost_cents, packaging_cost_cents, label_id, posted_at, version, updated_at
+  origin_cep, service, freight_cost_cents, packaging_cost_cents, posted_at, version, updated_at
   -- linhas antigas: fulfillment_id nulo e status derivado (shipped/delivered)
 
 shipment_items      (shipment_id, allocation_id, base_qty) PK composta
-shipment_volumes    (shipment_id, n, weight_g, length_mm, width_mm, height_mm)
-shipment_checks     (imutável) conferência item a item: shipment_id, allocation_id, qty_checked, checked_by, checked_at
 shipment_events     (imutável) shipment_id, status, source ('manual','carrier'), provider_event_id,
                     occurred_at, note, UNIQUE (shipment_id, provider_event_id) → rastreio duplicado é ignorado
-
-supplier_requests
-  id, number (sequência), fulfillment_id, supplier_id, status (8 estados da spec),
-  ship_to_snapshot jsonb, due_at, notes, sent_at, confirmed_at, supplier_ship_by, tracking_code,
-  supplier_invoice_key, version
-supplier_request_events (imutável): status, note, divergence jsonb, actor_id
+whatsapp_messages + shipment_id; unicidade (order_id, event, coalesce(shipment_id))
 ```
 
-### 5.4 Compras (0023_sglog_compras)
+### 5.6 Fase 6 — `0025_sglog_compras`
 
 ```
 purchase_orders + purpose ('replenishment','fulfillment'), fulfillment_id NULL, warehouse_id,
@@ -366,7 +425,20 @@ purchase_receipt_issues (imutável): receipt_id, item_id, kind ('quantity','qual
 
 O recebimento continua sendo a própria conferência. O estoque só entra quando o recebimento conferido é registrado, que é o comportamento de hoje.
 
-### 5.5 Frete e integrações (0024_sglog_frete)
+### 5.7 Fase 7 — `0026_sglog_expedicao`
+
+```
+shipment_volumes    (shipment_id, n, weight_g, length_mm, width_mm, height_mm)
+shipment_checks     (imutável) conferência item a item: shipment_id, allocation_id, qty_checked, checked_by, checked_at
+
+supplier_requests
+  id, number (sequência), fulfillment_id, supplier_id, status (8 estados da spec),
+  ship_to_snapshot jsonb, due_at, notes, sent_at, confirmed_at, supplier_ship_by, tracking_code,
+  supplier_invoice_key, version
+supplier_request_events (imutável): status, note, divergence jsonb, actor_id
+```
+
+### 5.8 Fase 8 — `0027_sglog_frete`
 
 ```
 carrier_providers   (code PK: 'manual','melhorenvio','frenet','kangu'), enabled, capabilities jsonb
@@ -374,14 +446,14 @@ carrier_providers   (code PK: 'manual','melhorenvio','frenet','kangu'), enabled,
 shipping_quotes     shipment_id, provider, service, price_cents, days, origin_cep, dest_cep, expires_at, chosen
 shipping_labels     shipment_id, provider, external_id, status ('requested','purchased','printed','canceled','failed'),
                     cost_cents, idempotency_key UNIQUE, tracking_code, created_by
+shipments + label_id
 integration_jobs    id, kind, ref_id, idempotency_key UNIQUE, status ('queued','running','done','failed','dead'),
                     attempts, next_attempt_at, last_error (≤500, sem dados pessoais), created_at, updated_at
 integration_logs    (imutável) job_id, provider, operation, http_status, duration_ms, ok, created_at  -- sem corpo
 logistics_webhook_events  provider, dedupe_key, payload, signature_valid, processed_at, error  UNIQUE (provider, dedupe_key)
-whatsapp_messages + shipment_id; unicidade (order_id, event, coalesce(shipment_id))
 ```
 
-### 5.6 Ocorrências e devoluções (0025_sglog_ocorrencias)
+### 5.9 Fase 9 — `0028_sglog_ocorrencias`
 
 ```
 logistic_occurrences  id, order_id, shipment_id, order_item_id NULL, allocation_id NULL,
@@ -395,7 +467,7 @@ return_items          return_id, allocation_id, base_qty, condition ('good','dam
 
 O reembolso é **registro** do que foi feito no Mercado Pago. O SGLog não move dinheiro.
 
-### 5.7 Custos (0026_sglog_custos)
+### 5.10 Fase 10 — `0029_sglog_custos`
 
 ```
 payments + fee_cents NULL (informado/obtido do provedor)
@@ -406,22 +478,31 @@ VIEWs: v_shipment_costs, v_order_margin, v_margin_by_product, v_margin_by_suppli
 
 A margem só é chamada de "margem de contribuição". "Lucro líquido" não aparece enquanto `cost_settings` não estiver validado.
 
-### 5.8 Permissões e papéis (sem migração de dados)
+### 5.11 Permissões e papéis (código, sem migração de dados)
 
-- **Novas permissões em `PERMISSIONS`:**
-  - `logistics.view`, `logistics.manage`, `logistics.allocate`;
-  - `stock.transfer`, `stock.adjust` (MFA);
-  - `suppliers.view`, `suppliers.manage`;
-  - `purchases.approve`;
-  - `shipping.labels` (MFA: gasta dinheiro);
-  - `returns.manage`, `costs.view`.
-- **Papéis.** Ampliar o CHECK de `users.role` com `logistics` (gerente de logística), `buyer` (comprador) e `finance` (financeiro).
+- **Fase 1.** Só os papéis novos, com permissões que já existem (§10.3.1). Nenhuma permissão nova.
+- **Permissões novas, cada uma na fase da sua tela ou rota:**
+
+| Fase | Permissões |
+|---|---|
+| 2 | `suppliers.view`, `suppliers.manage` |
+| 3 | `stock.transfer` e `stock.adjust` (MFA) |
+| 4 | `logistics.view`, `logistics.allocate` |
+| 5 | `logistics.manage` |
+| 6 | `purchases.approve` (MFA) e `purchases.receive` (separa o recebimento de `purchases.manage`) |
+| 8 | `shipping.labels` (MFA: gasta dinheiro) |
+| 9 | `returns.manage` |
+| 10 | `costs.view` |
+
 - **Correspondência com os perfis da especificação:**
 
 | Perfil da especificação | Papel no sistema |
 |---|---|
 | Administrador | `owner` e `manager` |
+| Gerente de logística | `logistics` |
 | Estoquista | `stock` |
+| Comprador | `buyer` |
+| Financeiro | `finance` |
 | Atendimento | `sales` |
 | Expedição | `shipping` |
 
@@ -435,14 +516,14 @@ Uma migração por fase, criada só quando a fase começa. Os números são prev
 
 | Fase | Migração | Conteúdo, e somente isto |
 |---|---|---|
-| 1 | `0020_sglog_depositos` | `warehouses` (depósito padrão), `stock_location_balances` (só `on_hand` e `reserved`) mantida por gatilho, `stock_movements.warehouse_id`, `stock_reconciliations` + `stock_reconcile()`, papéis novos no CHECK de `users.role` |
+| 1 | `0020_sglog_depositos` | `warehouses` (depósito padrão), `stock_location_balances` (só `on_hand` e `reserved`) mantida por gatilho, `stock_movements.warehouse_id`, `stock_opening_balances`, `stock_reconciliations` + `stock_reconcile()`, papéis novos no CHECK de `users.role` |
 | 2 | `0021_sglog_fornecedores` | Campos novos de `suppliers`, `supplier_contacts` e `supplier_products`; `supplier_price_history`; `supplier_availability`; FK `RESTRICT` e revogação de DELETE |
 | 3 | `0022_sglog_estoque` | Saldos bloqueado, avariado e em trânsito; tipos novos de movimento (transferência, bloqueio, quarentena, estorno); `document_ref` e `reverses_id`; localização, mínimo e máximo por depósito; inventário por depósito; `stock_reservations.warehouse_id`; escrita em `warehouses` |
 | 4 | `0023_sglog_distribuicao` | `orders.logistics_status`; `fulfillments`; `fulfillment_allocations`; `allocation_changes`; `stock_reservations.allocation_id`; trava de dropshipping (`logistics_settings`, D3) |
 | 5 | `0024_sglog_remessas` | `shipments` sem UNIQUE e com campos novos; `shipment_items`; `shipment_events`; `whatsapp_messages.shipment_id` |
 | 6 | `0025_sglog_compras` | Finalidade, aprovação e pagamento da compra; `purchase_receipts.warehouse_id`; `purchase_receipt_issues` |
 | 7 | `0026_sglog_expedicao` | `shipment_volumes`; `shipment_checks`; `supplier_requests`; `supplier_request_events` |
-| 8 | `0027_sglog_frete` | `carrier_providers`; `shipping_quotes`; `shipping_labels`; `integration_jobs`; `integration_logs`; `logistics_webhook_events` |
+| 8 | `0027_sglog_frete` | `carrier_providers`; `shipping_quotes`; `shipping_labels`; `shipments.label_id`; `integration_jobs`; `integration_logs`; `logistics_webhook_events` |
 | 9 | `0028_sglog_ocorrencias` | `logistic_occurrences`; `occurrence_events`; `returns`; `return_items` |
 | 10 | `0029_sglog_custos` | `payments.fee_cents`; `cost_settings`; visões de margem |
 | 11 | — | Sem tabela nova prevista. Só correções que a revisão encontrar, em migração própria |
@@ -460,7 +541,7 @@ Uma migração por fase, criada só quando a fase começa. Os números são prev
 1. **Pré-requisito.** A 0019 (importação) precisa estar aplicada no servidor (§6.0.1). Só depois vem a 0020, e daí em diante uma migração por fase, cada uma com `.down.sql`.
 2. **Só migrações aditivas.** Colunas novas são anuláveis ou têm *default*. Nenhuma tabela existente é apagada. A única regra relaxada é `shipments.order_id UNIQUE`, e os CHECKs de `kind`, `source_type` e `status` são ampliados.
 3. **Sem reescrever histórico.** `stock_movements` antigos ficam com `warehouse_id` nulo (R7).
-4. **Carga inicial de `stock_location_balances`.** Uma linha por variante no depósito padrão, copiando `stock_balances.on_hand` e `reserved`. Os baldes novos começam em zero. A reconciliação roda logo depois e o resultado fica gravado.
+4. **Carga inicial (Fase 1).** Uma linha por variante no depósito padrão, copiando `stock_balances.on_hand` e `reserved`, e a referência de abertura (§5.1.1), na mesma transação. Os saldos bloqueado, avariado e em trânsito só nascem na Fase 3 (`0022`), começando em zero.
 5. **Fornecedores.**
    - `status` é preenchido a partir de `active`.
    - `variant_id` das ofertas é preenchido a partir da embalagem.
@@ -576,8 +657,6 @@ O cenário roda só em `loja_test` ou num banco de homologação, nunca em produ
 
 ---
 
----
-
 ## 10. Escopo exato da Fase 1: fundação (aguarda autorização)
 
 **Objetivo.** Criar a base de depósitos e de conferência do estoque sem mudar o comportamento de nenhuma função existente. Ao final da fase, a loja, o checkout, os pagamentos, a NF-e, os marketplaces e o painel funcionam exatamente como antes. A única novidade visível são os três papéis novos na tela de Usuários.
@@ -596,16 +675,20 @@ O cenário roda só em `loja_test` ou num banco de homologação, nunca em produ
   - Aplica `on_hand_delta` e `reserved_delta` ao saldo de `coalesce(warehouse_id, depósito padrão)`.
   - Assim, **`lib/stock.ts` não muda**: todo movimento atual já passa a alimentar o saldo por depósito.
   - Ordem de bloqueio: o saldo total é bloqueado antes, por `moveStock`; o do depósito, depois, pelo gatilho. Como existe um só caminho, não há risco de deadlock.
-- **Carga inicial.** Uma linha por variante no depósito padrão, copiada de `stock_balances` (`on_hand`, `reserved`), na mesma transação da migração.
+- **Carga inicial.** Uma linha por variante no depósito padrão, copiada de `stock_balances` (`on_hand`, `reserved`), na mesma transação da migração, com `stock_balances` bloqueada em `SHARE MODE`.
+- **`stock_opening_balances`.** É a referência de abertura (§5.1.1).
+  - É gravada na mesma transação: saldo, último `id` do livro, soma do livro até ali e soma das reservas ativas, por variante.
+  - É imutável.
+  - Não cria nem altera movimento.
 - **`stock_reconciliations` e `stock_reconcile()`.**
   - A tabela é imutável (`forbid_mutation`).
-  - A função compara, por variante: (a) `stock_balances` com a soma dos depósitos; (b) `stock_balances.on_hand` e `reserved` com a soma dos deltas do livro; (c) o saldo com o `on_hand_after` e `reserved_after` do último movimento.
-  - Ela devolve as divergências e grava a execução. **Não corrige nada**: correção é por lançamento compensatório, na Fase 3.
+  - A função aplica as verificações C1–C5 da §5.1.1, a partir da abertura. A diferença herdada não se repete como divergência.
+  - Ela devolve as divergências e grava a execução. **Não corrige nada**: correção é por inventário com justificativa, na Fase 3.
   - `loja_app` tem EXECUTE na função e SELECT na tabela.
 - **`users.role`.** O CHECK passa a aceitar `logistics`, `buyer` e `finance`.
 - **Down.**
   - Recusa com mensagem clara se houver usuário com papel novo.
-  - Remove gatilho, função, tabelas e a coluna `warehouse_id`, e devolve o CHECK original.
+  - Remove gatilho, função, as tabelas `stock_reconciliations`, `stock_opening_balances`, `stock_location_balances` e `warehouses`, a coluna `warehouse_id`, e devolve o CHECK original.
   - Não toca em nenhuma linha de `stock_movements` nem de `stock_balances`.
 
 ### 10.2 Arquivos criados
@@ -621,23 +704,51 @@ O cenário roda só em `loja_test` ou num banco de homologação, nunca em produ
 
 | Arquivo | Mudança | Por que é necessária |
 |---|---|---|
-| `apps/api/src/lib/permissions.ts` | `ROLES` ganha `logistics`, `buyer` e `finance`; `ROLE_DEFAULTS` dá a eles **só permissões que já existem** (ver abaixo). Nenhuma permissão nova nesta fase; `MFA_REQUIRED` não muda | D5 |
+| `apps/api/src/lib/permissions.ts` | `ROLES` ganha `logistics`, `buyer` e `finance`; `ROLE_DEFAULTS` dá a eles **só permissões que já existem** (§10.3.1). Nenhuma permissão nova nesta fase; `MFA_REQUIRED` não muda | D5 |
 | `apps/web/src/lib/format.ts` | `ROLE_LABELS`: "Logística", "Comprador", "Financeiro" | O painel de usuários mostra o papel pelo rótulo |
-| `apps/api/test/helpers.ts` | Inclui `stock_location_balances` e `stock_reconciliations` na limpeza entre testes; chama a trava de ambiente (§12) | A limpeza atual apaga `stock_balances`; o saldo por depósito precisa ser limpo junto |
+| `apps/api/test/helpers.ts` | Inclui `stock_location_balances`, `stock_opening_balances` e `stock_reconciliations` na limpeza entre testes (como dono, só em `loja_test`); chama a trava de ambiente (§12) | A limpeza atual apaga `stock_balances` e as variantes; as tabelas novas precisam ser limpas junto, ou a FK impede apagar as variantes de teste |
 | `apps/api/vitest.config.ts` | Trava de ambiente antes de qualquer teste (§12) | Restrição permanente: nada de teste em produção |
 | `scripts/backup.mjs` | Comando novo `migrate-rehearsal <pasta>` (§11.2) | Homologar a migração em cópia real antes da produção |
 | `docs/BACKUP.md` e `docs/IMPLANTACAO.md` | Documentar o ensaio e a conferência pós-migração | Procedimento |
 | `docs/TESTES-PENDENTES.md` | Conferências que só você pode fazer no servidor | Regra do projeto |
 
-**Padrões dos papéis novos**, editáveis pelo proprietário como hoje:
+#### 10.3.1 Permissões efetivas dos papéis novos (menor privilégio)
 
-| Papel | Permissões padrão |
+**Como a permissão efetiva é calculada hoje.** Permissão efetiva = padrão do papel (`ROLE_DEFAULTS`) + concessões individuais − revogações individuais (`user_permissions`), conforme `effectivePermissions()` em `lib/permissions.ts`.
+- Só o proprietário altera as exceções individuais.
+- O backend confere cada rota com `requirePermission`. O painel só esconde o que o backend já recusa.
+- A tabela abaixo é o **padrão**: o que o usuário recebe sem nenhuma exceção individual.
+
+**O que cada permissão existente libera, conferido nas rotas:**
+
+| Permissão | O que libera |
 |---|---|
-| `logistics` | `catalog.view`, `stock.view`, `stock.manage`, `purchases.view`, `orders.view`, `shipping.manage`, `reports.view` |
-| `buyer` | `catalog.view`, `stock.view`, `purchases.view`, `purchases.manage` |
-| `finance` | `orders.view`, `purchases.view`, `finance.view`, `reports.view` |
+| `catalog.view` | Ver produtos e categorias (`products.ts`, `categories.ts`). Não edita |
+| `stock.view` | Ver saldos, embalagens e detalhe da variante (`stock.ts`); ver contagens de inventário (`inventory.ts`) |
+| `stock.manage` | Lançar entrada, perda, avaria e ajuste; reservar, liberar e consumir reserva à mão (`stock.ts`); abrir, contar e fechar inventário (`inventory.ts`); lançar o estoque inicial na importação (`product-imports.ts`) |
+| `purchases.view` | Ver pedidos de compra, fornecedores, XML de compra e sugestão de reposição; ver **custo** nas telas de estoque (`canSeeCost`) |
+| `purchases.manage` | Criar, editar, enviar, cancelar e encerrar compra; **registrar recebimento** (entrada no estoque); cadastrar e editar fornecedor e ofertas; enviar e vincular XML de compra |
+| `orders.view` | Ver pedidos com **dados pessoais do comprador** (nome, contato, endereço) e reservas; ver formas de entrega |
+| `orders.manage` | Mudar a situação do pedido e **cancelar pedido** (libera reserva e cancela cobrança pendente) |
+| `shipping.manage` | Despachar (consome as reservas e registra transportadora e rastreio) e marcar como entregue |
+| `finance.view` | Só mostra o custo nas telas de estoque, que exigem `stock.view` para abrir |
+| `reports.view` | Relatórios de vendas (faturamento por período e por produto) e resumo de estoque |
 
-As permissões `logistics.*`, `suppliers.*`, `purchases.approve`, `shipping.labels` e as demais só nascem na fase que cria a tela ou a rota correspondente.
+**Padrões propostos:**
+
+| Papel | Permissões padrão | Fica de fora de propósito |
+|---|---|---|
+| `logistics` (gerente de logística) | `catalog.view`, `stock.view`, `stock.manage`, `purchases.view`, `orders.view`, `shipping.manage` | `orders.manage` (cancelar pedido mexe em cobrança e nota); `reports.view` (faturamento); `purchases.manage`; tudo de usuários, fiscal, preços e configurações |
+| `buyer` (comprador) | `catalog.view`, `stock.view`, `purchases.view`, `purchases.manage` | `orders.view` (dados pessoais de clientes); `stock.manage` (ajustes e perdas); `reports.view` |
+| `finance` (financeiro) | `orders.view`, `purchases.view`, `reports.view` | `stock.view` e `stock.manage`; `finance.view` (não tem efeito sem `stock.view`, então fica de fora até a Fase 10); `purchases.manage`; `orders.manage` |
+
+**Notas sobre esses padrões:**
+
+- **Nenhum padrão novo inclui permissão de `MFA_REQUIRED`**, e a lista do MFA não muda na Fase 1. As permissões sensíveis que vierem depois (`stock.adjust`, `purchases.approve`, `shipping.labels`) entram com MFA obrigatório.
+- **Limitação aceita do `logistics` na Fase 1.** Sem `orders.manage`, ele não muda a situação comercial (`paid` → `preparing` → `ready`). Ele despacha e marca entrega com `shipping.manage`. As situações logísticas próprias chegam com `logistics.manage` na Fase 5. Até lá, o proprietário pode conceder `orders.manage` individualmente, se quiser.
+- **Limitação aceita do `buyer`.** `purchases.manage` inclui registrar recebimento, que dá entrada no estoque. A separação comprador × recebedor vem com `purchases.receive` na Fase 6.
+- **Dados pessoais (LGPD).** Só `logistics` e `finance` veem dados de clientes (`orders.view`), porque precisam deles para enviar e para conferir. `buyer` não vê.
+- **Permissões futuras.** `logistics.*`, `suppliers.*`, `purchases.approve`, `purchases.receive`, `shipping.labels` e as demais só nascem na fase que cria a tela ou a rota correspondente (§5.11).
 
 **Não mudam:** `lib/stock.ts`, `orders.ts`, checkout, `payments.ts`, `fiscal.ts`, `storefront.ts`, `marketplaces.ts` e o menu do painel.
 
@@ -645,13 +756,32 @@ As permissões `logistics.*`, `suppliers.*`, `purchases.approve`, `shipping.labe
 
 1. Existe exatamente um depósito padrão, e um segundo `is_default` é recusado.
 2. Entrada, venda, perda, ajuste, reserva, liberação e consumo pelo código atual atualizam o saldo do depósito igual ao total.
-3. Depois de uma sequência mista, incluindo um checkout real com pagamento Fake e despacho, `stock_reconcile()` não encontra divergências.
-4. Divergência provocada pelo dono do banco (só no teste) é detectada e gravada em `stock_reconciliations`.
-5. `loja_app` não consegue INSERT, UPDATE nem DELETE em `stock_location_balances`, nem UPDATE ou DELETE em `stock_reconciliations`, nem INSERT em `warehouses`.
-6. A saída maior que o saldo continua devolvendo `INSUFFICIENT_STOCK`, sem erro novo.
-7. Reservas concorrentes na mesma variante: só uma passa, e o saldo do depósito acompanha o total.
-8. Os papéis novos podem ser criados pelo proprietário; o gerente não pode criar proprietário (regra atual mantida); `buyer` recebe 403 em `orders.manage`; `finance` recebe 403 em `stock.manage`.
-9. Trava de ambiente: recusa `DB_NAME_TEST` vazio, igual a `DB_NAME`, igual a `loja_prod` ou com `NODE_ENV=production` no `.env`.
+3. Depois de uma sequência mista, incluindo um checkout real com pagamento Fake e despacho, `stock_reconcile()` não encontra divergências (C1–C5).
+4. **Referência de abertura com diferença herdada.**
+   - O dono do banco (só no teste) monta um saldo que não bate com a soma do livro e grava a abertura.
+   - A diferença aparece **uma vez**, como herdada na abertura.
+   - Os movimentos seguintes não geram divergência em C1.
+   - Nenhuma linha de `stock_movements` é criada ou alterada pela abertura.
+5. **Divergência nova.** Um saldo alterado pelo dono depois da abertura é detectado (C1, C3) e gravado em `stock_reconciliations`.
+6. **Variante criada depois da abertura** (sem linha de abertura) confere pela soma dos seus movimentos (C5).
+7. `loja_app` não consegue:
+   - INSERT, UPDATE ou DELETE em `stock_location_balances`;
+   - INSERT, UPDATE ou DELETE em `stock_opening_balances`;
+   - UPDATE ou DELETE em `stock_reconciliations`;
+   - INSERT em `warehouses`.
+8. A saída maior que o saldo continua devolvendo `INSUFFICIENT_STOCK`, sem erro novo.
+9. Reservas concorrentes na mesma variante: só uma passa, e o saldo do depósito acompanha o total.
+10. **Papéis, um teste por permissão da §10.3.1:**
+    - o proprietário cria os três papéis, e o gerente continua sem poder criar proprietário;
+    - cada papel recebe exatamente o seu padrão em `/auth/me`;
+    - recusas com 403:
+      - `logistics`: em `orders.manage` (situação e cancelamento), `reports.view` e `purchases.manage`;
+      - `buyer`: em `orders.view` e `stock.manage`;
+      - `finance`: em `stock.view`, `stock.manage` e `purchases.manage`;
+    - acessos permitidos: `logistics` despacha; `buyer` registra recebimento; `finance` vê relatório de vendas.
+11. **Trava de ambiente.** Recusa quando:
+    - `DB_NAME_TEST` está vazio, é igual a `DB_NAME`, é `loja_prod` ou não termina em `_test`;
+    - o `.env` tem `NODE_ENV=production`.
 
 **Critério de aceite:**
 - 287 testes atuais mais os novos, todos passando;
@@ -668,7 +798,9 @@ As permissões `logistics.*`, `suppliers.*`, `purchases.approve`, `shipping.labe
 | A 0019 sobe junto sem querer | Duas mudanças no mesmo deploy | Conferência da §11.1 antes; a 0019 sobe separada se estiver pendente |
 | `.env` do servidor sem `DB_NAME_TEST` | `npm test` no servidor poderia mirar banco errado | Trava da §12; testes não rodam no servidor |
 | `down` com usuários nos papéis novos | Reversão recusada | Mensagem clara: trocar o papel desses usuários antes |
-| Reconciliação acusar divergência antiga já existente em produção | Ensaio "reprova" por dado antigo | O ensaio mostra antes; divergência antiga é relatada a você e corrigida só na Fase 3, por lançamento compensatório com justificativa |
+| Diferença antiga entre saldo e livro em produção (seed de demonstração com frações, SQL manual) | Divergência artificial e permanente, se a conferência usasse só a soma do histórico | Referência de abertura (§5.1.1): a diferença fica registrada uma vez, como herdada, e é mostrada no ensaio antes da aplicação. A conferência segue a partir da abertura. Correção só física, por inventário na Fase 3, com sua decisão |
+| Bloqueio de `stock_balances` durante a abertura | Checkout espera alguns instantes durante a migração | `SHARE MODE` só pelo tempo da cópia; a migração roda no procedimento de atualização (§11.3), com o serviço sendo reiniciado logo depois |
+| FK de `stock_opening_balances` para a variante | Impedir exclusão de variante | Sem efeito novo: a abertura só tem variantes que já têm linha em `stock_balances`, cuja FK já impede excluir essas variantes hoje |
 
 ---
 
@@ -694,12 +826,13 @@ Se `0019_importacao_produtos` não aparecer, ela sobe antes, sozinha (`docs/IMPL
 2. **Ensaio.** `node scripts/backup.mjs migrate-rehearsal backups/<pasta nova>` (novo na Fase 1). Ele:
    - restaura a cópia num banco temporário `loja_ensaio`;
    - aplica as migrações pendentes **nesse banco**;
-   - roda `stock_reconcile()`;
+   - mostra a **diferença herdada** registrada na abertura (variantes, quantidade e valor a custo médio), sem dados pessoais;
+   - roda `stock_reconcile()` (C1–C5);
    - compara as contagens das tabelas antigas (nenhuma pode mudar);
    - mostra o resultado e apaga o banco temporário.
 
    **Não toca no `loja_prod`.**
-3. Só se o ensaio passar sem erro e sem divergência nova segue-se para a aplicação.
+3. Só se o ensaio passar sem erro e sem divergência em C1–C5 segue-se para a aplicação. Uma diferença herdada diferente de zero não bloqueia, mas é apresentada a você antes; você decide se aplica.
 
 Não existe servidor de homologação separado. A homologação da migração é este ensaio em cópia real; a homologação funcional fica na suíte local.
 
@@ -743,3 +876,67 @@ Não existe servidor de homologação separado. A homologação da migração é
 - **Carga.** O k6 só aponta para endereço local ou de homologação; o README de `tests/carga` ganha esse aviso na Fase 11.
 - **Ponta a ponta (Fase 5).** A configuração do Playwright recusa `baseURL` que não seja `localhost` ou `127.0.0.1`.
 - **Integrações pagas (Fase 8).** A compra de frete e etiqueta exige configuração explícita no `.env`, desligada por padrão, além da permissão `shipping.labels` com MFA. Sem autorização expressa, a configuração não é ligada.
+
+---
+
+## 13. Revisão de 16/11/2026: correções e verificações
+
+### 13.1 O que foi corrigido nesta revisão
+
+1. **Migrações padronizadas.**
+   - A §5 foi reescrita com uma subseção por migração (5.1 a 5.10), no mesmo número, nome e fase da §6.0.
+   - Saíram as referências antigas `0020_sglog_estoque`, `0022_sglog_atendimento`, `0023_sglog_compras`, `0024_sglog_frete`, `0025_sglog_ocorrencias` e `0026_sglog_custos`.
+   - Cada coluna e tabela do modelo-alvo aparece numa só migração.
+2. **Linha de base dos testes.** Um único resultado, executado e registrado: 20 arquivos de teste e 287 testes, 287 passando (§1). O "21 arquivos" contava o `helpers.ts`, que não é arquivo de teste.
+3. **R13.** Atualizado para a decisão D4, sem pendência.
+4. **Conferência do estoque.** `stock_reconcile()` deixou de comparar o saldo com a soma de todo o histórico. Ela passa a usar a referência de abertura imutável (`stock_opening_balances`, §5.1.1): a diferença herdada é registrada uma vez, sem movimento artificial e sem alterar o histórico.
+5. **Papéis novos.** Permissões efetivas documentadas por menor privilégio (§10.3.1), com o que cada permissão libera nas rotas e o que fica de fora de propósito.
+   - Em relação à versão anterior, saíram `reports.view` do `logistics` e `finance.view` do `finance`.
+   - Os testes da Fase 1 passam a cobrir cada recusa.
+
+### 13.2 Confirmado por inspeção do código ou execução local
+
+- Suíte: 20 arquivos de teste e 287 testes, 287 passando no `loja_test` local (vitest, 16/11/2026 09:12).
+- O commit `15fc2a1` (migração 0019) está em `origin/main` (`git merge-base --is-ancestor`).
+- Só `moveStock()` altera `stock_balances` no código da API (`lib/stock.ts:81`). As demais escritas criam linha zerada (`lib/stock.ts:76` e `:135`, `modules/inventory.ts:127`).
+- A importação lança o estoque inicial por `moveStock` (`modules/product-imports.ts:251`).
+- `loja_app` tem `SELECT, INSERT, UPDATE` em `stock_balances` e só `SELECT, INSERT` em `stock_movements`, com o gatilho `stock_movements_immutable` (0004).
+- O seed de demonstração grava movimentos e saldos direto, em lote, com quantidades calculadas em ponto flutuante (`db/demo.ts:491-495` e `:862-866`). O reset usa `TRUNCATE` com gatilhos desligados (`db/demo.ts:987-988`).
+- Onde cada permissão é exigida (tabela da §10.3.1), por busca de `requirePermission` em `apps/api/src/modules`.
+- `shipments.order_id UNIQUE`, `whatsapp_messages UNIQUE (order_id, event)` e o CHECK de `users.role` (0001, 0005, 0010).
+- `vitest.config.ts` usa `DB_NAME_TEST`, e `helpers.ts` faz `TRUNCATE` das tabelas de estoque, pedidos e outras. Hoje não há trava contra banco de produção.
+
+### 13.3 Ainda depende de conferência no servidor (só você pode executar)
+
+1. **Código e migração.** Qual commit o servidor tem e se `0019_importacao_produtos` está em `schema_migrations` do `loja_prod` (comandos da §11.1).
+2. **Diferença herdada real.** Se `loja_prod` tem diferença entre saldo e livro (resíduo de seed de demonstração, SQL manual ou restauração). Só aparece no ensaio da §11.2, que é criado na Fase 1.
+3. **Variáveis de teste no servidor.** Se o `.env` do servidor tem `DB_NAME_TEST`. A trava da §12 protege nos dois casos, mas convém saber.
+4. **Espaço em disco** para o banco temporário do ensaio, igual ao tamanho do `loja_prod`, mais o backup.
+
+### 13.4 Versão final do escopo da Fase 1 (resumo da §10)
+
+- **Migração `0020_sglog_depositos`:**
+  - `warehouses` com o depósito padrão, sem endereço;
+  - `stock_location_balances` (`on_hand`, `reserved`), mantida só pelo gatilho `stock_movements_location`;
+  - `stock_movements.warehouse_id`, anulável, sem reescrever linhas;
+  - `stock_opening_balances` (abertura imutável);
+  - `stock_reconciliations` + `stock_reconcile()` (C1–C5, só lê);
+  - CHECK de `users.role` com `logistics`, `buyer` e `finance`;
+  - `.down.sql` que recusa a reversão se houver usuário nos papéis novos.
+- **Arquivos criados:**
+  - `0020_sglog_depositos.up.sql` e `.down.sql`;
+  - `apps/api/test/sglog-fase1.test.ts` (11 grupos da §10.4);
+  - `docs/15-sglog-fase1.md`.
+- **Arquivos modificados:**
+  - `lib/permissions.ts` (papéis e padrões da §10.3.1);
+  - `apps/web/src/lib/format.ts` (rótulos);
+  - `test/helpers.ts` e `vitest.config.ts` (limpeza e trava de ambiente);
+  - `scripts/backup.mjs` (`migrate-rehearsal`);
+  - `docs/BACKUP.md`, `docs/IMPLANTACAO.md` e `docs/TESTES-PENDENTES.md`.
+- **Não mudam:** `lib/stock.ts`, `orders.ts`, checkout, `payments.ts`, `fiscal.ts`, `storefront.ts`, `marketplaces.ts`, menu do painel e qualquer permissão existente.
+- **Aceite:**
+  - 287 testes atuais mais os novos passando;
+  - typecheck das duas aplicações;
+  - `migrate --test` up → down → up;
+  - ensaio em cópia restaurada sem divergência em C1–C5, com a diferença herdada apresentada a você.
+- **Fora da Fase 1:** endereço e cadastro de depósitos, saldos bloqueado, avariado e em trânsito, transferências, estorno, telas, permissões novas, Playwright, qualquer tabela das Fases 2 a 10 e qualquer deploy.

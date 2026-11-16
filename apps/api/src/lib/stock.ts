@@ -16,8 +16,11 @@ export const signedQty = z
 export const hasFraction = (v: string) => /\.\d*[1-9]/.test(v);
 export const neg = (v: string) => (v.startsWith('-') ? v.slice(1) : `-${v}`);
 
-export type MovementKind = 'receipt' | 'sale' | 'return' | 'loss' | 'damage' | 'adjustment' | 'inventory' | 'reserve' | 'release';
-export type SourceType = 'purchase_receipt' | 'order' | 'cart' | 'quote' | 'inventory' | 'manual' | 'reservation';
+export type MovementKind =
+  | 'receipt' | 'sale' | 'return' | 'loss' | 'damage' | 'adjustment' | 'inventory' | 'reserve' | 'release'
+  // SGLog Fase 3 (docs/20-sglog-fase3.md §1)
+  | 'transfer_out' | 'transfer_in' | 'transfer_loss' | 'transfer_return' | 'block' | 'unblock' | 'damage_hold' | 'damage_release' | 'reversal';
+export type SourceType = 'purchase_receipt' | 'order' | 'cart' | 'quote' | 'inventory' | 'manual' | 'reservation' | 'transfer' | 'adjustment_request';
 
 type VariantInfo = { variant_id: string; sku: string; allows_fraction: boolean; availability_mode: 'stock' | 'made_to_order'; base_unit: string };
 
@@ -49,7 +52,51 @@ export type Movement = {
   sourceId?: string;
   reason?: string | null;
   requestKey?: string | null;
+  /** Saldos da Fase 3: bloqueado/quarentena, avariado, em transito para o deposito. */
+  blockedDelta?: string;
+  damagedDelta?: string;
+  inTransitDelta?: string;
+  /** Deposito da linha. Sem ele, o padrao (comportamento de antes da Fase 3). */
+  warehouseId?: string | null;
+  counterWarehouseId?: string | null;
+  transferId?: string | null;
+  documentRef?: string | null;
+  reversesId?: string | null;
 };
+
+const BUCKET_LABEL: Record<string, string> = {
+  on_hand: 'Saldo disponível',
+  reserved: 'Saldo reservado',
+  blocked: 'Saldo bloqueado',
+  damaged: 'Saldo avariado',
+  in_transit: 'Saldo em trânsito',
+};
+
+const isCheck = (err: unknown): err is { code: string; constraint?: string } => (err as { code?: string }).code === '23514';
+
+/** Traduz a violacao do CHECK >= 0 (total ou deposito) num erro de negocio, sem expor o banco. */
+async function bucketError(db: Db, constraint: string | undefined, m: Movement, atLocation: boolean) {
+  const bucket = Object.keys(BUCKET_LABEL).find((b) => constraint?.endsWith(`_${b}_check`)) ?? 'on_hand';
+  const requested = (m.onHandDelta ?? '0').replace('-', '');
+  if (bucket === 'reserved') return new AppError(409, 'RESERVATION_MISMATCH', 'A reserva a liberar é maior que o saldo reservado.');
+  const where = atLocation
+    ? (
+        await db.query<{ name: string; on_hand: string | null }>(
+          `SELECT w.name, l.on_hand::text FROM warehouses w LEFT JOIN stock_location_balances l ON l.warehouse_id = w.id AND l.variant_id = $2
+           WHERE w.id = coalesce($1::uuid, (SELECT id FROM warehouses WHERE is_default))`,
+          [m.warehouseId ?? null, m.variantId],
+        )
+      ).rows[0]
+    : undefined;
+  const suffix = where ? ` no depósito ${where.name}` : '';
+  if (bucket === 'on_hand') {
+    const onHand = where
+      ? (where.on_hand ?? '0')
+      : ((await db.query<{ on_hand: string }>('SELECT on_hand FROM stock_balances WHERE variant_id = $1', [m.variantId])).rows[0]?.on_hand ?? '0');
+    return new AppError(409, 'INSUFFICIENT_STOCK', `Saldo físico insuficiente para esta saída${suffix}.`, { onHand, requested, ...(where ? { warehouse: where.name } : {}) });
+  }
+  return new AppError(409, 'INSUFFICIENT_BUCKET', `${BUCKET_LABEL[bucket]} insuficiente${suffix}.`, { bucket, ...(where ? { warehouse: where.name } : {}) });
+}
 
 export type MovementRow = {
   id: string;
@@ -65,47 +112,119 @@ export type MovementRow = {
 };
 
 /**
- * Unico caminho que altera saldo. Bloqueia a linha do saldo (UPDATE), grava o movimento com o
- * saldo resultante e recalcula o custo medio ponderado nas entradas com custo. Saldo fisico
- * negativo e recusado pelo banco e vira INSUFFICIENT_STOCK.
+ * Unico caminho que altera saldo. Bloqueia a linha do saldo total (UPDATE), grava o movimento com os saldos
+ * resultantes e recalcula o custo medio ponderado nas entradas com custo. O gatilho do livro aplica os mesmos
+ * deltas no deposito da linha (sem deposito: o padrao). Saldo negativo, no total ou no deposito, e recusado
+ * pelo banco e vira erro de negocio (INSUFFICIENT_STOCK, INSUFFICIENT_BUCKET, RESERVATION_MISMATCH).
+ * Fase 3: o custo medio pondera o total gerencial (disponivel + bloqueado + avariado + em transito).
  */
 export async function moveStock(db: Db, actorId: string | null, m: Movement): Promise<MovementRow> {
   const onHand = m.onHandDelta ?? '0';
   const reserved = m.reservedDelta ?? '0';
+  const blocked = m.blockedDelta ?? '0';
+  const damaged = m.damagedDelta ?? '0';
+  const inTransit = m.inTransitDelta ?? '0';
   const cost = m.unitCostCents ?? null;
   await db.query('INSERT INTO stock_balances (variant_id) VALUES ($1) ON CONFLICT DO NOTHING', [m.variantId]);
   await db.query('SAVEPOINT move_stock');
-  let balance: { on_hand: string; reserved: string; avg_cost_cents: string };
+  let balance: { on_hand: string; reserved: string; blocked: string; damaged: string; in_transit: string; avg_cost_cents: string };
   try {
     const { rows } = await db.query(
       `UPDATE stock_balances SET
          avg_cost_cents = CASE WHEN $4::numeric IS NOT NULL AND $2::numeric > 0
-           THEN round((on_hand * avg_cost_cents + $2::numeric * $4::numeric) / (on_hand + $2::numeric), 4)
+           THEN round(((on_hand + blocked + damaged + in_transit) * avg_cost_cents + $2::numeric * $4::numeric) / (on_hand + blocked + damaged + in_transit + $2::numeric), 4)
            ELSE avg_cost_cents END,
          on_hand = on_hand + $2::numeric,
          reserved = reserved + $3::numeric,
+         blocked = blocked + $5::numeric,
+         damaged = damaged + $6::numeric,
+         in_transit = in_transit + $7::numeric,
          updated_at = now()
-       WHERE variant_id = $1 RETURNING on_hand, reserved, avg_cost_cents`,
-      [m.variantId, onHand, reserved, cost],
+       WHERE variant_id = $1 RETURNING on_hand, reserved, blocked, damaged, in_transit, avg_cost_cents`,
+      [m.variantId, onHand, reserved, cost, blocked, damaged, inTransit],
     );
     balance = rows[0];
     await db.query('RELEASE SAVEPOINT move_stock');
   } catch (err) {
-    const e = err as { code?: string; constraint?: string };
-    if (e.code !== '23514') throw err;
+    if (!isCheck(err)) throw err;
     await db.query('ROLLBACK TO SAVEPOINT move_stock');
-    const now = (await db.query<{ on_hand: string; reserved: string }>('SELECT on_hand, reserved FROM stock_balances WHERE variant_id = $1', [m.variantId])).rows[0];
-    if (e.constraint?.includes('reserved')) throw new AppError(409, 'RESERVATION_MISMATCH', 'A reserva a liberar é maior que o saldo reservado.');
-    throw new AppError(409, 'INSUFFICIENT_STOCK', 'Saldo físico insuficiente para esta saída.', { onHand: now?.on_hand ?? '0', requested: onHand.replace('-', '') });
+    throw await bucketError(db, err.constraint, m, false);
   }
-  const { rows } = await db.query<MovementRow>(
-    `INSERT INTO stock_movements (variant_id, kind, on_hand_delta, reserved_delta, on_hand_after, reserved_after, unit_cost_cents, avg_cost_after,
-       source_type, source_id, reason, request_key, created_by)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-     RETURNING id::text, variant_id, kind, on_hand_delta, reserved_delta, on_hand_after, reserved_after, unit_cost_cents, avg_cost_after, created_at`,
-    [m.variantId, m.kind, onHand, reserved, balance.on_hand, balance.reserved, cost, balance.avg_cost_cents, m.sourceType ?? null, m.sourceId ?? null, m.reason ?? null, m.requestKey ?? null, actorId || null],
-  );
-  return rows[0]!;
+  await db.query('SAVEPOINT move_stock_location');
+  try {
+    const { rows } = await db.query<MovementRow>(
+      `INSERT INTO stock_movements (variant_id, kind, on_hand_delta, reserved_delta, on_hand_after, reserved_after, unit_cost_cents, avg_cost_after,
+         source_type, source_id, reason, request_key, created_by,
+         blocked_delta, damaged_delta, in_transit_delta, blocked_after, damaged_after, in_transit_after,
+         warehouse_id, counter_warehouse_id, transfer_id, document_ref, reverses_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
+       RETURNING id::text, variant_id, kind, on_hand_delta, reserved_delta, on_hand_after, reserved_after, unit_cost_cents, avg_cost_after, created_at`,
+      [
+        m.variantId, m.kind, onHand, reserved, balance.on_hand, balance.reserved, cost, balance.avg_cost_cents,
+        m.sourceType ?? null, m.sourceId ?? null, m.reason ?? null, m.requestKey ?? null, actorId || null,
+        blocked, damaged, inTransit, balance.blocked, balance.damaged, balance.in_transit,
+        m.warehouseId ?? null, m.counterWarehouseId ?? null, m.transferId ?? null, m.documentRef ?? null, m.reversesId ?? null,
+      ],
+    );
+    await db.query('RELEASE SAVEPOINT move_stock_location');
+    return rows[0]!;
+  } catch (err) {
+    // O total comporta, mas o deposito da linha nao (mercadoria em outro deposito).
+    if (!isCheck(err) || !err.constraint?.startsWith('stock_location_balances_')) throw err;
+    await db.query('ROLLBACK TO SAVEPOINT move_stock_location');
+    throw await bucketError(db, err.constraint, m, true);
+  }
+}
+
+/** Deposito padrao (PRINCIPAL). */
+export async function defaultWarehouseId(db: Db): Promise<string> {
+  const id = (await db.query<{ id: string }>('SELECT id FROM warehouses WHERE is_default')).rows[0]?.id;
+  if (!id) throw new AppError(500, 'NO_DEFAULT_WAREHOUSE', 'Nenhum depósito padrão cadastrado.');
+  return id;
+}
+
+export type WarehouseRef = { id: string; code: string; name: string; active: boolean; is_default: boolean };
+
+/** Deposito informado (ou o padrao), ativo. */
+export async function activeWarehouse(db: Db, id: string | null | undefined): Promise<WarehouseRef> {
+  const w = (
+    await db.query<WarehouseRef>('SELECT id, code, name, active, is_default FROM warehouses WHERE id = coalesce($1::uuid, (SELECT id FROM warehouses WHERE is_default))', [id ?? null])
+  ).rows[0];
+  if (!w) throw new AppError(404, 'WAREHOUSE_NOT_FOUND', 'Depósito não encontrado.');
+  if (!w.active) throw new AppError(409, 'WAREHOUSE_INACTIVE', `O depósito ${w.name} está desativado.`);
+  return w;
+}
+
+/**
+ * Bloqueia o saldo total das variantes, sempre em ordem de id (sem deadlock entre transferencias de varios
+ * itens) e na mesma ordem que moveStock usa (total antes do deposito).
+ */
+export async function lockVariants(db: Db, variantIds: string[]) {
+  for (const id of [...new Set(variantIds)].sort()) {
+    await db.query('INSERT INTO stock_balances (variant_id) VALUES ($1) ON CONFLICT DO NOTHING', [id]);
+    await db.query('SELECT 1 FROM stock_balances WHERE variant_id = $1 FOR UPDATE', [id]);
+  }
+}
+
+/**
+ * Confere o livre do deposito (disponivel - reservado) para uma saida que nao pode tomar mercadoria reservada:
+ * transferencia, bloqueio, marcacao de avaria e estorno. Chamar com a variante ja bloqueada (lockVariants).
+ */
+export async function assertFree(db: Db, warehouse: WarehouseRef, variantId: string, sku: string, qtyOut: string) {
+  const r = (
+    await db.query<{ free: string; ok: boolean }>(
+      `SELECT (coalesce(l.on_hand, 0) - coalesce(l.reserved, 0))::text AS free, coalesce(l.on_hand, 0) - coalesce(l.reserved, 0) >= $3::numeric AS ok
+       FROM (SELECT 1) x LEFT JOIN stock_location_balances l ON l.warehouse_id = $1 AND l.variant_id = $2`,
+      [warehouse.id, variantId, qtyOut],
+    )
+  ).rows[0]!;
+  if (!r.ok) {
+    throw new AppError(409, 'INSUFFICIENT_STOCK', `${sku}: livre no depósito ${warehouse.name} ${Number(r.free)}, pedido ${Number(qtyOut)}. Mercadoria reservada não pode ser movimentada.`, {
+      warehouse: warehouse.name,
+      free: r.free,
+      requested: qtyOut,
+    });
+  }
 }
 
 export type Reservation = {

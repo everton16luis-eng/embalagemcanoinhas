@@ -532,7 +532,9 @@ describe('disponibilidade do fornecedor (não é estoque da loja)', () => {
     const s = await newSupplier();
     const { purchase, variantId } = await newProduct();
     await newOffer(s.id, purchase.id);
-    await boss.post('/api/v1/admin/stock/movements', { variantId, kind: 'adjustment', qty: '10', reason: 'Teste', requestKey: key() });
+    // Ajuste exige stock.adjust com MFA (Fase 3, D3-2).
+    const adj = await (await loggedAs(app, 'manager', { mfa: true })).post('/api/v1/admin/stock/movements', { variantId, kind: 'adjustment', qty: '10', reason: 'Teste', requestKey: key() });
+    expect(adj.statusCode, adj.body).toBe(201);
     const before = await stockHash();
     const shown = (await boss.get(`/api/v1/admin/stock/variants/${variantId}`)).json().variant;
     for (const q of ['99999', '0', '5']) {

@@ -1,6 +1,6 @@
 'use client';
 
-import { BarChart3, Blocks, Mail, MessageCircle, TrendingUp, Boxes, Building2, ClipboardCheck, ClipboardList, FileText, FolderTree, History, LogOut, MapPinned, Menu, Package, ReceiptText, RefreshCw, Search, Settings, ShoppingCart, Store, Truck, UserRound, Users, Warehouse, X } from 'lucide-react';
+import { ArrowLeftRight, BarChart3, Blocks, Building, Mail, MessageCircle, TrendingUp, Boxes, Building2, ClipboardCheck, ClipboardList, FileText, FolderTree, History, LogOut, MapPinned, Menu, Package, ReceiptText, RefreshCw, Search, Settings, ShoppingCart, Store, Truck, UserRound, Users, Warehouse, X } from 'lucide-react';
 import Link from '@/components/painel-link';
 import { usePathname, useRouter } from 'next/navigation';
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
@@ -26,11 +26,14 @@ const NAV = [
   { href: '/painel/marketplaces', label: 'Marketplaces', icon: Blocks, perm: 'marketplaces.manage' },
   { href: '/painel/produtos', label: 'Produtos', icon: Boxes, perm: 'catalog.view' },
   { href: '/painel/categorias', label: 'Categorias', icon: FolderTree, perm: 'catalog.view' },
-  { href: '/painel/estoque', label: 'Estoque', icon: Warehouse, perm: 'stock.view' },
-  { href: '/painel/inventario', label: 'Inventário', icon: ClipboardList, perm: 'stock.view' },
-  { href: '/painel/compras', label: 'Compras', icon: ShoppingCart, perm: 'purchases.view' },
-  { href: '/painel/reposicao', label: 'Reposição', icon: RefreshCw, perm: 'purchases.view' },
-  { href: '/painel/fornecedores', label: 'Fornecedores', icon: Truck, perm: 'suppliers.view|purchases.view' },
+  // Menu LOGISTICA (SGLog Fase 3, D3-6): agrupa o que ja existia, sem mudar endereco nem permissao.
+  { href: '/painel/estoque', label: 'Estoque', icon: Warehouse, perm: 'stock.view', group: 'Logística' },
+  { href: '/painel/inventario', label: 'Inventário', icon: ClipboardList, perm: 'stock.view', group: 'Logística' },
+  { href: '/painel/transferencias', label: 'Transferências', icon: ArrowLeftRight, perm: 'stock.view', group: 'Logística' },
+  { href: '/painel/depositos', label: 'Depósitos', icon: Building, perm: 'stock.view', group: 'Logística' },
+  { href: '/painel/compras', label: 'Compras', icon: ShoppingCart, perm: 'purchases.view', group: 'Logística' },
+  { href: '/painel/reposicao', label: 'Reposição', icon: RefreshCw, perm: 'purchases.view', group: 'Logística' },
+  { href: '/painel/fornecedores', label: 'Fornecedores', icon: Truck, perm: 'suppliers.view|purchases.view', group: 'Logística' },
   { href: '/painel/fiscal', label: 'Nota fiscal', icon: FileText, perm: 'fiscal.view' },
   { href: '/painel/entregas', label: 'Formas de entrega', icon: MapPinned, perm: 'orders.view' },
   { href: '/painel/vendas', label: 'Vendas', icon: TrendingUp, perm: 'reports.view' },
@@ -40,7 +43,7 @@ const NAV = [
   { href: '/painel/usuarios', label: 'Usuários', icon: Users, perm: 'users.view' },
   { href: '/painel/email', label: 'E-mails', icon: Mail, perm: 'email.view' },
   { href: '/painel/auditoria', label: 'Auditoria', icon: History, perm: 'audit.view' },
-] as const;
+] as const satisfies readonly { href: string; label: string; icon: unknown; perm: string | null; group?: string }[];
 
 export function AdminShell({ children }: { children: ReactNode }) {
   const router = useRouter();
@@ -80,8 +83,14 @@ export function AdminShell({ children }: { children: ReactNode }) {
       </div>
       {/* So a lista rola: usuario e Sair ficam fixos embaixo, sempre sobre o fundo da barra. */}
       <ul className="min-h-0 flex-1 space-y-0.5 overflow-y-auto overscroll-contain px-2 pb-2 [scrollbar-color:rgb(255_255_255/0.2)_transparent] [scrollbar-width:thin]">
-        {items.map(({ href, label, icon: Icon }) => (
-          <li key={href}>
+        {items.map(({ href, label, icon: Icon, ...rest }, i) => {
+          const group = 'group' in rest ? rest.group : undefined;
+          const prev = items[i - 1];
+          const opens = group && (!prev || !('group' in prev) || prev.group !== group);
+          const closes = !group && prev && 'group' in prev;
+          return (
+          <li key={href} className={opens ? 'pt-3' : closes ? 'pt-3' : undefined}>
+            {opens && <p className="px-2.5 pb-1 text-[11px] font-semibold tracking-[0.14em] text-side-ink/80 uppercase">{group}</p>}
             <Link
               href={href}
               aria-current={active(href) ? 'page' : undefined}
@@ -91,7 +100,8 @@ export function AdminShell({ children }: { children: ReactNode }) {
               {label}
             </Link>
           </li>
-        ))}
+          );
+        })}
       </ul>
       <div className="shrink-0 border-t border-side-line p-2">
         <Link href="/painel/conta" className={`flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm ${active('/painel/conta') ? 'bg-white/10 text-white' : 'text-side-ink hover:bg-white/5 hover:text-white'}`}>

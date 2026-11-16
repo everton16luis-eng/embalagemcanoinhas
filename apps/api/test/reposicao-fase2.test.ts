@@ -12,7 +12,8 @@ let boss: Awaited<ReturnType<typeof loggedAs>>;
 beforeAll(async () => {
   app = await makeApp();
   await resetCatalog();
-  boss = await loggedAs(app, 'manager');
+  // Ajuste de estoque exige MFA desde a Fase 3 (D3-2).
+  boss = await loggedAs(app, 'manager', { mfa: true });
 });
 afterAll(async () => {
   await app.close();

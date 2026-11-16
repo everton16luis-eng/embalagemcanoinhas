@@ -20,6 +20,10 @@ export const PERMISSIONS = [
   // Fases seguintes: entram aqui para que o painel ja possa mostrar e atribuir.
   'stock.view',
   'stock.manage',
+  // SGLog Fase 3 (docs/20-sglog-fase3.md §1.4): transferencia entre depositos; ajuste, perda, avaria (baixa), estorno,
+  // extravio e aprovacao de solicitacao de ajuste (com MFA).
+  'stock.transfer',
+  'stock.adjust',
   'purchases.view',
   'purchases.manage',
   // SGLog Fase 2 (docs/18-sglog-fase2.md): fornecedores, ofertas, custo e disponibilidade. Lista, detalhe e ofertas
@@ -47,17 +51,18 @@ export type Role = (typeof ROLES)[number];
 
 const ROLE_DEFAULTS: Record<Role, readonly Permission[]> = {
   owner: PERMISSIONS,
-  manager: ['users.view', 'audit.view', 'settings.manage', 'company.view', 'fiscal.view', 'catalog.view', 'catalog.manage', 'prices.manage', 'catalog.import', 'stock.view', 'stock.manage', 'purchases.view', 'purchases.manage', 'suppliers.view', 'suppliers.manage', 'orders.view', 'orders.manage', 'shipping.manage', 'sales_desk.use', 'marketplaces.manage', 'finance.view', 'reports.view', 'email.view'],
+  manager: ['users.view', 'audit.view', 'settings.manage', 'company.view', 'fiscal.view', 'catalog.view', 'catalog.manage', 'prices.manage', 'catalog.import', 'stock.view', 'stock.manage', 'stock.transfer', 'stock.adjust', 'purchases.view', 'purchases.manage', 'suppliers.view', 'suppliers.manage', 'orders.view', 'orders.manage', 'shipping.manage', 'sales_desk.use', 'marketplaces.manage', 'finance.view', 'reports.view', 'email.view'],
   sales: ['catalog.view', 'stock.view', 'orders.view', 'sales_desk.use'],
   // Estoquista ve fornecedores, mas nao muda custo nem cadastro (D2-4); concessao individual continua possivel.
-  stock: ['catalog.view', 'stock.view', 'stock.manage', 'purchases.view', 'purchases.manage', 'suppliers.view'],
+  // Fase 3 (D3-2): transfere, mas nao ajusta direto; ajuste, perda e avaria viram solicitacao com aprovacao.
+  stock: ['catalog.view', 'stock.view', 'stock.manage', 'stock.transfer', 'purchases.view', 'purchases.manage', 'suppliers.view'],
   // fiscal.validate fica so com quem o proprietario conceder (o contador ou responsavel tributario).
   fiscal: ['company.view', 'fiscal.view', 'fiscal.manage', 'catalog.view', 'orders.view'],
   shipping: ['catalog.view', 'orders.view', 'shipping.manage'],
   // SGLog (docs/sglog-fase0-auditoria.md §10.3.1): menor privilegio, so permissoes que ja existem.
   // Gerente de logistica: estoque, despacho e consulta de compras. Sem orders.manage (cancelar pedido mexe em
   // cobranca e nota) e sem reports.view (faturamento).
-  logistics: ['catalog.view', 'stock.view', 'stock.manage', 'purchases.view', 'suppliers.view', 'orders.view', 'shipping.manage'],
+  logistics: ['catalog.view', 'stock.view', 'stock.manage', 'stock.transfer', 'stock.adjust', 'purchases.view', 'suppliers.view', 'orders.view', 'shipping.manage'],
   // Comprador: compras e fornecedores. Sem orders.view (dados pessoais de clientes) e sem stock.manage (ajustes e perdas).
   buyer: ['catalog.view', 'stock.view', 'purchases.view', 'purchases.manage', 'suppliers.view', 'suppliers.manage'],
   // Financeiro: pedidos, compras e relatorios de venda, so leitura. finance.view fica de fora: hoje so mostra custo
@@ -66,7 +71,7 @@ const ROLE_DEFAULTS: Record<Role, readonly Permission[]> = {
 };
 
 /** Permissoes que exigem verificacao em duas etapas ativa na conta. */
-export const MFA_REQUIRED: ReadonlySet<Permission> = new Set(['users.manage', 'settings.manage', 'company.manage', 'fiscal.manage', 'fiscal.validate', 'prices.manage', 'catalog.import', 'marketplaces.manage', 'email.manage', 'email.accounts', 'bot.manage']);
+export const MFA_REQUIRED: ReadonlySet<Permission> = new Set(['users.manage', 'settings.manage', 'company.manage', 'fiscal.manage', 'fiscal.validate', 'prices.manage', 'catalog.import', 'marketplaces.manage', 'email.manage', 'email.accounts', 'bot.manage', 'stock.adjust']);
 
 export const roleDefaults = (role: string) => new Set<Permission>(ROLE_DEFAULTS[role as Role] ?? []);
 

@@ -4,11 +4,12 @@ import Link from '@/components/painel-link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { Guard, useMe } from '@/components/shell';
-import { Badge, Button, Empty, Notice, PageHeader } from '@/components/ui';
+import { useWarehouses } from '@/components/stock';
+import { Badge, Button, Empty, Notice, PageHeader, Select } from '@/components/ui';
 import { api } from '@/lib/api';
 import { when } from '@/lib/format';
 
-type Row = { id: string; status: string; notes: string | null; created_at: string; closed_at: string | null; created_by_name: string; item_count: number; counted_count: number; diff_count: number };
+type Row = { id: string; status: string; notes: string | null; created_at: string; closed_at: string | null; created_by_name: string; warehouse_id: string; warehouse_name: string; item_count: number; counted_count: number; diff_count: number };
 const STATUS: Record<string, { label: string; tone: 'act' | 'good' | 'neutral' }> = {
   open: { label: 'Aberta', tone: 'act' },
   closed: { label: 'Fechada', tone: 'good' },
@@ -21,6 +22,11 @@ function Counts() {
   const [data, setData] = useState<{ items: Row[] } | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const { active: warehouses } = useWarehouses();
+  const [warehouseId, setWarehouseId] = useState('');
+  useEffect(() => {
+    if (!warehouseId && warehouses.length) setWarehouseId((warehouses.find((w) => w.is_default) ?? warehouses[0]!).id);
+  }, [warehouses, warehouseId]);
   useEffect(() => {
     api('/admin/inventory-counts?pageSize=50').then(setData, (e) => setError(e.message));
   }, []);
@@ -28,26 +34,40 @@ function Counts() {
     setBusy(true);
     setError('');
     try {
-      const r = await api('/admin/inventory-counts', { method: 'POST', body: {} });
+      const r = await api('/admin/inventory-counts', { method: 'POST', body: { warehouseId: warehouseId || null } });
       router.push(`/painel/inventario/${r.count.id}`);
     } catch (err) {
       setError((err as Error).message);
       setBusy(false);
     }
   };
-  const hasOpen = data?.items.some((c) => c.status === 'open');
+  // Uma contagem aberta por deposito (Fase 3).
+  const hasOpen = data?.items.some((c) => c.status === 'open' && (!warehouseId || c.warehouse_id === warehouseId));
+  const multi = warehouses.length > 1;
 
   return (
     <>
       <PageHeader
         title="Inventário"
-        description="Contagem física. Ao fechar, a diferença entre o contado e o sistema vira um lançamento de inventário em cada produto."
+        description="Contagem física por depósito. Ao fechar, a diferença entre o contado e o disponível do depósito vira um lançamento de inventário em cada produto. Bloqueado e avariado não entram na contagem."
         actions={
-          can('stock.manage') &&
-          !hasOpen && (
-            <Button variant="primary" busy={busy} onClick={open}>
-              Abrir contagem geral
-            </Button>
+          can('stock.manage') && (
+            <>
+              {multi && (
+                <Select aria-label="Depósito da contagem" value={warehouseId} onChange={(e) => setWarehouseId(e.target.value)} className="w-auto">
+                  {warehouses.map((w) => (
+                    <option key={w.id} value={w.id}>
+                      {w.name}
+                    </option>
+                  ))}
+                </Select>
+              )}
+              {!hasOpen && (
+                <Button variant="primary" busy={busy} onClick={open}>
+                  Abrir contagem geral
+                </Button>
+              )}
+            </>
           )
         }
       />
@@ -64,6 +84,7 @@ function Counts() {
                     <span>
                       <span className="block font-medium">Contagem de {when(c.created_at)}</span>
                       <span className="block text-xs text-ink-faint">
+                        {multi && `${c.warehouse_name} · `}
                         {c.created_by_name} · {c.counted_count} de {c.item_count} contados{c.status === 'closed' && ` · ${c.diff_count} com diferença`}
                       </span>
                     </span>

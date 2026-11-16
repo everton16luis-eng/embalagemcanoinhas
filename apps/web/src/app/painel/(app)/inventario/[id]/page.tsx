@@ -8,7 +8,7 @@ import { api } from '@/lib/api';
 import { parseQty, qty, qtyToInput, when } from '@/lib/format';
 
 type Item = { variant_id: string; sku: string; product_name: string; attributes: Record<string, string>; base_unit: string; counted_qty: string | null; system_qty: string | null; diff_qty: string | null; current_on_hand: string | null };
-type Count = { id: string; status: string; created_at: string; closed_at: string | null; created_by_name: string; items: Item[] };
+type Count = { id: string; status: string; warehouse_name: string; created_at: string; closed_at: string | null; created_by_name: string; items: Item[] };
 
 function CountPage() {
   const { id } = useParams<{ id: string }>();
@@ -51,7 +51,8 @@ function CountPage() {
     try {
       const r = await api(`/admin/inventory-counts/${id}/${path}`, { method: 'POST', body: {} });
       apply(r.count);
-      setMsg(null);
+      const uncovered = (r.uncoveredReservations ?? []) as unknown[];
+      setMsg(uncovered.length ? { tone: 'bad', text: `${uncovered.length} produto(s) ficaram com contado abaixo do reservado neste depósito. As reservas não mudaram: confira os pedidos.` } : null);
     } catch (err) {
       setMsg({ tone: 'bad', text: (err as Error).message });
     } finally {
@@ -67,7 +68,7 @@ function CountPage() {
     <>
       <PageHeader
         title={`Contagem de ${when(count.created_at)}`}
-        description={`${counted} de ${count.items.length} itens contados. Item não contado não é alterado.`}
+        description={`${count.warehouse_name} · ${counted} de ${count.items.length} itens contados. Item não contado não é alterado.`}
         actions={
           editable && (
             <>

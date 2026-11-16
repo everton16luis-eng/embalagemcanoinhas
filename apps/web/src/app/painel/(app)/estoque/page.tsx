@@ -2,7 +2,8 @@
 
 import Link from '@/components/painel-link';
 import { useEffect, useState } from 'react';
-import { Guard } from '@/components/shell';
+import { Guard, useMe } from '@/components/shell';
+import { useWarehouses } from '@/components/stock';
 import { Badge, Empty, Input, Notice, PageHeader, Select } from '@/components/ui';
 import { api } from '@/lib/api';
 import { qty, unitMoney } from '@/lib/format';
@@ -17,6 +18,11 @@ type Row = {
   on_hand: string;
   reserved: string;
   available: string;
+  blocked: string;
+  damaged: string;
+  in_transit: string;
+  bin: string | null;
+  min_qty: string | null;
   avg_cost_cents?: string;
   below_min: boolean;
 };
@@ -27,6 +33,7 @@ const FILTERS: Record<string, string> = {
   out: 'Sem disponível',
   reserved: 'Com reserva',
   backorder: 'Reservado além do físico',
+  held: 'Bloqueado, avariado ou chegando',
 };
 
 function StockList() {
@@ -35,24 +42,65 @@ function StockList() {
   const [page, setPage] = useState(1);
   const [data, setData] = useState<{ items: Row[]; total: number } | null>(null);
   const [error, setError] = useState('');
+  const [warehouseId, setWarehouseId] = useState('');
+  const { warehouses } = useWarehouses();
+  const { can } = useMe();
+  const [counts, setCounts] = useState<{ requests: number; alerts: number } | null>(null);
 
-  useEffect(() => setPage(1), [q, filter]);
+  useEffect(() => {
+    Promise.all([
+      api<{ total: number }>('/admin/stock/adjustment-requests?status=pending&pageSize=1'),
+      api<{ total: number }>('/admin/stock/alerts?pageSize=1'),
+    ]).then(([r, a]) => setCounts({ requests: r.total, alerts: a.total }), () => setCounts(null));
+  }, []);
+
+  useEffect(() => setPage(1), [q, filter, warehouseId]);
   useEffect(() => {
     const t = setTimeout(() => {
       const params = new URLSearchParams({ pageSize: '50', page: String(page), filter });
       if (q.trim()) params.set('q', q.trim());
+      if (warehouseId) params.set('warehouseId', warehouseId);
       api(`/admin/stock?${params}`).then(setData, (e) => setError(e.message));
     }, 200);
     return () => clearTimeout(t);
-  }, [q, filter, page]);
+  }, [q, filter, page, warehouseId]);
 
   const showCost = data?.items.some((r) => r.avg_cost_cents !== undefined);
   const pages = data ? Math.max(1, Math.ceil(data.total / 50)) : 1;
 
   return (
     <>
-      <PageHeader title="Estoque" description="Saldo na unidade base de cada produto. Disponível = físico − reservado para pedidos e orçamentos." />
+      <PageHeader
+        title="Estoque"
+        description="Saldo na unidade base de cada produto. Vendável = disponível − reservado. Bloqueado, avariado e em trânsito não são vendidos."
+        actions={
+          <>
+            <Link href="/painel/estoque/solicitacoes" className="inline-flex h-9 items-center gap-2 rounded-[var(--radius-ctl)] border border-line-strong bg-card px-3.5 text-sm font-medium hover:bg-sunken">
+              Solicitações de ajuste{counts?.requests ? <Badge tone="warn">{counts.requests}</Badge> : null}
+            </Link>
+            <Link href="/painel/estoque/alertas" className="inline-flex h-9 items-center gap-2 rounded-[var(--radius-ctl)] border border-line-strong bg-card px-3.5 text-sm font-medium hover:bg-sunken">
+              Alertas{counts?.alerts ? <Badge tone="warn">{counts.alerts}</Badge> : null}
+            </Link>
+            {can('stock.transfer') && (
+              <Link href="/painel/transferencias/nova" className="inline-flex h-9 items-center rounded-[var(--radius-ctl)] bg-act px-3.5 text-sm font-medium text-white hover:bg-act-dark">
+                Transferir
+              </Link>
+            )}
+          </>
+        }
+      />
       <div className="mb-4 flex flex-wrap gap-2">
+        {warehouses && warehouses.length > 1 && (
+          <Select aria-label="Depósito" value={warehouseId} onChange={(e) => setWarehouseId(e.target.value)} className="w-auto">
+            <option value="">Todos os depósitos</option>
+            {warehouses.map((w) => (
+              <option key={w.id} value={w.id}>
+                {w.name}
+                {w.active ? '' : ' (desativado)'}
+              </option>
+            ))}
+          </Select>
+        )}
         <Input aria-label="Buscar" placeholder="Buscar por nome, SKU ou código de barras" value={q} onChange={(e) => setQ(e.target.value)} className="max-w-sm" />
         <Select aria-label="Filtro" value={filter} onChange={(e) => setFilter(e.target.value)} className="w-auto">
           {Object.entries(FILTERS).map(([k, v]) => (
@@ -72,8 +120,8 @@ function StockList() {
               <thead className="border-b border-line bg-sunken/60 text-left text-xs text-ink-soft">
                 <tr>
                   <th className="py-2 pl-4 font-medium">Produto</th>
-                  <th className="py-2 pr-4 pl-3 text-right font-medium sm:pr-0">Disponível</th>
-                  <th className="hidden py-2 pl-3 text-right font-medium sm:table-cell">Físico</th>
+                  <th className="py-2 pr-4 pl-3 text-right font-medium sm:pr-0">Vendável</th>
+                  <th className="hidden py-2 pl-3 text-right font-medium sm:table-cell">Disponível</th>
                   <th className="hidden py-2 pl-3 text-right font-medium sm:table-cell sm:pr-4 md:pr-0">Reservado</th>
                   <th className={`hidden py-2 pl-3 text-right font-medium md:table-cell md:pr-4 ${showCost ? 'lg:pr-0' : ''}`}>Mínimo</th>
                   {showCost && <th className="hidden py-2 pr-4 pl-3 text-right font-medium lg:table-cell">Custo médio</th>}
@@ -90,6 +138,10 @@ function StockList() {
                           {r.below_min && <Badge tone="warn">Abaixo do mínimo</Badge>}
                           {Number(r.available) < 0 && <Badge tone="bad">Falta {qty(-Number(r.available))}</Badge>}
                           {r.availability_mode === 'made_to_order' && <Badge>Sob encomenda</Badge>}
+                          {r.bin && <span>· {r.bin}</span>}
+                          {Number(r.blocked) > 0 && <Badge>Bloqueado {qty(r.blocked)}</Badge>}
+                          {Number(r.damaged) > 0 && <Badge tone="bad">Avariado {qty(r.damaged)}</Badge>}
+                          {Number(r.in_transit) > 0 && <Badge tone="act">Chegando {qty(r.in_transit)}</Badge>}
                         </span>
                       </Link>
                     </td>
@@ -98,7 +150,10 @@ function StockList() {
                     </td>
                     <td className="num hidden py-2.5 pl-3 text-right sm:table-cell">{qty(r.on_hand)}</td>
                     <td className="num hidden py-2.5 pl-3 text-right sm:table-cell sm:pr-4 md:pr-0">{Number(r.reserved) ? qty(r.reserved) : '—'}</td>
-                    <td className={`num hidden py-2.5 pl-3 text-right md:table-cell md:pr-4 ${showCost ? 'lg:pr-0' : ''}`}>{Number(r.min_stock) ? qty(r.min_stock) : '—'}</td>
+                    <td className={`num hidden py-2.5 pl-3 text-right md:table-cell md:pr-4 ${showCost ? 'lg:pr-0' : ''}`}>{(() => {
+                        const m = warehouseId ? r.min_qty : r.min_stock;
+                        return Number(m) ? qty(m as string) : '—';
+                      })()}</td>
                     {showCost && <td className="num hidden py-2.5 pr-4 pl-3 text-right lg:table-cell">{Number(r.avg_cost_cents) ? unitMoney(r.avg_cost_cents) : '—'}</td>}
                   </tr>
                 ))}

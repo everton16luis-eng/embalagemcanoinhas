@@ -82,7 +82,7 @@ function ProductList() {
                 <tr>
                   <th className="py-2 pl-4 font-medium">Produto</th>
                   <th className="hidden py-2 font-medium md:table-cell">SKU</th>
-                  <th className="py-2 text-right font-medium">Preço</th>
+                  <th className="py-2 pr-4 text-right font-medium sm:pr-0">Preço</th>
                   <th className="hidden py-2 pr-4 pl-6 font-medium sm:table-cell">Situação</th>
                 </tr>
               </thead>
@@ -107,7 +107,7 @@ function ProductList() {
                       </Link>
                     </td>
                     <td className="hidden py-2.5 font-mono text-xs md:table-cell">{p.sku}</td>
-                    <td className="num py-2.5 text-right">
+                    <td className="num py-2.5 pr-4 text-right sm:pr-0">
                       <span className="block">{money(p.price_cents)}</span>
                       <span className="block text-xs text-ink-faint">{money(p.unit_price_cents)}/{p.base_unit}</span>
                     </td>

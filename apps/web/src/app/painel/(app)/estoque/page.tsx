@@ -72,10 +72,10 @@ function StockList() {
               <thead className="border-b border-line bg-sunken/60 text-left text-xs text-ink-soft">
                 <tr>
                   <th className="py-2 pl-4 font-medium">Produto</th>
-                  <th className="py-2 pl-3 text-right font-medium">Disponível</th>
+                  <th className="py-2 pr-4 pl-3 text-right font-medium sm:pr-0">Disponível</th>
                   <th className="hidden py-2 pl-3 text-right font-medium sm:table-cell">Físico</th>
-                  <th className="hidden py-2 pl-3 text-right font-medium sm:table-cell">Reservado</th>
-                  <th className="hidden py-2 pl-3 text-right font-medium md:table-cell">Mínimo</th>
+                  <th className="hidden py-2 pl-3 text-right font-medium sm:table-cell sm:pr-4 md:pr-0">Reservado</th>
+                  <th className={`hidden py-2 pl-3 text-right font-medium md:table-cell md:pr-4 ${showCost ? 'lg:pr-0' : ''}`}>Mínimo</th>
                   {showCost && <th className="hidden py-2 pr-4 pl-3 text-right font-medium lg:table-cell">Custo médio</th>}
                 </tr>
               </thead>
@@ -93,12 +93,12 @@ function StockList() {
                         </span>
                       </Link>
                     </td>
-                    <td className={`num py-2.5 pl-3 text-right font-medium ${Number(r.available) <= 0 ? 'text-bad' : ''}`}>
+                    <td className={`num py-2.5 pr-4 pl-3 text-right font-medium sm:pr-0 ${Number(r.available) <= 0 ? 'text-bad' : ''}`}>
                       {qty(r.available)} <span className="text-xs font-normal text-ink-faint">{r.base_unit}</span>
                     </td>
                     <td className="num hidden py-2.5 pl-3 text-right sm:table-cell">{qty(r.on_hand)}</td>
-                    <td className="num hidden py-2.5 pl-3 text-right sm:table-cell">{Number(r.reserved) ? qty(r.reserved) : '—'}</td>
-                    <td className="num hidden py-2.5 pl-3 text-right md:table-cell">{Number(r.min_stock) ? qty(r.min_stock) : '—'}</td>
+                    <td className="num hidden py-2.5 pl-3 text-right sm:table-cell sm:pr-4 md:pr-0">{Number(r.reserved) ? qty(r.reserved) : '—'}</td>
+                    <td className={`num hidden py-2.5 pl-3 text-right md:table-cell md:pr-4 ${showCost ? 'lg:pr-0' : ''}`}>{Number(r.min_stock) ? qty(r.min_stock) : '—'}</td>
                     {showCost && <td className="num hidden py-2.5 pr-4 pl-3 text-right lg:table-cell">{Number(r.avg_cost_cents) ? unitMoney(r.avg_cost_cents) : '—'}</td>}
                   </tr>
                 ))}

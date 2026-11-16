@@ -42,7 +42,7 @@ function SupplierList() {
                 <tr>
                   <th className="py-2 pl-4 font-medium">Fornecedor</th>
                   <th className="hidden py-2 pl-3 font-medium sm:table-cell">Cidade</th>
-                  <th className="py-2 pl-3 text-right font-medium">Itens</th>
+                  <th className="py-2 pr-4 pl-3 text-right font-medium md:pr-0">Itens</th>
                   <th className="hidden py-2 pr-4 pl-3 text-right font-medium md:table-cell">Última entrega</th>
                 </tr>
               </thead>
@@ -59,7 +59,7 @@ function SupplierList() {
                       </Link>
                     </td>
                     <td className="hidden py-2.5 pl-3 sm:table-cell">{s.city ? `${s.city}/${s.uf ?? ''}` : '—'}</td>
-                    <td className="num py-2.5 pl-3 text-right">{s.offer_count}</td>
+                    <td className="num py-2.5 pr-4 pl-3 text-right md:pr-0">{s.offer_count}</td>
                     <td className="hidden py-2.5 pr-4 pl-3 text-right md:table-cell">{when(s.last_receipt_at)}</td>
                   </tr>
                 ))}

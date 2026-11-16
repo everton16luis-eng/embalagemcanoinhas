@@ -55,6 +55,8 @@ export const PERMISSION_LABELS: Record<string, string> = {
   'stock.manage': 'Movimentar estoque',
   'purchases.view': 'Ver compras',
   'purchases.manage': 'Registrar compras',
+  'suppliers.view': 'Ver fornecedores, ofertas e disponibilidade',
+  'suppliers.manage': 'Cadastrar fornecedores e alterar custos',
   'orders.view': 'Ver pedidos',
   'orders.manage': 'Gerenciar pedidos',
   'shipping.manage': 'Expedição',

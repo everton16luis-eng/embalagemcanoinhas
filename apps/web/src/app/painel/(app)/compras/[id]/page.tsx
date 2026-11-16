@@ -22,6 +22,9 @@ type Item = {
   product_name: string;
   base_unit: string;
   base_qty: string;
+  min_order_packs: string | null;
+  order_multiple_packs: string | null;
+  min_exception_reason: string | null;
 };
 type Order = {
   id: string;
@@ -43,17 +46,30 @@ type Order = {
   items: Item[];
   receipts: { id: string; invoice_ref: string | null; notes: string | null; received_at: string; received_by_name: string; items: { itemId: string; packs: string; baseQty: string; unitCostCents: string; allocatedExtraCents: string }[] }[];
 };
-type Line = { packagingId: string; label: string; productName: string; sku: string; baseQty: string; baseUnit: string; packs: string; cost: string };
+type Line = { packagingId: string; label: string; productName: string; sku: string; baseQty: string; baseUnit: string; packs: string; cost: string; reason: string };
+type OfferTerms = { cost: string; min: string | null; multiple: string | null };
+
+/** Abaixo do minimo ou fora do multiplo do fornecedor: so aviso; para seguir, a justificativa (D2-11). */
+function minIssue(l: Line, t: OfferTerms | undefined) {
+  const packs = Number(parseQty(l.packs) || 0);
+  if (!t || !packs) return null;
+  const min = t.min ? Number(t.min) : null;
+  const mult = t.multiple ? Number(t.multiple) : null;
+  if (min && packs < min) return `abaixo do mínimo do fornecedor (${qty(min)} embalagens)`;
+  if (mult && Math.abs(packs / mult - Math.round(packs / mult)) > 1e-9) return `fora do múltiplo do fornecedor (${qty(mult)} em ${qty(mult)})`;
+  return null;
+}
 type Supplier = { id: string; name: string };
 
 const toLines = (o: Order): Line[] =>
-  o.items.map((i) => ({ packagingId: i.packaging_id, label: i.packaging_label, productName: i.product_name, sku: i.sku, baseQty: i.base_qty_per_pack, baseUnit: i.base_unit, packs: qtyToInput(i.packs), cost: centsToInput(i.pack_cost_cents) }));
+  o.items.map((i) => ({ packagingId: i.packaging_id, label: i.packaging_label, productName: i.product_name, sku: i.sku, baseQty: i.base_qty_per_pack, baseUnit: i.base_unit, packs: qtyToInput(i.packs), cost: centsToInput(i.pack_cost_cents), reason: i.min_exception_reason ?? '' }));
 
 function OrderForm({ order, onSaved }: { order: Order | null; onSaved: (o: Order) => void }) {
   const search = useSearchParams();
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [supplierId, setSupplierId] = useState(order?.supplier_id ?? search.get('fornecedor') ?? '');
-  const [offerCost, setOfferCost] = useState<Record<string, string>>({});
+  const [terms, setTerms] = useState<Record<string, OfferTerms>>({});
+  const offerCost = Object.fromEntries(Object.entries(terms).map(([k, v]) => [k, v.cost]));
   const [lines, setLines] = useState<Line[]>(order ? toLines(order) : []);
   const [freight, setFreight] = useState(order ? centsToInput(order.freight_cents) : '');
   const [other, setOther] = useState(order ? centsToInput(order.other_costs_cents) : '');
@@ -68,8 +84,18 @@ function OrderForm({ order, onSaved }: { order: Order | null; onSaved: (o: Order
   useEffect(() => {
     if (!supplierId) return;
     api(`/admin/suppliers/${supplierId}`).then(
-      (r) => setOfferCost(Object.fromEntries(r.supplier.offers.filter((o: { active: boolean }) => o.active).map((o: { packaging_id: string; cost_cents: string }) => [o.packaging_id, centsToInput(o.cost_cents)]))),
-      () => setOfferCost({}),
+      (r) =>
+        setTerms(
+          Object.fromEntries(
+            r.supplier.offers
+              .filter((o: { active: boolean }) => o.active)
+              .map((o: { packaging_id: string; cost_cents: string; min_order_packs: string | null; order_multiple_packs: string | null }) => [
+                o.packaging_id,
+                { cost: centsToInput(o.cost_cents), min: o.min_order_packs, multiple: o.order_multiple_packs },
+              ]),
+          ),
+        ),
+      () => setTerms({}),
     );
   }, [supplierId]);
 
@@ -88,7 +114,12 @@ function OrderForm({ order, onSaved }: { order: Order | null; onSaved: (o: Order
       freightCents: parseMoney(freight) ?? 0,
       otherCostsCents: parseMoney(other) ?? 0,
       notes: notes.trim() || null,
-      items: lines.map((l) => ({ packagingId: l.packagingId, packs: parseQty(l.packs), packCostCents: l.cost.trim() ? parseMoney(l.cost) : null })),
+      items: lines.map((l) => ({
+        packagingId: l.packagingId,
+        packs: parseQty(l.packs),
+        packCostCents: l.cost.trim() ? parseMoney(l.cost) : null,
+        ...(minIssue(l, terms[l.packagingId]) && l.reason.trim().length >= 3 ? { minExceptionReason: l.reason.trim() } : {}),
+      })),
       ...(order ? { version: order.version } : {}),
     };
     try {
@@ -123,7 +154,7 @@ function OrderForm({ order, onSaved }: { order: Order | null; onSaved: (o: Order
         <PackagingPicker
           onPick={(h) => {
             if (lines.some((l) => l.packagingId === h.id)) return;
-            setLines([...lines, { packagingId: h.id, label: h.label, productName: h.product_name, sku: h.sku, baseQty: h.base_qty, baseUnit: h.base_unit, packs: '1', cost: offerCost[h.id] ?? '' }]);
+            setLines([...lines, { packagingId: h.id, label: h.label, productName: h.product_name, sku: h.sku, baseQty: h.base_qty, baseUnit: h.base_unit, packs: terms[h.id]?.min ? qtyToInput(terms[h.id]!.min!) : '1', cost: offerCost[h.id] ?? '', reason: '' }]);
           }}
         />
         {lines.length > 0 && (
@@ -148,6 +179,12 @@ function OrderForm({ order, onSaved }: { order: Order | null; onSaved: (o: Order
                         <span className="block text-xs text-ink-faint">
                           {packLabel(l.label, l.baseQty, l.baseUnit)} · total {qty(packs * Number(l.baseQty))} {l.baseUnit}
                         </span>
+                        {minIssue(l, terms[l.packagingId]) && (
+                          <span className="mt-1 block">
+                            <span className="block text-xs text-warn">⚠ {minIssue(l, terms[l.packagingId])}. Para seguir assim, justifique:</span>
+                            <Input aria-label="Justificativa da compra abaixo do mínimo" className="mt-1 max-w-xs" maxLength={300} placeholder="Ex.: fornecedor aceitou nesta compra" value={l.reason} onChange={(e) => setLine(i, { reason: e.target.value })} />
+                          </span>
+                        )}
                       </td>
                       <td className="py-2 pl-3">
                         <Input aria-label="Quantidade de embalagens" className="w-20" inputMode="decimal" value={l.packs} onChange={(e) => setLine(i, { packs: e.target.value })} />
@@ -364,6 +401,7 @@ function OrderPage() {
                           <span className="block text-xs text-ink-faint">
                             <span className="font-mono">{i.sku}</span> · {packLabel(i.packaging_label, i.base_qty_per_pack, i.base_unit)} · {money(i.pack_cost_cents)} cada
                           </span>
+                          {i.min_exception_reason && <span className="block text-xs text-warn">Abaixo do mínimo ou fora do múltiplo do fornecedor: {i.min_exception_reason}</span>}
                         </td>
                         <td className="num py-2 pl-3 text-right">{qty(i.packs)}</td>
                         <td className={`num py-2 pl-3 text-right ${Number(i.received_packs) >= Number(i.packs) ? 'text-good' : ''}`}>{qty(i.received_packs)}</td>

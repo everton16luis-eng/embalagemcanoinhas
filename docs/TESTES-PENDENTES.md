@@ -306,3 +306,70 @@ cancelamento do rascunho nº 85, abaixo.
       Fica pendente até você confirmar o cancelamento.
 - [ ] **Você** Opcional: marcar o fornecedor principal das 61 variantes com mais de um fornecedor; sem isso a escolha
       segue o critério automático (custo por unidade, depois prazo).
+
+## SGLog Fase 3 — estoque por depósito ([20-sglog-fase3.md](20-sglog-fase3.md))
+
+**Situação: PRONTA NA BRANCH `sglog/fase3`, só local.** Nada foi integrado, enviado ou migrado no servidor.
+Resultados locais:
+
+- suíte 380/380;
+- typecheck e build sem erros;
+- 0022 com `up`, `down` e `up` limpos;
+- teste manual do painel no banco local e a 375 px.
+
+O roteiro completo está em [20-sglog-fase3.md §5](20-sglog-fase3.md#5-implantação-quando-autorizada-só-por-você).
+
+Antes de implantar:
+
+- [ ] **Você** Ativar a verificação em duas etapas do dono e do gerente. Sem ela, ajuste, perda, avaria, estorno,
+      extravio e cancelamento de transferência ficam bloqueados para eles (D3-2).
+- [ ] **Você** Combinar quem aprova as solicitações de ajuste do Estoquista. Precisa ser outra pessoa com MFA.
+- [ ] **Você** Revisar o código dos commits da branch e autorizar o merge.
+
+No servidor, depois da autorização:
+
+- [ ] **Servidor** Confirmar que a última migração é a `0021_sglog_fornecedores`.
+- [ ] **Servidor** Fazer o backup com `npm run backup` e conferi-lo com `backup:verify`.
+- [ ] **Servidor** Ensaiar a 0022 na cópia restaurada (`migrate-rehearsal`) e anotar:
+  - o tempo de trava;
+  - os avisos;
+  - a conferência com 0 divergência.
+- [ ] **Servidor** Aplicar a 0022 fora do pico. Fazer o build e reiniciar os serviços como root.
+- [ ] **Servidor** Rodar a etapa F estendida:
+  - última migração `0022_sglog_estoque`;
+  - total = soma dos depósitos também em bloqueado, avariado e em trânsito;
+  - `stock_reconcile()` com 0 divergência (inclui C6 e C7).
+
+No painel, com HTTPS:
+
+- [ ] **Navegador** Conferir o menu LOGÍSTICA, com Estoque, Inventário, Transferências, Depósitos, Compras, Reposição e
+      Fornecedores, todos abrindo nas URLs de antes.
+- [ ] **Navegador** Testar Depósitos:
+  - cadastrar um depósito de teste, com MFA;
+  - tentar desativá-lo com saldo: deve recusar;
+  - desativá-lo vazio: deve aceitar.
+- [ ] **Navegador** Testar a transferência:
+  - enviar 1 UN para o depósito de teste e ver "chegando" no destino;
+  - receber em parte, depois recusar o resto com motivo;
+  - fazer outra com "Já receber agora".
+- [ ] **Navegador** Testar bloqueio e avaria num produto:
+  - bloquear e liberar;
+  - separar como avariado e recuperar;
+  - conferir que o vendável cai e volta.
+- [ ] **Navegador** Testar o estorno: lançar um ajuste pequeno com motivo, estorná-lo e conferir que "Estornar" some
+      da linha.
+- [ ] **Navegador** Testar a solicitação de ajuste:
+  - o Estoquista pede uma perda;
+  - o gerente com MFA aprova ou recusa;
+  - quem pediu não consegue aprovar.
+  
+  Precisa do login de dois papéis, junto com os testes de papéis pendentes da Fase 1.
+- [ ] **Navegador** Conferir os alertas: definir mínimo e máximo num depósito e ver o alerta em Estoque → Alertas.
+- [ ] **Navegador** Testar o inventário: abrir uma contagem no depósito de teste e ver que a do padrão não é afetada.
+- [ ] **Navegador** Regressão da loja: busca, produto, carrinho e checkout sem erro. O estoque exibido na loja continua
+      sendo o vendável do depósito padrão.
+- [ ] **Celular** Abrir as telas novas a 375 px, junto com o teste de 375 px pendente da Fase 1.
+
+Depois dos testes:
+
+- [ ] **Você** Desativar o depósito de teste, devolvendo antes o saldo dele por transferência.

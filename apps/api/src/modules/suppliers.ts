@@ -614,6 +614,12 @@ export async function supplierRoutes(app: FastifyInstance) {
   app.put('/:id', async (req) => {
     const auth = requirePermission(req, 'suppliers.manage');
     const { id } = idParams.parse(req.params);
+    // Tela antiga (aberta antes da Fase 2) nao manda a versao: em vez de "dados invalidos", diz o que fazer. Nunca grava
+    // sem versao (seria sobrescrever as cegas).
+    const raw = req.body as Record<string, unknown> | null;
+    if (raw && typeof raw === 'object' && !Array.isArray(raw) && raw.version === undefined) {
+      throw new AppError(428, 'VERSION_REQUIRED', 'Esta tela está desatualizada. Copie o que digitou, recarregue a página (F5) e salve de novo; nada foi gravado.');
+    }
     const b = updateSchema.parse(req.body);
     try {
       const supplier = await tx(auth.userId, async (db) => {

@@ -68,17 +68,75 @@ function toForm(s: any): Form {
   };
 }
 
+const FIELD_LABELS: Record<keyof Form, string> = {
+  name: 'nome fantasia', legalName: 'razão social', document: 'CNPJ/CPF', stateRegistration: 'inscrição estadual', email: 'e-mail', phone: 'telefone', whatsapp: 'WhatsApp',
+  website: 'site', cep: 'CEP', street: 'rua', number: 'número', complement: 'complemento', district: 'bairro', city: 'cidade', uf: 'UF', paymentTerms: 'condição de pagamento',
+  leadTimeDays: 'prazo total antigo', prepDays: 'preparação', deliveryDays: 'transporte', minOrder: 'pedido mínimo', orderFreight: 'frete por pedido', orderExtra: 'despesas por pedido',
+  freightTerms: 'frete (texto)', returnPolicy: 'política de devolução', returnDays: 'prazo de devolução', notes: 'observações', dropshipEnabled: 'dropshipping', contacts: 'contatos',
+};
+const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+
+/**
+ * Conflito de edicao: outra pessoa salvou depois que esta tela leu o cadastro. Mescla em tres vias, sem gravar nada:
+ * campo que so a outra pessoa mudou recebe o valor atual; campo que so voce mudou fica com o seu; campo que os dois
+ * mudaram fica com o seu e e listado para conferir. A gravacao continua exigindo um novo clique em Salvar.
+ */
+function mergeConflict<T extends object>(base: T, mine: T, theirs: T, labels: Partial<Record<keyof T, string>>) {
+  const merged = { ...mine };
+  const theirsOnly: string[] = [];
+  const both: string[] = [];
+  for (const k of Object.keys(labels) as (keyof T)[]) {
+    const changedByThem = !same(base[k], theirs[k]);
+    const changedByMe = !same(base[k], mine[k]);
+    if (changedByThem && !changedByMe) {
+      merged[k] = theirs[k];
+      theirsOnly.push(labels[k]!);
+    } else if (changedByThem && changedByMe && !same(mine[k], theirs[k])) both.push(labels[k]!);
+  }
+  return { merged, theirsOnly, both };
+}
+
+function ConflictNote({ c, onDiscard }: { c: { theirsOnly: string[]; both: string[] }; onDiscard: () => void }) {
+  return (
+    <Notice tone="warn">
+      {c.theirsOnly.length > 0 && <span className="block">Atualizado com a versão salva pela outra pessoa: {c.theirsOnly.join(', ')}.</span>}
+      {c.both.length > 0 && <span className="block font-medium">Alterado pelos dois — ficou o seu valor, confira: {c.both.join(', ')}.</span>}
+      {!c.theirsOnly.length && !c.both.length && <span className="block">A outra alteração não mexeu nos campos que você está editando.</span>}
+      <button type="button" className="mt-1 font-medium underline" onClick={onDiscard}>
+        Descartar o que digitei e ver a versão salva
+      </button>
+    </Notice>
+  );
+}
+
 function SupplierForm({ supplier, onSaved, onReload }: { supplier: any | null; onSaved: (s: any) => void; onReload: () => void }) {
   const isNew = !supplier;
   const { can } = useMe();
   const router = useRouter();
   const editable = can('suppliers.manage');
   const [form, setForm] = useState<Form>(supplier ? toForm(supplier) : emptyForm);
+  // Versao lida que serve de base para salvar. Num conflito, passa a ser a versao atual (depois da mescla).
+  const [base, setBase] = useState<any | null>(supplier);
+  const [conflict, setConflict] = useState<{ theirsOnly: string[]; both: string[] } | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<Msg>(null);
   useEffect(() => {
-    if (supplier) setForm(toForm(supplier));
+    if (supplier) {
+      setForm(toForm(supplier));
+      setBase(supplier);
+      setConflict(null);
+    }
   }, [supplier]);
+
+  const resolveConflict = async () => {
+    // Le a versao atual e mescla com o que foi digitado; nada e gravado aqui.
+    const current = (await api<{ supplier: any }>(`/admin/suppliers/${supplier.id}`)).supplier;
+    const { merged, theirsOnly, both } = mergeConflict(toForm(base), form, toForm(current), FIELD_LABELS);
+    setForm(merged);
+    setBase(current);
+    setConflict({ theirsOnly, both });
+    setMsg(null);
+  };
   const set = <K extends keyof Form>(k: K, v: Form[K]) => setForm((f) => ({ ...f, [k]: v }));
 
   const save = async (e: FormEvent) => {
@@ -96,17 +154,26 @@ function SupplierForm({ supplier, onSaved, onReload }: { supplier: any | null; o
       dropshipEnabled: form.dropshipEnabled, notes: nul(form.notes),
       contacts: form.contacts.filter((c) => c.name.trim()).map((c) => ({ name: c.name, role: nul(c.role), email: nul(c.email), phone: nul(c.phone), whatsapp: nul(c.whatsapp), isPrimary: c.isPrimary })),
     };
-    if (!isNew) body.version = supplier.version;
+    if (!isNew) body.version = base.version;
     setBusy(true);
     try {
       const r = await api(isNew ? '/admin/suppliers' : `/admin/suppliers/${supplier.id}`, { method: isNew ? 'POST' : 'PUT', body });
       if (isNew) router.replace(`/painel/fornecedores/${r.supplier.id}?aba=produtos`);
       else {
         onSaved(r.supplier);
+        setConflict(null);
         setMsg({ tone: 'good', text: 'Fornecedor salvo.' });
       }
     } catch (err) {
-      setMsg(errMsg(err));
+      if ((err as ApiError)?.code === 'VERSION_CONFLICT' && !isNew) {
+        // Mantem o que foi digitado e mostra o que a outra pessoa mudou; o usuario confere e salva de novo.
+        try {
+          await resolveConflict();
+          setMsg({ tone: 'warn', text: 'Outra pessoa salvou este cadastro enquanto você editava. Nada foi gravado. O que você digitou foi mantido; confira abaixo e clique em Salvar de novo.' });
+        } catch {
+          setMsg(errMsg(err));
+        }
+      } else setMsg(errMsg(err));
     } finally {
       setBusy(false);
     }
@@ -215,6 +282,7 @@ function SupplierForm({ supplier, onSaved, onReload }: { supplier: any | null; o
         <Field label="Observações internas">{(fid) => <Textarea id={fid} value={form.notes} onChange={(e) => set('notes', e.target.value)} disabled={!editable} maxLength={2000} />}</Field>
       </Panel>
       <MsgBox msg={msg} onReload={onReload} />
+      {conflict && <ConflictNote c={conflict} onDiscard={onReload} />}
       {editable && (
         <Button variant="primary" busy={busy}>
           {isNew ? 'Cadastrar fornecedor' : 'Salvar cadastro'}
@@ -398,6 +466,10 @@ function Overview({ s }: { s: any }) {
 
 // ------------------------------------------------------------------ ofertas
 type OfferEdit = { cost: string; costReason: string; supplierSku: string; minOrderPacks: string; orderMultiplePacks: string; prepDays: string; leadTimeDays: string; quotedAt: string; dropshipAllowed: boolean };
+const OFFER_LABELS: Partial<Record<keyof OfferEdit, string>> = {
+  cost: 'custo', supplierSku: 'código no fornecedor', minOrderPacks: 'mínimo', orderMultiplePacks: 'múltiplo', prepDays: 'preparação', leadTimeDays: 'prazo antigo',
+  quotedAt: 'data da cotação', dropshipAllowed: 'dropshipping',
+};
 const toEdit = (o: any): OfferEdit => ({
   cost: centsToInput(o.cost_cents), costReason: '', supplierSku: str(o.supplier_sku), minOrderPacks: o.min_order_packs ? qtyToInput(o.min_order_packs) : '',
   orderMultiplePacks: o.order_multiple_packs ? qtyToInput(o.order_multiple_packs) : '', prepDays: str(o.offer_prep_days), leadTimeDays: str(o.lead_time_days),
@@ -456,18 +528,48 @@ function OfferRow({ o, settings, editable, onChanged }: { o: any; settings: any;
   const canHistory = useMe().can('suppliers.view');
   const [msg, setMsg] = useState<Msg>(null);
   const [busy, setBusy] = useState(false);
+  // Oferta como estava quando a edicao comecou (base da mescla num conflito).
+  const [editFrom, setEditFrom] = useState<any>(null);
+  const [awaitingReload, setAwaitingReload] = useState(false);
+  const [conflict, setConflict] = useState<{ theirsOnly: string[]; both: string[] } | null>(null);
+  // Depois de um conflito na edicao, a lista e recarregada sem desmontar a linha: o que foi digitado fica, e o que a
+  // outra pessoa mudou (e voce nao) entra; a gravacao exige um novo clique em Salvar, ja com a versao nova.
+  useEffect(() => {
+    if (!awaitingReload || !edit || !editFrom || o.version === editFrom.version) return;
+    const { merged, theirsOnly, both } = mergeConflict(toEdit(editFrom), edit, toEdit(o), OFFER_LABELS);
+    setEdit({ ...merged, costReason: edit.costReason });
+    setEditFrom(o);
+    setConflict({ theirsOnly, both });
+    setAwaitingReload(false);
+  }, [o, awaitingReload, edit, editFrom]);
+  const startEdit = () => {
+    setEdit(toEdit(o));
+    setEditFrom(o);
+    setConflict(null);
+  };
+  const discard = () => {
+    setEdit(null);
+    setConflict(null);
+    setMsg(null);
+    onChanged();
+  };
   const call = async (fn: () => Promise<unknown>, ok?: string) => {
     setBusy(true);
     setMsg(null);
     try {
       await fn();
       setEdit(null);
+      setConflict(null);
       setPending(null);
       setReason('');
       if (ok) setMsg({ tone: 'good', text: ok });
       onChanged();
     } catch (err) {
-      setMsg(errMsg(err));
+      if ((err as ApiError)?.code === 'VERSION_CONFLICT' && edit) {
+        setMsg({ tone: 'warn', text: 'Outra pessoa alterou esta oferta enquanto você editava. Nada foi gravado. O que você digitou foi mantido; confira e clique em Salvar de novo.' });
+        setAwaitingReload(true);
+        onChanged();
+      } else setMsg(errMsg(err));
     } finally {
       setBusy(false);
     }
@@ -569,14 +671,14 @@ function OfferRow({ o, settings, editable, onChanged }: { o: any; settings: any;
                 <Button variant="primary" busy={busy} onClick={save}>
                   Salvar
                 </Button>
-                <Button variant="ghost" onClick={() => setEdit(null)}>
+                <Button variant="ghost" onClick={() => { setEdit(null); setConflict(null); }}>
                   Cancelar
                 </Button>
               </>
             ) : (
               <>
                 {editable && !ended && (
-                  <Button variant="ghost" aria-label="Editar oferta" onClick={() => setEdit(toEdit(o))}>
+                  <Button variant="ghost" aria-label="Editar oferta" onClick={startEdit}>
                     <Pencil size={15} />
                   </Button>
                 )}
@@ -627,6 +729,7 @@ function OfferRow({ o, settings, editable, onChanged }: { o: any; settings: any;
               </div>
             )}
             <MsgBox msg={msg} onReload={onChanged} />
+            {conflict && edit && <ConflictNote c={conflict} onDiscard={discard} />}
             {showHistory && <PriceHistory offerId={o.id} />}
           </td>
         </tr>
@@ -747,7 +850,7 @@ function OffersTab({ s }: { s: any }) {
               </thead>
               <tbody className="divide-y divide-line">
                 {data.items.map((o) => (
-                  <OfferRow key={`${o.id}-${o.version}`} o={o} settings={data.settings} editable={editable} onChanged={load} />
+                  <OfferRow key={o.id} o={o} settings={data.settings} editable={editable} onChanged={load} />
                 ))}
               </tbody>
             </table>

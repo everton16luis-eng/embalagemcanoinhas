@@ -227,7 +227,10 @@ describe('concorrência entre usuários', () => {
     expect(now.name).toBe('Nome novo');
     expect(now.contacts).toHaveLength(1);
     // Sem versao: recusado (nunca sobrescreve as cegas).
-    expect((await boss.put(`${SUP}/${s.id}`, { name: 'Sem versão' })).statusCode).toBe(400);
+    const noVersion = await boss.put(`${SUP}/${s.id}`, { name: 'Sem versão' });
+    expect(noVersion.statusCode).toBe(428);
+    expect(noVersion.json().error).toMatchObject({ code: 'VERSION_REQUIRED', message: expect.stringContaining('recarregue a página') });
+    expect((await boss.get(`${SUP}/${s.id}`)).json().supplier.name).toBe('Nome novo');
   });
 });
 

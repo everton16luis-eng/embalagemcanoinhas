@@ -15,6 +15,7 @@ da Etapa 0 e a autorização de implantação. A 0021 só pode ir para produçã
 | `2b45923` | Telas: lista, ficha com abas, comparação no produto, exceção de mínimo no pedido de compra |
 | `f3ff927` | Este documento (primeira versão) |
 | auditoria final | Rota antiga de ofertas, mensagem da reversão, relatório de códigos, regressão da reposição, comparação no pedido |
+| encerramento técnico | 428 sem `version`, mesclagem de conflito na tela, plano de descontinuação, rollback e checklist |
 
 A branch parte de `b5ff9f2` (Fase 1). Dos três commits locais ainda não enviados do `main`, só o planejamento da Fase 2
 está aqui: `f7bea62` é o mesmo patch de `84eff18` (mesmo `patch-id`; o merge não duplica). `f3b7998` (roteiro da
@@ -166,9 +167,27 @@ Contrato a partir da Fase 2:
 - Auditoria: `suppliers.offers_updated` com `metadata.route = 'legacy_full_list'`.
 
 Compatibilidade: a tela antiga continua funcionando (sempre mandou a lista inteira). O único comportamento que mudou é o
-da omissão, e ele **falha de forma explícita** (409, nada gravado) em vez de pausar em silêncio. Alternativas, se for
-preciso outra coisa: (a) desativar a rota (410) depois de um período com o cabeçalho `Deprecation`; (b) voltar à
-desativação por omissão, como antes da Fase 2 (não recomendado: é exatamente o risco de lista parcial).
+da omissão, e ele **falha de forma explícita** (409, nada gravado) em vez de pausar em silêncio. A desativação por
+omissão **não volta**: é exatamente o risco de lista parcial.
+
+Como cada consumidor conhecido trata o `409 OFFERS_OMITTED` (conferido em 16/11/2026):
+
+| Consumidor | Envia lista parcial? | Com 409 |
+|---|---|---|
+| Tela antiga (`b5ff9f2`), numa aba aberta durante a implantação | Não: manda todas as ofertas lidas | Mostra a mensagem do erro ("…veio sem algumas delas (ou está desatualizada)…"); nada gravado; recarregar resolve |
+| Tela nova (Fase 2) | Não usa a rota | — |
+| `stock.test.ts`, `sglog-fase2.test.ts` | Só de propósito | Os testes esperam o 409 e conferem que nada mudou |
+| Serviços internos, scripts, importação, integrações | Não usam a rota | — |
+
+Descontinuação planejada (não executar agora; cada etapa só com autorização):
+1. **Hoje (Fase 2):** rota mantida, com `Deprecation: true` e auditoria `route = 'legacy_full_list'` em toda gravação.
+2. **Depois da implantação da Fase 2:** acompanhar por pelo menos 60 dias as linhas de auditoria com
+   `legacy_full_list` e os 409 `OFFERS_OMITTED` no log da API. Esperado: zero (nenhum cliente conhecido).
+3. **Sem uso no período:** anunciar a data de desligamento e acrescentar o cabeçalho `Sunset` com essa data.
+4. **Na data:** a rota passa a responder `410 Gone`, indicando as rotas por oferta (`POST /:id/offers/item`,
+   `PATCH /offers/:offerId`). A remoção do código fica para depois de mais um ciclo sem chamadas.
+5. **Se aparecer uso real:** contatar o responsável e migrar para as rotas por oferta. A proteção contra omissão continua
+   valendo durante toda a transição.
 
 Códigos de erro novos:
 - `VERSION_CONFLICT`
@@ -300,12 +319,15 @@ Ele também confirma que o que só a Fase 2 tem não muda nada:
 - escolha determinística;
 - mínimo na compra (exigido, validado, auditado, preservado na edição, protegido por permissão);
 - fornecedor bloqueado (inclusive ao trocar o fornecedor do rascunho).
+- cadastro sem `version` recusado com 428 `VERSION_REQUIRED`, sem gravar nada.
 
 **Verificação no navegador** (servidor local da worktree, banco `loja_dev` isolado):
 - lista e todas as abas da ficha;
 - comparação no produto;
 - comparação compacta no pedido de compra, inclusive em 375 px sem rolagem lateral da página;
 - pedido abaixo do mínimo: 422 sem justificativa; aceito com ela, que aparece na edição e na visualização.
+- conflito de edição com duas abas (cadastro e linha de oferta): o digitado é mantido, a mudança da outra aba é
+  incorporada, os campos em disputa são apontados e nada é sobrescrito sem nova confirmação.
 
 Nenhum erro no console.
 
@@ -319,7 +341,10 @@ Nenhum erro no console.
    omissão (a tela antiga sempre mandou a lista inteira), mas um cliente externo desconhecido receberia 409. Nada é
    gravado nesse caso.
 4. **`PUT /:id` (cadastro) exige `version` desde a Fase 2.** Uma aba aberta com a tela antiga durante a implantação
-   recebe 400 ao salvar e precisa recarregar; nada é gravado.
+   recebe 428 `VERSION_REQUIRED` ao salvar, com a orientação de copiar o que digitou e recarregar; nada é gravado.
+10. **Mesclagem de conflito é só na tela.** Ao receber 409 de versão, a tela busca a versão salva e mantém o que a
+    pessoa digitou nos campos que ela mudou; os demais assumem o valor salvo. Se os dois mudaram o mesmo campo, vale o
+    digitado e a tela avisa quais campos conferir. O servidor continua validando tudo e recusando versão velha.
 5. **Reversão só vale enquanto nada novo foi usado.** Depois do primeiro uso (oferta encerrada, histórico manual,
    justificativa etc.), a 0021 down recusa com o motivo; o caminho é voltar só o código (o código antigo funciona com a
    0021 aplicada — suíte do código anterior verde sobre a 0021).
@@ -329,6 +354,40 @@ Nenhum erro no console.
 8. **Histórico de custo começa na 0021.** Mudanças anteriores existem só na auditoria antiga.
 9. **A comparação usa o prazo efetivo (preparo + transporte) e a reposição continua com o prazo antigo** (D2-6). Os
    dois números podem diferir na mesma tela; está documentado e coberto pelo teste de regressão.
+
+## Conflito de edição na tela
+
+- **Cadastro do fornecedor.** Se outra pessoa salvou antes, nada é gravado (409 no servidor) e a tela **não descarta o
+  que foi digitado**. Ela lê a versão atual e mescla em três vias:
+  - o que só a outra pessoa mudou entra no formulário;
+  - o que só você mudou fica como você digitou;
+  - o que os dois mudaram fica com o seu valor e é listado para conferir.
+
+  A mensagem diz o que aconteceu. A gravação exige um novo clique em Salvar, já com a versão nova. Há também a opção
+  "Descartar o que digitei e ver a versão salva".
+- **Linha de oferta.** O mesmo comportamento. A linha não é mais remontada ao recarregar a lista, então a edição aberta
+  sobrevive ao conflito.
+- **Tela antiga sem `version`** (aba aberta antes da implantação). O servidor responde 428 `VERSION_REQUIRED`: "Esta
+  tela está desatualizada. Copie o que digitou, recarregue a página (F5) e salve de novo; nada foi gravado." Antes era
+  um genérico "Dados inválidos".
+- **Sem sobrescrita silenciosa.** As validações continuam no servidor (versão obrigatória e conferida em toda edição).
+
+## Recuperação e rollback
+
+Nenhum cenário apaga dados para forçar uma reversão. Restaurar backup em produção exige **autorização expressa** do
+responsável, caso a caso.
+
+| Cenário | Estado do banco | O que fazer |
+|---|---|---|
+| **0021 falha antes de concluir** (trava ocupada por mais de 10 s, códigos A/B, qualquer erro) | Inalterado: a migration roda numa transação só e é desfeita inteira; `schema_migrations` não registra a 0021 | Ler a mensagem. Para trava ocupada: repetir fora do pico. Para códigos: rodar o relatório, corrigir no painel e repetir. Nada a restaurar. |
+| **0021 aplicada, sem uso dos dados novos** | 0021 aplicada; nada criado que a reversão perderia | Preferir voltar só o código (o anterior funciona com a 0021: 304/304). Se for preciso tirar a 0021: `npm run migrate -- down` (reverte só a última); se recusar, cai no cenário seguinte. Ensaiar antes numa cópia. |
+| **0021 aplicada, com dados novos** (oferta encerrada, histórico manual, justificativa, disponibilidade, bloqueio etc.) | A reversão **recusa**, diz o motivo e não muda nada | **Não** apagar dados para destravar. Voltar só o código e manter a 0021 aplicada (compatível). Corrigir para a frente com uma nova versão. |
+| **Problema só no frontend** | Banco e API corretos | Publicar o build web anterior. Ele funciona com a API nova, exceto o salvar do cadastro, que pede recarregar (428). Banco intocado. |
+| **Problema só na API** | Banco com 0021 | Publicar a API anterior (compatível com a 0021: suíte 304/304). Mantém leitura, compras e lista de ofertas. As telas novas que dependem das rotas novas ficam indisponíveis até a correção. |
+| **Restauração excepcional de backup** (corrupção ou perda) | — | Só com autorização expressa. Seguir [BACKUP.md](BACKUP.md) "Restauração de verdade": restaurar num **banco novo**, conferir com `backup:restore-test`, e só então trocar. Tudo gravado depois do backup se perde; antes, exportar o que for preciso. |
+
+Antes de qualquer passo em produção: backup recente verificado (`npm run backup` + `backup:verify`), ensaio na cópia
+(`backup:migrate-rehearsal`) e registro do que foi feito.
 
 ## Implantação (quando autorizada, depois da 0020)
 
@@ -341,13 +400,22 @@ Nenhum erro no console.
 
 ## Checklist de aprovação antes do merge
 
-- [ ] Fase 1 (0020) implantada e estável em produção.
-- [ ] Revisão de código dos commits da branch (`b0567c5`, `11cf250`, `2b45923`, `f3ff927` e os da auditoria final).
-- [ ] Relatório de códigos rodado em produção, sem itens A ou B pendentes.
-- [ ] Ensaio da 0021 (up, down e up) numa cópia restaurada de produção.
-- [ ] Suíte completa verde na branch rebaseada sobre o `main` atualizado (incluindo os três commits locais pendentes).
-- [ ] Revisão da matriz de permissões (estoquista sem `suppliers.manage`) e das concessões individuais copiadas.
-- [ ] Aceite visual das telas por quem compra.
-- [ ] Aceite do novo contrato da rota antiga de ofertas (omissão → 409) e da exigência de `version` no cadastro.
-- [ ] Relatório de códigos com saída 0 em produção, como passo do roteiro de implantação.
-- [ ] Autorização expressa para merge, push e implantação.
+Fase 2 **congelada** em `sglog/fase2`, só com commits locais. Nada abaixo foi feito em produção.
+
+- [ ] **Dependência da 0020:** Fase 1 implantada e estável em produção, com `schema_migrations` terminando em
+  `0020_sglog_depositos` (a 0021 pressupõe exatamente esse estado).
+- [ ] **Relatório de códigos em produção** (só leitura) com saída 0, ou seja, sem itens A ou B; os do grupo C conferidos
+  com quem compra.
+- [ ] **Ensaio da 0021 numa cópia restaurada** de produção: up, down e up com esquema idêntico, e tempo de trava
+  medido.
+- [ ] **Testes de regressão:** suíte completa, regressão da reposição e suíte do código anterior sobre a 0021, todas
+  verdes na branch já rebaseada sobre o `main` atualizado (o rebase só quando autorizado).
+- [ ] **Permissões validadas:** matriz por papel (estoquista sem `suppliers.manage`) e concessões individuais copiadas
+  de `purchases.*` revisadas com o responsável.
+- [ ] **Compatibilidade com clientes antigos aceita:** rota antiga de ofertas com omissão → 409 e plano de
+  descontinuação; cadastro exige `version` (aba antiga recebe 428 com orientação).
+- [ ] **Aceite visual das telas** por quem compra: lista, ficha (todas as abas), comparação no produto, comparação no
+  pedido, conflito de edição.
+- [ ] **Roteiro de recuperação** lido e aceito (seção "Recuperação e rollback").
+- [ ] **Revisão de código** dos commits da branch.
+- [ ] **Autorização expressa** para merge, para push e para implantação (cada uma separadamente).

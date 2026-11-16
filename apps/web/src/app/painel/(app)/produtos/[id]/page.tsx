@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react
 import { ProductEditor, toForm } from '@/components/product-form';
 import { PHOTO_ISSUES_KEY, ProductImages } from '@/components/product-images';
 import { Guard, useMe } from '@/components/shell';
+import { SupplierComparison } from '@/components/suppliers';
 import { Badge, Button, Field, FISCAL_STATUS, Input, Notice, PageHeader, Panel, PRODUCT_STATUS, Select, Textarea } from '@/components/ui';
 import { api } from '@/lib/api';
 import { money, ORIGINS, when } from '@/lib/format';
@@ -136,6 +137,18 @@ function ProductPage() {
         <ProductImages key={p.id} productId={p.id} images={p.images} editable={canManage} />
         <ProductEditor initial={form} onSaved={() => void load()} />
         <Fiscal key={p.fiscal?.informed_at ?? 'f'} product={p} reload={load} />
+        {can('suppliers.view') && (
+          <Panel title="Fornecedores" description="Ofertas de cada variante, o fornecedor principal e a sugestão explicada para a quantidade informada. Só consulta.">
+            <div className="space-y-6">
+              {p.variants.map((v: any) => (
+                <div key={v.id}>
+                  {p.variants.length > 1 && <p className="mb-2 text-sm font-medium">Variante <span className="font-mono">{v.sku}</span></p>}
+                  <SupplierComparison variantId={v.id} />
+                </div>
+              ))}
+            </div>
+          </Panel>
+        )}
         <Panel title="Histórico de preços">
           {data.priceHistory.length === 0 ? (
             <p className="text-sm text-ink-soft">Sem registros.</p>

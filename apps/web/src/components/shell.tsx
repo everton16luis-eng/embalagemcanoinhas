@@ -30,7 +30,7 @@ const NAV = [
   { href: '/painel/inventario', label: 'Inventário', icon: ClipboardList, perm: 'stock.view' },
   { href: '/painel/compras', label: 'Compras', icon: ShoppingCart, perm: 'purchases.view' },
   { href: '/painel/reposicao', label: 'Reposição', icon: RefreshCw, perm: 'purchases.view' },
-  { href: '/painel/fornecedores', label: 'Fornecedores', icon: Truck, perm: 'purchases.view' },
+  { href: '/painel/fornecedores', label: 'Fornecedores', icon: Truck, perm: 'suppliers.view|purchases.view' },
   { href: '/painel/fiscal', label: 'Nota fiscal', icon: FileText, perm: 'fiscal.view' },
   { href: '/painel/entregas', label: 'Formas de entrega', icon: MapPinned, perm: 'orders.view' },
   { href: '/painel/vendas', label: 'Vendas', icon: TrendingUp, perm: 'reports.view' },
@@ -62,7 +62,8 @@ export function AdminShell({ children }: { children: ReactNode }) {
   useEffect(() => setOpen(false), [pathname]);
 
   if (!me) return <div className="grid min-h-dvh place-items-center text-sm text-ink-faint">Carregando…</div>;
-  const can = (p: string) => me.permissions.includes(p);
+  // "a|b": basta uma das permissoes (ex.: fornecedores aceita suppliers.view ou purchases.view).
+  const can = (p: string) => p.split('|').some((x) => me.permissions.includes(x));
   const items = NAV.filter((n) => !n.perm || can(n.perm));
   const active = (href: string) => (href === '/painel' ? pathname === href : pathname.startsWith(href));
 

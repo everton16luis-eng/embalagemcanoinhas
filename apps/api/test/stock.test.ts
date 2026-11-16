@@ -165,9 +165,14 @@ describe('compra, custo e venda fracionada', () => {
     await boss.put(`${SUP}/${s1}/offers`, [{ packagingId: p.purchase.id, costCents: 1800 }]);
     const sup = (await boss.get(`${SUP}/${s1}`)).json().supplier;
     expect(sup.offers[0].unit_cost_cents).toBe('18.0000');
-    await boss.put(`${SUP}/${s1}/offers`, [{ packagingId: pack50.id, costCents: 1000 }]);
+    // A lista substitui tudo: omitir a oferta atual e recusado (Fase 2); para desativar, ela vem com active: false.
+    expect((await boss.put(`${SUP}/${s1}/offers`, [{ packagingId: pack50.id, costCents: 1000 }])).json().error?.code).toBe('OFFERS_OMITTED');
+    await boss.put(`${SUP}/${s1}/offers`, [
+      { packagingId: p.purchase.id, costCents: 1800, active: false },
+      { packagingId: pack50.id, costCents: 1000 },
+    ]);
     const after = (await boss.get(`${SUP}/${s1}`)).json().supplier.offers;
-    // A oferta fora da nova lista fica inativa, nao some.
+    // A oferta desativada fica inativa, nao some.
     expect(after.map((o: { active: boolean; unit_cost_cents: string }) => [o.unit_cost_cents, o.active]).sort()).toEqual([
       ['18.0000', false],
       ['20.0000', true],

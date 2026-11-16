@@ -307,10 +307,11 @@ describe('referência de abertura', () => {
 });
 
 describe('papéis novos (menor privilégio)', () => {
+  // suppliers.* entrou na Fase 2 (docs/18-sglog-fase2.md, matriz aprovada em D2-4).
   const expected = {
-    logistics: ['catalog.view', 'orders.view', 'purchases.view', 'shipping.manage', 'stock.manage', 'stock.view'],
-    buyer: ['catalog.view', 'purchases.manage', 'purchases.view', 'stock.view'],
-    finance: ['orders.view', 'purchases.view', 'reports.view'],
+    logistics: ['catalog.view', 'orders.view', 'purchases.view', 'shipping.manage', 'stock.manage', 'stock.view', 'suppliers.view'],
+    buyer: ['catalog.view', 'purchases.manage', 'purchases.view', 'stock.view', 'suppliers.manage', 'suppliers.view'],
+    finance: ['orders.view', 'purchases.view', 'reports.view', 'suppliers.view'],
   };
 
   it('o proprietário cria os três papéis; o gerente continua sem criar proprietário', async () => {

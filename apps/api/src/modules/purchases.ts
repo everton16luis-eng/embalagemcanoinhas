@@ -15,6 +15,8 @@ const itemSchema = z.strictObject({
   packs: qty,
   // Sem custo informado, usa o da lista do fornecedor.
   packCostCents: opt(money),
+  // Compra abaixo do minimo ou fora do multiplo do fornecedor: aviso; para seguir, a justificativa (D2-11).
+  minExceptionReason: opt(z.string().trim().min(3).max(300)),
 });
 
 const orderSchema = z.strictObject({
@@ -45,7 +47,7 @@ async function load(db: Db | typeof pool, id: string) {
   order.items = (
     await db.query(
       `SELECT i.id, i.variant_id, i.packaging_id, i.packaging_label, i.base_qty_per_pack, i.packs, i.pack_cost_cents, i.received_packs,
-              v.sku, p.name AS product_name, p.base_unit, (i.packs * i.base_qty_per_pack)::numeric(14,3) AS base_qty,
+              i.min_order_packs, i.order_multiple_packs, i.min_exception_reason, v.sku, p.name AS product_name, p.base_unit, (i.packs * i.base_qty_per_pack)::numeric(14,3) AS base_qty,
               round(i.pack_cost_cents / i.base_qty_per_pack, 4) AS unit_cost_cents
        FROM purchase_order_items i JOIN product_variants v ON v.id = i.variant_id JOIN products p ON p.id = v.product_id
        WHERE i.order_id = $1 ORDER BY p.name, v.sku, i.base_qty_per_pack`,
@@ -65,19 +67,29 @@ async function load(db: Db | typeof pool, id: string) {
   return order;
 }
 
-/** Valida as embalagens, copia rotulo e conversao e preenche o custo com a lista do fornecedor. */
-async function saveItems(db: Db, orderId: string, supplierId: string, items: OrderInput['items']) {
+type MinException = { packagingId: string; label: string; packs: string; minOrderPacks: string | null; orderMultiplePacks: string | null; reason: string | null };
+
+/**
+ * Valida as embalagens, copia rotulo e conversao e preenche o custo com a lista do fornecedor. Copia tambem o minimo e
+ * o multiplo da oferta ativa: abaixo do minimo ou fora do multiplo so passa com justificativa (422 BELOW_MINIMUM com a
+ * lista, para a tela pedir); a justificativa fica no item e na auditoria. Devolve as excecoes aceitas.
+ */
+async function saveItems(db: Db, orderId: string, supplierId: string, items: OrderInput['items']): Promise<MinException[]> {
   const seen = new Set<string>();
+  const exceptions: MinException[] = [];
   await db.query('DELETE FROM purchase_order_items WHERE order_id = $1', [orderId]);
   for (const it of items) {
     if (seen.has(it.packagingId)) throw new AppError(422, 'DUPLICATE_ITEM', 'A mesma embalagem aparece duas vezes no pedido.');
     seen.add(it.packagingId);
     const k = (
-      await db.query<{ variant_id: string; label: string; base_qty: string; offer_cost: string | null; active: boolean }>(
-        `SELECT k.variant_id, k.label, k.base_qty, (k.active AND v.active) AS active,
-                (SELECT sp.cost_cents FROM supplier_products sp WHERE sp.supplier_id = $2 AND sp.packaging_id = k.id AND sp.active) AS offer_cost
-         FROM packagings k JOIN product_variants v ON v.id = k.variant_id WHERE k.id = $1`,
-        [it.packagingId, supplierId],
+      await db.query<{ variant_id: string; label: string; base_qty: string; offer_cost: string | null; active: boolean; min_packs: string | null; multiple: string | null; below: boolean; off_multiple: boolean }>(
+        `SELECT k.variant_id, k.label, k.base_qty, (k.active AND v.active) AS active, sp.cost_cents AS offer_cost,
+                sp.min_order_packs AS min_packs, sp.order_multiple_packs AS multiple,
+                coalesce($3::numeric < sp.min_order_packs, false) AS below, coalesce(mod($3::numeric, sp.order_multiple_packs) <> 0, false) AS off_multiple
+         FROM packagings k JOIN product_variants v ON v.id = k.variant_id
+         LEFT JOIN supplier_products sp ON sp.supplier_id = $2 AND sp.packaging_id = k.id AND sp.active
+         WHERE k.id = $1`,
+        [it.packagingId, supplierId, it.packs],
       )
     ).rows[0];
     if (!k || !k.active) throw new AppError(422, 'INVALID_PACKAGING', 'Embalagem inexistente ou inativa.');
@@ -86,11 +98,23 @@ async function saveItems(db: Db, orderId: string, supplierId: string, items: Ord
     const info = await variantInfo(db, k.variant_id);
     const base = (await db.query<{ q: string }>('SELECT ($1::numeric * $2::numeric)::numeric(14,3)::text AS q', [it.packs, k.base_qty])).rows[0]!.q;
     assertWhole(info, base);
+    const exception = k.below || k.off_multiple;
+    if (exception) exceptions.push({ packagingId: it.packagingId, label: k.label, packs: String(it.packs), minOrderPacks: k.min_packs, orderMultiplePacks: k.multiple, reason: it.minExceptionReason ?? null });
     await db.query(
-      `INSERT INTO purchase_order_items (order_id, variant_id, packaging_id, packaging_label, base_qty_per_pack, packs, pack_cost_cents) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [orderId, k.variant_id, it.packagingId, k.label, k.base_qty, it.packs, cost],
+      `INSERT INTO purchase_order_items (order_id, variant_id, packaging_id, packaging_label, base_qty_per_pack, packs, pack_cost_cents, min_order_packs,
+         order_multiple_packs, min_exception_reason) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+      [orderId, k.variant_id, it.packagingId, k.label, k.base_qty, it.packs, cost, k.min_packs, k.multiple, exception ? (it.minExceptionReason ?? null) : null],
     );
   }
+  const missing = exceptions.filter((e) => !e.reason);
+  if (missing.length) {
+    throw new AppError(422, 'BELOW_MINIMUM', 'Há itens abaixo do mínimo ou fora do múltiplo do fornecedor. Ajuste a quantidade ou informe a justificativa para seguir.', { items: missing });
+  }
+  return exceptions;
+}
+
+async function auditExceptions(db: Db, actorId: string, orderId: string, exceptions: MinException[], ip: string) {
+  if (exceptions.length) await audit(db, { actorId, action: 'purchases.min_exception', entity: 'purchase_order', entityId: orderId, metadata: { items: exceptions }, ip });
 }
 
 async function lockOrder(db: Db, id: string) {
@@ -131,16 +155,18 @@ export async function purchaseRoutes(app: FastifyInstance) {
     const auth = requirePermission(req, 'purchases.manage');
     const b = orderSchema.parse(req.body);
     const order = await tx(auth.userId, async (db) => {
-      const s = (await db.query<{ active: boolean }>('SELECT active FROM suppliers WHERE id = $1', [b.supplierId])).rows[0];
+      const s = (await db.query<{ active: boolean; status: string }>('SELECT active, status FROM suppliers WHERE id = $1', [b.supplierId])).rows[0];
+      if (s?.status === 'blocked') throw new AppError(422, 'SUPPLIER_BLOCKED', 'Fornecedor bloqueado: não recebe pedido de compra novo.');
       if (!s?.active) throw new AppError(422, 'INVALID_SUPPLIER', 'Fornecedor inexistente ou inativo.');
       const { rows } = await db.query<{ id: string }>(
         `INSERT INTO purchase_orders (supplier_id, expected_at, freight_cents, other_costs_cents, notes, created_by) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
         [b.supplierId, b.expectedAt ?? null, b.freightCents, b.otherCostsCents, b.notes ?? null, auth.userId],
       );
       const id = rows[0]!.id;
-      await saveItems(db, id, b.supplierId, b.items);
+      const exceptions = await saveItems(db, id, b.supplierId, b.items);
       const saved = await load(db, id);
       await audit(db, { actorId: auth.userId, action: 'purchases.created', entity: 'purchase_order', entityId: id, after: saved, ip: req.ip });
+      await auditExceptions(db, auth.userId, id, exceptions, req.ip);
       return saved;
     });
     return reply.code(201).send({ order });
@@ -161,9 +187,10 @@ export async function purchaseRoutes(app: FastifyInstance) {
         `UPDATE purchase_orders SET supplier_id = $2, expected_at = $3, freight_cents = $4, other_costs_cents = $5, notes = $6, version = version + 1, updated_at = now() WHERE id = $1`,
         [id, b.supplierId, b.expectedAt ?? null, b.freightCents, b.otherCostsCents, b.notes ?? null],
       );
-      await saveItems(db, id, b.supplierId, b.items);
+      const exceptions = await saveItems(db, id, b.supplierId, b.items);
       const after = await load(db, id);
       await audit(db, { actorId: auth.userId, action: 'purchases.updated', entity: 'purchase_order', entityId: id, before, after, ip: req.ip });
+      await auditExceptions(db, auth.userId, id, exceptions, req.ip);
       return after;
     });
     return { order };
@@ -175,6 +202,9 @@ export async function purchaseRoutes(app: FastifyInstance) {
     return tx(auth.userId, async (db) => {
       const o = await lockOrder(db, id);
       if (o.status !== 'draft') throw new AppError(409, 'INVALID_STATUS', 'Só rascunho pode ser marcado como enviado.');
+      // Fornecedor bloqueado: o rascunho nao e enviado (o ja enviado continua podendo ser recebido).
+      const st = (await db.query<{ status: string; blocked_reason: string | null }>('SELECT status, blocked_reason FROM suppliers WHERE id = $1', [o.supplier_id])).rows[0];
+      if (st?.status === 'blocked') throw new AppError(409, 'SUPPLIER_BLOCKED', `Fornecedor bloqueado${st.blocked_reason ? `: ${st.blocked_reason}` : ''}. O rascunho não pode ser enviado.`);
       await db.query(`UPDATE purchase_orders SET status = 'sent', sent_at = now(), version = version + 1, updated_at = now() WHERE id = $1`, [id]);
       await audit(db, { actorId: auth.userId, action: 'purchases.sent', entity: 'purchase_order', entityId: id, ip: req.ip });
       return { order: await load(db, id) };

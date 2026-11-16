@@ -124,6 +124,17 @@ export function requirePermission(req: FastifyRequest, permission: Permission): 
   return auth;
 }
 
+/** Exige ao menos uma das permissoes, conferida no servidor. Com MFA exigido em alguma delas, vale a mesma regra. */
+export function requireAnyPermission(req: FastifyRequest, ...permissions: Permission[]): Auth {
+  const auth = requireAuth(req);
+  const held = permissions.filter((p) => auth.permissions.has(p));
+  if (!held.length) throw forbidden();
+  if (held.every((p) => MFA_REQUIRED.has(p)) && !auth.mfaEnabled) {
+    throw new AppError(403, 'MFA_REQUIRED', 'Ative a verificação em duas etapas em Minha conta para continuar.');
+  }
+  return auth;
+}
+
 export async function authRoutes(app: FastifyInstance, opts: { notifier: ResetNotifier }) {
   const strict = (max: number) => ({ config: { rateLimit: { max, timeWindow: '1 minute' } } });
 

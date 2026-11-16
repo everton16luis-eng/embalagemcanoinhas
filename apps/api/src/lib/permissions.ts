@@ -22,6 +22,10 @@ export const PERMISSIONS = [
   'stock.manage',
   'purchases.view',
   'purchases.manage',
+  // SGLog Fase 2 (docs/18-sglog-fase2.md): fornecedores, ofertas, custo e disponibilidade. Lista, detalhe e ofertas
+  // tambem aceitam purchases.view (a tela de compras escolhe fornecedor).
+  'suppliers.view',
+  'suppliers.manage',
   'orders.view',
   'orders.manage',
   'shipping.manage',
@@ -43,21 +47,22 @@ export type Role = (typeof ROLES)[number];
 
 const ROLE_DEFAULTS: Record<Role, readonly Permission[]> = {
   owner: PERMISSIONS,
-  manager: ['users.view', 'audit.view', 'settings.manage', 'company.view', 'fiscal.view', 'catalog.view', 'catalog.manage', 'prices.manage', 'catalog.import', 'stock.view', 'stock.manage', 'purchases.view', 'purchases.manage', 'orders.view', 'orders.manage', 'shipping.manage', 'sales_desk.use', 'marketplaces.manage', 'finance.view', 'reports.view', 'email.view'],
+  manager: ['users.view', 'audit.view', 'settings.manage', 'company.view', 'fiscal.view', 'catalog.view', 'catalog.manage', 'prices.manage', 'catalog.import', 'stock.view', 'stock.manage', 'purchases.view', 'purchases.manage', 'suppliers.view', 'suppliers.manage', 'orders.view', 'orders.manage', 'shipping.manage', 'sales_desk.use', 'marketplaces.manage', 'finance.view', 'reports.view', 'email.view'],
   sales: ['catalog.view', 'stock.view', 'orders.view', 'sales_desk.use'],
-  stock: ['catalog.view', 'stock.view', 'stock.manage', 'purchases.view', 'purchases.manage'],
+  // Estoquista ve fornecedores, mas nao muda custo nem cadastro (D2-4); concessao individual continua possivel.
+  stock: ['catalog.view', 'stock.view', 'stock.manage', 'purchases.view', 'purchases.manage', 'suppliers.view'],
   // fiscal.validate fica so com quem o proprietario conceder (o contador ou responsavel tributario).
   fiscal: ['company.view', 'fiscal.view', 'fiscal.manage', 'catalog.view', 'orders.view'],
   shipping: ['catalog.view', 'orders.view', 'shipping.manage'],
   // SGLog (docs/sglog-fase0-auditoria.md §10.3.1): menor privilegio, so permissoes que ja existem.
   // Gerente de logistica: estoque, despacho e consulta de compras. Sem orders.manage (cancelar pedido mexe em
   // cobranca e nota) e sem reports.view (faturamento).
-  logistics: ['catalog.view', 'stock.view', 'stock.manage', 'purchases.view', 'orders.view', 'shipping.manage'],
+  logistics: ['catalog.view', 'stock.view', 'stock.manage', 'purchases.view', 'suppliers.view', 'orders.view', 'shipping.manage'],
   // Comprador: compras e fornecedores. Sem orders.view (dados pessoais de clientes) e sem stock.manage (ajustes e perdas).
-  buyer: ['catalog.view', 'stock.view', 'purchases.view', 'purchases.manage'],
+  buyer: ['catalog.view', 'stock.view', 'purchases.view', 'purchases.manage', 'suppliers.view', 'suppliers.manage'],
   // Financeiro: pedidos, compras e relatorios de venda, so leitura. finance.view fica de fora: hoje so mostra custo
   // nas telas de estoque, que exigem stock.view.
-  finance: ['orders.view', 'purchases.view', 'reports.view'],
+  finance: ['orders.view', 'purchases.view', 'suppliers.view', 'reports.view'],
 };
 
 /** Permissoes que exigem verificacao em duas etapas ativa na conta. */

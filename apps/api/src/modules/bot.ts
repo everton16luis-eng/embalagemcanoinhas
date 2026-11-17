@@ -93,7 +93,6 @@ const MAX_VERIFY_FAILS_PHONE = 3;
 const MAX_VERIFY_FAILS_ORDER = 5;
 const STALE_MS = 3_600_000; // mensagem com mais de 1 h nao recebe resposta automatica
 const AGENT_IDLE_MS = 24 * 3_600_000; // conversa com atendente parada ha 24 h volta ao bot
-const phoneHash = (phone: string) => keyedHash(`wa-optout:${phone}`);
 
 const norm = (s: string) =>
   s
@@ -507,7 +506,11 @@ async function takeDocument(inboundId: string) {
 async function handleOne(provider: WhatsAppProvider, settings: BotSettings, m: InboundRow, now: Date) {
   const claim = async (outcome: string) => ((await pool.query('INSERT INTO bot_runs (inbound_id, outcome) VALUES ($1, $2) ON CONFLICT DO NOTHING', [m.id, outcome])).rowCount ?? 0) > 0;
   if (now.getTime() - m.sent_at.getTime() > STALE_MS) return claim('stale');
-  if ((await pool.query('SELECT 1 FROM whatsapp_optouts WHERE phone_hash = $1', [phoneHash(m.from_phone)])).rows[0]) return claim('opted_out');
+  if ((await pool.query(
+    `SELECT 1 FROM whatsapp_inbound i JOIN bot_runs r ON r.inbound_id = i.id
+     WHERE i.from_phone = $1 AND i.id > $2 AND r.outcome = 'closed_by_customer' LIMIT 1`,
+    [m.from_phone, m.id],
+  )).rowCount) return claim('superseded');
   if (settings.audience === 'test' && !settings.test_phones.some((p) => samePhone(p, m.from_phone))) return claim('not_audience');
 
   const conv = (await pool.query<ConvRow>('SELECT state, step, context, updated_at FROM whatsapp_conversations WHERE phone = $1', [m.from_phone])).rows[0];
@@ -529,8 +532,9 @@ async function handleOne(provider: WhatsAppProvider, settings: BotSettings, m: I
   await pool.query(
     `INSERT INTO whatsapp_conversations (phone, state, step, context, agent_since, updated_at) VALUES ($1, $2, $3, $4, $5, now())
      ON CONFLICT (phone) DO UPDATE SET state = EXCLUDED.state, step = EXCLUDED.step, context = EXCLUDED.context,
-       agent_since = EXCLUDED.agent_since, assigned_to = CASE WHEN EXCLUDED.state = 'agent' THEN whatsapp_conversations.assigned_to END, updated_at = now()`,
-    [m.from_phone, out.handoff ? 'agent' : 'bot', out.state.step, JSON.stringify(out.state.context), out.handoff ? now : null],
+       agent_since = EXCLUDED.agent_since, assigned_to = CASE WHEN EXCLUDED.state = 'agent' THEN whatsapp_conversations.assigned_to END, updated_at = now()
+     WHERE whatsapp_conversations.state <> 'closed' OR whatsapp_conversations.updated_at <= (SELECT received_at FROM whatsapp_inbound WHERE id = $6)`,
+    [m.from_phone, out.handoff ? 'agent' : 'bot', out.state.step, JSON.stringify(out.state.context), out.handoff ? now : null, m.id],
   );
   return true;
 }

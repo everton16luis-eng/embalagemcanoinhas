@@ -125,7 +125,7 @@ describe('WhatsApp: avisos do pedido', () => {
 
     const o = await order({ whatsappOptin: true });
     const row = (await owner.query('SELECT whatsapp_optin_at, whatsapp_optin_text FROM orders WHERE id = $1', [o.id])).rows[0];
-    expect(row.whatsapp_optin_text).toBe('Quero receber atualizações deste pedido pelo WhatsApp da Loja Teste. Para parar, responda SAIR.');
+    expect(row.whatsapp_optin_text).toBe('Quero receber atualizações deste pedido pelo WhatsApp da Loja Teste. Para parar as notificações, responda PARAR NOTIFICAÇÕES.');
     await pay(o);
     await whatsappTick(wa);
     expect(wa.sent.at(-1)).toMatchObject({ kind: 'template', to: '5547999990000', name: 'pedido_pago', language: 'pt_BR', params: { nome: 'Maria', pedido: String(o.number) } });
@@ -187,7 +187,7 @@ describe('WhatsApp: webhook e caixa de entrada', () => {
     expect((await owner.query('SELECT status FROM whatsapp_messages WHERE wamid = $1', [sent])).rows[0].status).toBe('read');
   });
 
-  it('resposta só dentro da janela de 24 h; SAIR bloqueia o número', async () => {
+  it('SAIR encerra a conversa e o opt-out de notificações não impede atendimento', async () => {
     const phone = '5547977776666';
     let r = await boss.post('/api/v1/admin/whatsapp/conversations/reply', { phone, text: 'Olá' });
     expect(r.json().error.code).toBe('WINDOW_CLOSED');
@@ -204,7 +204,10 @@ describe('WhatsApp: webhook e caixa de entrada', () => {
     expect((await boss.get('/api/v1/admin/whatsapp/conversations')).json().conversations.some((c: any) => c.phone === phone && c.window_open)).toBe(true);
 
     await signed(inbound(phone, `wamid.${uid()}`, 'Sair'));
-    expect((await boss.post('/api/v1/admin/whatsapp/conversations/reply', { phone, text: 'Ok' })).json().error.code).toBe('OPTED_OUT');
+    const closed = (await boss.post('/api/v1/admin/whatsapp/conversations/view', { phone })).json();
+    expect(closed).toMatchObject({ state: 'closed', optedOut: false });
+    await signed(inbound(phone, `wamid.${uid()}`, 'PARAR NOTIFICAÇÕES'));
+    expect((await boss.post('/api/v1/admin/whatsapp/conversations/reply', { phone, text: 'Ok' })).statusCode).toBe(200);
     expect((await owner.query('SELECT count(*)::int AS n FROM whatsapp_optouts')).rows[0].n).toBe(1);
     // O numero nao fica em claro na lista de bloqueio.
     expect(JSON.stringify((await owner.query('SELECT * FROM whatsapp_optouts')).rows)).not.toContain(phone);

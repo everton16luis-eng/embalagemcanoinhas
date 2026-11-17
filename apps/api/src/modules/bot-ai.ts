@@ -552,12 +552,15 @@ async function turn(ctx: AiTurnCtx, userText: string): Promise<AiTurn> {
  */
 export async function historyFor(db: Q, phone: string, currentInboundId: string): Promise<AiContent[]> {
   const { rows } = await db.query<{ dir: 'in' | 'out'; body: string | null }>(
-    `SELECT * FROM (
+    `WITH last_close AS (
+       SELECT max(i.received_at) AS at FROM whatsapp_inbound i JOIN bot_runs r ON r.inbound_id = i.id
+       WHERE i.from_phone = $1 AND i.id < $2 AND r.outcome = 'closed_by_customer'
+     ) SELECT * FROM (
        SELECT 'in' AS dir, i.body, i.received_at AS at, i.id::text AS id FROM whatsapp_inbound i
-       WHERE i.from_phone = $1 AND i.id <> $2 AND i.received_at > now() - interval '24 hours'
+       WHERE i.from_phone = $1 AND i.id <> $2 AND i.received_at > greatest(now() - interval '24 hours', (SELECT at FROM last_close))
          AND NOT EXISTS (SELECT 1 FROM bot_security_events e WHERE e.inbound_id = i.id AND e.outcome IN ('blocked', 'denied'))
        UNION ALL
-       SELECT 'out', body, created_at, id::text FROM whatsapp_messages WHERE to_phone = $1 AND source IN ('bot', 'agent') AND created_at > now() - interval '24 hours'
+       SELECT 'out', body, created_at, id::text FROM whatsapp_messages WHERE to_phone = $1 AND source IN ('bot', 'agent') AND created_at > greatest(now() - interval '24 hours', (SELECT at FROM last_close))
      ) x ORDER BY at DESC LIMIT ${HISTORY}`,
     [phone, currentInboundId],
   );

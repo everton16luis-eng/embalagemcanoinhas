@@ -259,7 +259,23 @@ async function securityEvent(ctx: Pick<AiTurnCtx, 'db' | 'who' | 'channel' | 'in
   );
 }
 
-const BLOCKS_24H = `SELECT count(*)::int AS n FROM bot_security_events WHERE who_hash = $1 AND outcome = 'blocked' AND created_at > now() - interval '24 hours'`;
+const AFTER_RESET = `e.id > coalesce((SELECT max(r.id) FROM bot_security_events r
+  WHERE r.who_hash = e.who_hash AND r.channel = 'whatsapp' AND r.protection = 'cooldown' AND r.outcome = 'flagged'
+    AND r.created_at > now() - interval '24 hours'), 0)`;
+
+const BLOCKS_24H = `SELECT count(*)::int AS n FROM bot_security_events e WHERE who_hash = $1 AND channel = 'whatsapp' AND outcome = 'blocked' AND created_at > now() - interval '24 hours' AND ${AFTER_RESET}`;
+
+/** Registra a liberação sem apagar o histórico de segurança. */
+export async function clearAiCooldown(db: Q, phone: string) {
+  const hash = whoHash(phone);
+  const result = await db.query(
+    `INSERT INTO bot_security_events (who_hash, channel, protection, outcome, categories)
+     SELECT $1, 'whatsapp', 'cooldown', 'flagged', ARRAY['manual_reset']
+     WHERE (SELECT n FROM (${BLOCKS_24H}) blocks) >= $2`,
+    [hash, COOLDOWN_BLOCKS],
+  );
+  return result.rowCount ? hash : null;
+}
 
 /** Pessoa com bloqueios repetidos em 24 h: a IA fica desligada para ela (menu continua). */
 async function inCooldown(ctx: AiTurnCtx) {
@@ -272,7 +288,7 @@ async function afterBlock(ctx: AiTurnCtx) {
   if (ctx.channel === 'teste') return;
   const n = (await ctx.db.query<{ n: number }>(BLOCKS_24H, [whoHash(ctx.who)])).rows[0]!.n;
   if (n < COOLDOWN_BLOCKS) return;
-  const already = (await ctx.db.query(`SELECT 1 FROM bot_security_events WHERE who_hash = $1 AND protection = 'cooldown' AND created_at > now() - interval '24 hours'`, [whoHash(ctx.who)])).rows[0];
+  const already = (await ctx.db.query(`SELECT 1 FROM bot_security_events e WHERE who_hash = $1 AND protection = 'cooldown' AND outcome = 'limited' AND created_at > now() - interval '24 hours' AND ${AFTER_RESET}`, [whoHash(ctx.who)])).rows[0];
   if (already) return;
   await securityEvent(ctx, { protection: 'cooldown', outcome: 'limited', categories: ['repeated_attempts'], score: n });
   alert('bot: tentativas repetidas de manipular a IA; IA pausada por 24 h para este contato', { who: whoHash(ctx.who).slice(0, 12), channel: ctx.channel, blocks: n });
@@ -565,7 +581,7 @@ export async function securitySummary(db: Q) {
   ).rows;
   const paused = (
     await db.query<{ n: number }>(
-      `SELECT count(*)::int AS n FROM (SELECT who_hash FROM bot_security_events WHERE outcome = 'blocked' AND channel <> 'teste' AND created_at > now() - interval '24 hours' GROUP BY who_hash HAVING count(*) >= $1) x`,
+      `SELECT count(*)::int AS n FROM (SELECT who_hash FROM bot_security_events e WHERE outcome = 'blocked' AND channel = 'whatsapp' AND created_at > now() - interval '24 hours' AND ${AFTER_RESET} GROUP BY who_hash HAVING count(*) >= $1) x`,
       [COOLDOWN_BLOCKS],
     )
   ).rows[0]!.n;

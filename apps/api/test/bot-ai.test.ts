@@ -169,11 +169,8 @@ describe('IA no WhatsApp', () => {
     expect((await lastBot(OTHER_PHONE)).kind).toBe('interactive');
   });
 
-  it('plano gratuito: só os números de teste falam com a IA', async () => {
-    await setBot({ mode: 'ai', testPhones: [OTHER_PHONE] });
-    await send('5547911112222', 'vocês têm forminha?');
-    expect(ai.requests).toHaveLength(0);
-    expect((await lastBot('5547911112222')).kind).toBe('interactive');
+  it('plano gratuito: atende clientes fora da lista de teste quando o público é todos', async () => {
+    await setBot({ audience: 'all', mode: 'ai', aiPlan: 'free', testPhones: [] });
 
     ai.script = [say_('Temos sim! Veja na loja.')];
     await send(OTHER_PHONE, 'vocês têm forminha?');

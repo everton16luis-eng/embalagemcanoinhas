@@ -9,7 +9,7 @@ import type { AiContent, AiProvider } from '../lib/gemini.js';
 import { TypebotSessionGone, type TbTurn, type TypebotProvider } from '../lib/typebot.js';
 import { interactiveSummary, toWhatsAppNumber, type Interactive, type WhatsAppProvider } from '../lib/whatsapp.js';
 import { requirePermission } from './auth.js';
-import { aiTurn, historyFor, SAFE_REPLY, securitySummary } from './bot-ai.js';
+import { aiTurn, clearAiCooldown, historyFor, SAFE_REPLY, securitySummary } from './bot-ai.js';
 
 /**
  * Bot de atendimento (docs/10-bot-atendimento-proposta.md): etapa 1, menu com regras fixas; etapa 2, IA (Gemini)
@@ -170,7 +170,7 @@ type Ctx = {
   who: string;
   settings: BotSettings;
   now: Date;
-  /** IA liberada para esta conversa (plano pago, ou chat/numero de teste no plano gratuito). */
+  /** IA habilitada para o modo de atendimento configurado. */
   aiAllowed?: boolean;
   channel?: 'whatsapp' | 'teste';
   inboundId?: string | null;
@@ -472,9 +472,7 @@ async function typebotBot(ctx: Ctx, state: BotState, input: BotInput): Promise<O
   };
 }
 
-/** No plano gratuito a IA so atende o chat de teste e os numeros de teste. */
 const isAiMode = (m: BotMode) => m === 'ai' || m === 'menu_ai';
-const aiAllowedFor = (settings: BotSettings, phone: string) => isAiMode(settings.mode) && (settings.ai_plan === 'paid' || settings.test_phones.some((p) => samePhone(p, phone)));
 
 // ---------------- processamento das mensagens recebidas ----------------
 
@@ -517,7 +515,7 @@ async function handleOne(provider: WhatsAppProvider, settings: BotSettings, m: I
   if (!(await claim('replied'))) return false;
 
   const state: BotState = conv?.state === 'bot' ? { step: conv.step, context: conv.context } : { step: null, context: {} };
-  const aiAllowed = aiAllowedFor(settings, m.from_phone);
+  const aiAllowed = isAiMode(settings.mode);
   const history = aiAllowed && aiProvider ? await historyFor(pool, m.from_phone, m.id) : [];
   const out = await respond({ db: pool, phone: m.from_phone, who: m.from_phone, settings, now, aiAllowed, history, channel: 'whatsapp', inboundId: m.id }, state, {
     text: m.body,
@@ -728,6 +726,24 @@ export async function botAdminRoutes(app: FastifyInstance) {
   app.get('/security', async (req) => {
     requirePermission(req, 'bot.manage');
     return securitySummary(pool);
+  });
+
+  app.post('/security/unblock', { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (req) => {
+    const auth = requirePermission(req, 'bot.manage');
+    const { phone } = z.strictObject({ phone: z.string().trim().regex(/^\+?\d{10,15}$/) }).parse(req.body);
+    return tx(auth.userId, async (db) => {
+      const hash = await clearAiCooldown(db, phone.replace(/^\+/, ''));
+      if (hash) {
+        await audit(db, {
+          actorId: auth.userId,
+          action: 'whatsapp.bot_cooldown_cleared',
+          entity: 'bot_security_events',
+          after: { whoHash: hash },
+          ip: auth.ip,
+        });
+      }
+      return { cleared: hash !== null };
+    });
   });
 
   app.delete('/test', async (req) => {

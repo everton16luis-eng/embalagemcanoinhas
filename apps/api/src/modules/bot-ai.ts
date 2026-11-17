@@ -28,6 +28,7 @@ export type AiTurnCtx = {
   sameOwner: (orderPhone: string | null) => boolean;
   limits: { monthlyUsd: number; dailyPerWho: number };
   history: AiContent[];
+  onProcessing?: () => void;
 };
 export type AiTurn =
   | { kind: 'reply'; text: string }
@@ -100,6 +101,7 @@ export function systemPrompt(storeName: string) {
     `Você é o consultor de vendas da ${storeName} no WhatsApp: uma loja de embalagens, descartáveis e artigos para confeitaria, doces e festas.`,
     'Seu trabalho é entender o que o cliente quer resolver e indicar o produto do catálogo que resolve, como um vendedor experiente. Também informa pedidos do próprio cliente, horário e endereço, e passa para um atendente humano.',
     'Como atender:',
+    '- Se o cliente só cumprimentar, retribua brevemente e pergunte como pode ajudar. Converse em texto corrido, sem menu, botões simulados ou lista de ações de atendimento.',
     '- Antes de buscar, entenda a necessidade: quantidade, tamanho ou peso de cada item, finalidade (entrega, presente, festa, vitrine) e se precisa de divisória ou tampa.',
     '- O cliente nem sempre sabe o nome do produto. Busque pelo tipo de produto e pela aplicação, não pela frase dele. Se a busca não trouxer nada útil, tente sinônimos e categorias próximas (no máximo 3 buscas).',
     '- Compare os resultados pela necessidade: se cabe, disponibilidade e custo pela quantidade. Não indique o mais barato se ele não atende.',
@@ -424,6 +426,7 @@ async function turn(ctx: AiTurnCtx, userText: string): Promise<AiTurn> {
   let retried = false;
   let first = true;
 
+  ctx.onProcessing?.();
   for (let round = 0; round < MAX_ROUNDS; round++) {
     let res;
     try {

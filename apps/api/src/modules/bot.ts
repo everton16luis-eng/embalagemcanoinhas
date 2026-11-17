@@ -174,6 +174,7 @@ type Ctx = {
   channel?: 'whatsapp' | 'teste';
   inboundId?: string | null;
   history?: AiContent[];
+  onAiProcessing?: () => void;
 };
 
 const storeName = async (ctx: Ctx) => (await ctx.db.query<{ store_name: string | null }>('SELECT store_name FROM store_settings')).rows[0]?.store_name || 'loja';
@@ -334,7 +335,7 @@ const AI_BURST_TEXT = 'Recebi várias mensagens seguidas. Me dá um minutinho e 
 
 /**
  * Quem responde: menu ou IA. Botoes, opcoes digitadas e os passos de pedido/documento ficam sempre com o menu.
- * Modo ai: a IA responde o texto livre. Modo menu_ai: o menu abre a conversa e a IA entra no lugar do "Nao entendi".
+ * Nos modos com IA, texto livre é atendido desde a primeira mensagem. O menu continua acessível por comando.
  * IA fora do ar ou limite do mes: o menu responde. Limite diario de quem conversa: passa para atendente.
  */
 export async function respond(ctx: Ctx, state: BotState, input: BotInput): Promise<Out> {
@@ -345,13 +346,25 @@ export async function respond(ctx: Ctx, state: BotState, input: BotInput): Promi
     const ours = choiceOf(input, state.step) !== null || state.step === 'await_order' || state.step === 'await_document' || (input.replyId !== null && !input.replyId.startsWith('tb:'));
     return ours ? menuBot(ctx, state, input) : typebotBot(ctx, state, input);
   }
-  const freeText = !input.replyId && Boolean(input.text?.trim()) && choiceOf(input, state.step) === null && state.step !== 'await_order' && state.step !== 'await_document';
-  const useAi = aiProvider && ctx.aiAllowed && freeText && (mode === 'ai' || (mode === 'menu_ai' && state.step !== null));
-  if (!useAi) return { ...(await menuBot(ctx, state, input)), route: choiceOf(input, state.step) ? `menu:${choiceOf(input, state.step)}` : 'menu' };
+  const choice = choiceOf(input, state.step);
+  const freeText = !input.replyId && Boolean(input.text?.trim()) && choice === null && state.step !== 'await_order' && state.step !== 'await_document';
+  const opening = isAiMode(mode) && state.step === null && choice === null && !input.replyId;
+  const openingText = (body: string, route: string): Out => ({
+    replies: [{ kind: 'text', body }], state: { step: AI_STEP, context: {} }, handoff: false, route,
+  });
+  const greeting = /^(?:oi+e?|ol[aá]|bom dia|boa tarde|boa noite)(?:[\s,.!?]+(?:tudo bem|tudo bom))?[\s,.!?]*$/i;
+  if (opening && (!input.text?.trim() || greeting.test(input.text.trim()))) {
+    return openingText('Oi! 😊 Como posso te ajudar hoje?', 'saudacao');
+  }
+  if (!aiProvider || !ctx.aiAllowed || !freeText || !isAiMode(mode)) {
+    if (opening) return openingText(AI_RETRY_TEXT, 'ia_indisponivel');
+    return { ...(await menuBot(ctx, state, input)), route: choice ? `menu:${choice}` : 'menu' };
+  }
   const inAi = state.step === AI_STEP;
   const menuChoice = async (replyId: string, route: string) => ({ ...(await menuBot(ctx, state, { ...input, text: null, replyId })), route });
   // Falha da IA no meio da conversa: resposta natural e o cliente continua; na segunda seguida, atendente.
   const aiFailed = async (route: string): Promise<Out> => {
+    if (opening) return openingText(AI_RETRY_TEXT, route);
     if (!inAi) return { ...(await menuBot(ctx, state, input)), route };
     const fails = Number(state.context.aiFails ?? 0) + 1;
     if (fails >= 2) return menuChoice('atendente', `${route}:atendente`);
@@ -374,6 +387,7 @@ export async function respond(ctx: Ctx, state: BotState, input: BotInput): Promi
       sameOwner: (p) => samePhone(p, ctx.phone),
       limits: { monthlyUsd: ctx.settings.ai_monthly_limit_usd, dailyPerWho: ctx.settings.ai_daily_per_phone },
       history: ctx.history ?? [],
+      onProcessing: ctx.onAiProcessing,
     },
     input.text!,
   );
@@ -390,11 +404,13 @@ export async function respond(ctx: Ctx, state: BotState, input: BotInput): Promi
         : menuChoice('pedido', 'ia:pedido');
     case 'limit':
       if (r.reason === 'daily') return menuChoice('atendente', 'limite_dia:atendente');
+      if (opening) return openingText(r.reason === 'burst' ? AI_BURST_TEXT : AI_RETRY_TEXT, `limite_${r.reason}`);
       // Verba do mes acabou no meio da conversa: um atendente continua, com o historico.
       if (r.reason === 'monthly') return inAi ? menuChoice('atendente', 'limite_mes:atendente') : { ...(await menuBot(ctx, state, input)), route: 'limite_mes' };
       if (r.reason === 'burst' && inAi) return { replies: [{ kind: 'text', body: AI_BURST_TEXT }], state, handoff: false, route: 'limite_rajada' };
       return { ...(await menuBot(ctx, state, input)), route: `limite_${r.reason}` };
     case 'refused':
+      if (opening) return { ...openingText(SAFE_REPLY, `barrado_${r.reason}`), guarded: true };
       // Barrado pela protecao: resposta padrao da loja, sem detalhe tecnico, com os botoes de sempre.
       return { replies: [AFTER(SAFE_REPLY)], state: { step: 'menu', context: {} }, handoff: false, guarded: true, route: `barrado_${r.reason}` };
     default:
@@ -475,7 +491,7 @@ const isAiMode = (m: BotMode) => m === 'ai' || m === 'menu_ai';
 
 // ---------------- processamento das mensagens recebidas ----------------
 
-type InboundRow = { id: string; from_phone: string; profile_name: string | null; type: string; body: string | null; reply_id: string | null; sent_at: Date };
+type InboundRow = { id: string; wamid: string; from_phone: string; profile_name: string | null; type: string; body: string | null; reply_id: string | null; sent_at: Date };
 type ConvRow = { state: 'bot' | 'agent' | 'closed'; step: string | null; context: Record<string, unknown>; updated_at: Date };
 
 let current: Promise<{ handled: number }> | null = null;
@@ -520,7 +536,8 @@ async function handleOne(provider: WhatsAppProvider, settings: BotSettings, m: I
   const state: BotState = conv?.state === 'bot' ? { step: conv.step, context: conv.context } : { step: null, context: {} };
   const aiAllowed = isAiMode(settings.mode);
   const history = aiAllowed && aiProvider ? await historyFor(pool, m.from_phone, m.id) : [];
-  const out = await respond({ db: pool, phone: m.from_phone, who: m.from_phone, settings, now, aiAllowed, history, channel: 'whatsapp', inboundId: m.id }, state, {
+  const onAiProcessing = () => { void provider.showTyping?.(m.wamid).catch(() => {}); };
+  const out = await respond({ db: pool, phone: m.from_phone, who: m.from_phone, settings, now, aiAllowed, history, channel: 'whatsapp', inboundId: m.id, onAiProcessing }, state, {
     text: m.body,
     replyId: m.reply_id,
     type: m.type,
@@ -574,7 +591,7 @@ async function runBot(provider: WhatsAppProvider, now: () => Date) {
       break;
     }
     const { rows } = await pool.query<InboundRow>(
-      `SELECT i.id, i.from_phone, i.profile_name, i.type, i.body, i.reply_id, i.sent_at FROM whatsapp_inbound i
+      `SELECT i.id, i.wamid, i.from_phone, i.profile_name, i.type, i.body, i.reply_id, i.sent_at FROM whatsapp_inbound i
        WHERE i.received_at > now() - interval '2 hours' AND NOT EXISTS (SELECT 1 FROM bot_runs r WHERE r.inbound_id = i.id)
        ORDER BY i.id LIMIT 50`,
     );

@@ -185,7 +185,7 @@ describe('IA no WhatsApp', () => {
     // Plano pago: qualquer número.
     await setBot({ mode: 'ai', aiPlan: 'paid' });
     ai.script = [say_('Olá!')];
-    await send('5547933334444', 'boa tarde, tudo bem?');
+    await send('5547933334444', 'vocês têm copos?');
     expect((await lastBot('5547933334444')).body).toBe('Olá!');
   });
 
@@ -269,11 +269,11 @@ describe('IA no WhatsApp', () => {
     expect(ai.requests).toHaveLength(1);
   });
 
-  it('IA fora do ar (duas falhas seguidas, sem conversa em andamento): o menu responde e as falhas ficam registradas', async () => {
+  it('IA fora do ar no início: responde em texto e registra as falhas', async () => {
     await setBot({ mode: 'ai', testPhones: [OTHER_PHONE] });
     ai.failCount = 2;
-    await send(OTHER_PHONE, 'bom dia');
-    expect((await lastBot(OTHER_PHONE)).kind).toBe('interactive');
+    await send(OTHER_PHONE, 'vocês têm copos?');
+    expect((await lastBot(OTHER_PHONE)).kind).toBe('text');
     expect((await owner.query('SELECT ok, error, first_in_turn FROM ai_calls ORDER BY id')).rows).toEqual([
       { ok: false, error: 'fora do ar (simulado)', first_in_turn: true },
       { ok: false, error: 'fora do ar (simulado)', first_in_turn: false },
@@ -284,15 +284,15 @@ describe('IA no WhatsApp', () => {
     await setBot({ mode: 'ai', testPhones: [OTHER_PHONE] });
     ai.failNext = true;
     ai.script = [say_('Bom dia! Como posso ajudar?')];
-    await send(OTHER_PHONE, 'bom dia');
+    await send(OTHER_PHONE, 'bom dia, vocês têm copos?');
     expect((await lastBot(OTHER_PHONE)).body).toBe('Bom dia! Como posso ajudar?');
   });
 
-  it('limite do mês volta ao menu; limite diário passa para atendente', async () => {
+  it('limite do mês no início responde em texto; limite diário passa para atendente', async () => {
     await setBot({ mode: 'ai', testPhones: [OTHER_PHONE], aiMonthlyLimitUsd: 0 });
-    await send(OTHER_PHONE, 'bom dia');
+    await send(OTHER_PHONE, 'vocês têm copos?');
     expect(ai.requests).toHaveLength(0);
-    expect((await lastBot(OTHER_PHONE)).kind).toBe('interactive');
+    expect((await lastBot(OTHER_PHONE)).kind).toBe('text');
 
     await setBot({ mode: 'ai', testPhones: [OTHER_PHONE], aiMonthlyLimitUsd: 10, aiDailyPerPhone: 1 });
     ai.script = [say_('Bom dia!')];
@@ -303,16 +303,17 @@ describe('IA no WhatsApp', () => {
     expect((await owner.query('SELECT state FROM whatsapp_conversations WHERE phone = $1', [OTHER_PHONE])).rows[0].state).toBe('agent');
   });
 
-  it('menu_ai: o menu abre a conversa e a IA entra no lugar do "Não entendi", com o histórico', async () => {
+  it('menu_ai: saudação em texto e a IA continua com o histórico', async () => {
     await setBot({ mode: 'menu_ai', testPhones: [OTHER_PHONE] });
-    await send(OTHER_PHONE, 'oi');
+    await send(OTHER_PHONE, 'Oie');
     expect(ai.requests).toHaveLength(0);
+    expect(await lastBot(OTHER_PHONE)).toMatchObject({ kind: 'text', body: 'Oi! 😊 Como posso te ajudar hoje?' });
     ai.script = [say_('Trabalhamos com forminhas, sim.')];
     await send(OTHER_PHONE, 'vocês vendem forminha?');
     expect((await lastBot(OTHER_PHONE)).body).toBe('Trabalhamos com forminhas, sim.');
     const contents = ai.requests[0]!.contents;
-    // Historico: o "oi" do cliente e o menu do bot, depois a pergunta atual.
-    expect(contents[0]).toEqual({ role: 'user', parts: [{ text: 'oi' }] });
+    // Histórico: a saudação do cliente e a resposta em texto, depois a pergunta atual.
+    expect(contents[0]).toEqual({ role: 'user', parts: [{ text: 'Oie' }] });
     expect(contents[1]!.role).toBe('model');
     expect(contents.at(-1)).toEqual({ role: 'user', parts: [{ text: 'vocês vendem forminha?' }] });
     expect(ai.requests[0]!.system).toContain('Nunca invente produto, preço');

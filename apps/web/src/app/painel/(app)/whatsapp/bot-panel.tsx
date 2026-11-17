@@ -42,7 +42,7 @@ export const AUDIENCE: Record<Audience, { label: string; tone: 'good' | 'warn' |
 };
 const MODES: Record<Mode, { label: string; hint: string }> = {
   menu: { label: 'Só menu', hint: 'Respostas fixas: o cliente escolhe uma opção. Sem custo e sem IA.' },
-  menu_ai: { label: 'Menu e IA', hint: 'O menu abre a conversa; quando o cliente escreve algo que o menu não entende, a IA responde.' },
+  menu_ai: { label: 'Menu e IA', hint: 'A conversa começa em texto. O cliente pode digitar “menu” para ver as opções.' },
   ai: { label: 'IA', hint: 'A IA responde o que o cliente escrever. Os botões, a consulta de pedido e a confirmação por CPF/CNPJ continuam com o menu.' },
   typebot: { label: 'Typebot', hint: 'Um fluxo montado no editor do Typebot conduz a conversa. Pedido e atendente continuam com a loja (valores reservados nos botões).' },
 };

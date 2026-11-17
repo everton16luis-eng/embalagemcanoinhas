@@ -119,7 +119,8 @@ describe('peças do bot', () => {
     const calls: { url: string; body: any }[] = [];
     const fetcher: Fetcher = async (url, init) => {
       calls.push({ url, body: JSON.parse(init.body!) });
-      return { status: 200, text: async () => JSON.stringify({ messages: [{ id: 'wamid.I1' }] }) };
+      const response = calls.at(-1)?.body.status === 'read' ? { success: true } : { messages: [{ id: 'wamid.I1' }] };
+      return { status: 200, text: async () => JSON.stringify(response) };
     };
     const p = new CloudApiProvider({ phoneNumberId: '123456', accessToken: 'x'.repeat(30), appSecret: 'y'.repeat(20), verifyToken: 'z'.repeat(20), version: 'v27.0' }, fetcher);
     expect(await p.sendInteractive('5547999990000', { type: 'button', body: 'Oi', buttons: [{ id: 'menu', title: 'Menu' }] })).toEqual({ wamid: 'wamid.I1' });
@@ -130,6 +131,8 @@ describe('peças do bot', () => {
       type: 'interactive',
       interactive: { type: 'button', body: { text: 'Oi' }, action: { buttons: [{ type: 'reply', reply: { id: 'menu', title: 'Menu' } }] } },
     });
+    await expect(p.showTyping('wamid.incoming')).resolves.toBeUndefined();
+    expect(calls[1]!.body).toEqual({ messaging_product: 'whatsapp', status: 'read', message_id: 'wamid.incoming', typing_indicator: { type: 'text' } });
   });
 });
 

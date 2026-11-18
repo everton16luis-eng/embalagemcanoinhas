@@ -23,3 +23,10 @@ Toda alteração no código feita pelo Codex deve ser registrada neste arquivo. 
 - O adaptador passa a conservar o final somente quando ele é uma string com exatamente quatro dígitos. Valores mascarados, ausentes ou fora do formato viram null, preservando a restrição do banco.
 - A normalização cobre a criação do cartão e a reconsulta usada nas notificações. A regressão verifica o status recusado e preserva finais válidos, inclusive com zero inicial.
 - Validação local: checagem de tipos da API e web aprovada, 8 testes de regressão aprovados com transporte HTTP simulado. Retestar OTHE na VPS após a publicação.
+
+## 18/11/2026 — Nova tentativa de cartão no mesmo pedido
+
+- Arquivo `apps/web/src/components/loja/order-view.tsx`.
+- Após recusa ou erro no envio, o checkout oferece **Tentar cartão novamente**. O botão também aparece ao reabrir um pedido cuja última tentativa foi recusada ou ficou com erro.
+- O botão consulta o pedido antes de reabrir o formulário do Mercado Pago. O cliente confirma a nova tentativa manualmente e ela usa uma nova chave de idempotência. Enquanto o pagamento está em andamento, a página consulta o pedido a cada cinco segundos.
+- A checagem de tipos e a build de produção da web passaram. A tentativa com OTHE seguida de APRO no mesmo pedido ainda precisa ser testada na VPS.

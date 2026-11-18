@@ -53,6 +53,7 @@ export function OrderView({ base, devToken }: { base: string; devToken?: string 
   const [cfg, setCfg] = useState<PayConfig | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [cardNeedsRetry, setCardNeedsRetry] = useState<boolean | null>(null);
 
   const load = useCallback(() => api<{ order: Order }>(base).then((r) => setO(r.order), (e) => setError(e.message)), [base]);
   useEffect(() => {
@@ -60,13 +61,16 @@ export function OrderView({ base, devToken }: { base: string; devToken?: string 
     api<PayConfig>('/public/checkout/payment-config').then(setCfg, () => null);
   }, [load]);
 
-  // Enquanto espera o Pix, consulta a cada 5 segundos (a API confere com o provedor).
   const pix = o?.payments.find((p) => p.method === 'pix' && p.status === 'pending');
+  const lastCard = o?.payments.find((p) => p.method === 'card');
+  const cardInProgress = lastCard?.status === 'created' || lastCard?.status === 'pending';
+  const showCardRetry = cardNeedsRetry ?? (lastCard?.status === 'rejected' || lastCard?.status === 'error');
+  const waitingForPayment = o?.status === 'pending_payment' && (Boolean(pix) || cardInProgress);
   useEffect(() => {
-    if (o?.status !== 'pending_payment' || !pix) return;
+    if (!waitingForPayment) return;
     const t = setInterval(load, 5000);
     return () => clearInterval(t);
-  }, [o?.status, pix, load]);
+  }, [waitingForPayment, load]);
 
   const post = async (path: string, body: unknown = {}) => {
     setBusy(true);
@@ -74,6 +78,28 @@ export function OrderView({ base, devToken }: { base: string; devToken?: string 
     try {
       const r = await api<{ order: Order }>(`${base}${path}`, { method: 'POST', body });
       setO(r.order);
+      return r.order;
+    } catch (e) {
+      setError((e as Error).message);
+      return null;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const submitCard = async (body: unknown) => {
+    const order = await post('/pay/card', body);
+    const card = order?.payments.find((payment) => payment.method === 'card');
+    if (!order || card?.status === 'rejected' || card?.status === 'error') setCardNeedsRetry(true);
+  };
+
+  const reopenCard = async () => {
+    setBusy(true);
+    try {
+      const { order } = await api<{ order: Order }>(base);
+      setO(order);
+      setError('');
+      setCardNeedsRetry(false);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -84,7 +110,6 @@ export function OrderView({ base, devToken }: { base: string; devToken?: string 
   if (!o) return <p className="py-10 text-g-soft">{error || 'Carregando pedido…'}</p>;
   const canceled = o.status === 'canceled';
   const stepIndex = STEPS.findIndex(([k]) => k === o.status);
-  const lastCard = o.payments.find((p) => p.method === 'card');
 
   return (
     <div className="grid gap-8 lg:grid-cols-[1fr_360px]">
@@ -165,10 +190,16 @@ export function OrderView({ base, devToken }: { base: string; devToken?: string 
             {cfg?.enabled && o.payment_method === 'card' && (
               <div className="mt-4">
                 {lastCard?.status === 'rejected' && <p className="mb-3 text-sm font-semibold text-g-red">O cartão foi recusado. Confira os dados ou tente outro cartão.</p>}
-                {lastCard?.status === 'pending' ? (
+                {cardInProgress ? (
                   <p className="text-sm">Pagamento em análise pelo Mercado Pago. Esta página atualiza quando houver resposta.</p>
                 ) : cfg.provider === 'mercadopago' && cfg.publicKey ? (
-                  <CardBrick publicKey={cfg.publicKey} amountCents={Number(o.total_cents)} email={o.buyer.email} onToken={(body) => post('/pay/card', body)} />
+                  showCardRetry ? (
+                    <button type="button" disabled={busy} onClick={reopenCard} className="bg-g-green px-5 py-3 font-bold text-white disabled:opacity-60">
+                      {busy ? 'Conferindo pedido…' : 'Tentar cartão novamente'}
+                    </button>
+                  ) : (
+                    <CardBrick publicKey={cfg.publicKey} amountCents={Number(o.total_cents)} email={o.buyer.email} onToken={submitCard} />
+                  )
                 ) : cfg.provider === 'fake' ? (
                   <div className="flex flex-wrap gap-2">
                     <p className="w-full text-[13px] text-g-amber">Provedor simulado (desenvolvimento): nenhum cartão real é usado.</p>
@@ -308,7 +339,7 @@ function CardBrick({ publicKey, amountCents, email, onToken }: { publicKey: stri
       }
       if (cancelled || !window.MercadoPago) return;
       const mp = new window.MercadoPago(publicKey, { locale: 'pt-BR' });
-      ctrl = await mp.bricks().create('cardPayment', 'card-brick', {
+      const controller = await mp.bricks().create('cardPayment', 'card-brick', {
         initialization: { amount: amountCents / 100, payer: { email } },
         callbacks: {
           onReady: () => setState('ready'),
@@ -326,8 +357,10 @@ function CardBrick({ publicKey, amountCents, email, onToken }: { publicKey: stri
             }),
         },
       });
+      if (cancelled) controller.unmount();
+      else ctrl = controller;
     };
-    start().catch(() => setState('error'));
+    start().catch(() => { if (!cancelled) setState('error'); });
     return () => {
       cancelled = true;
       ctrl?.unmount();

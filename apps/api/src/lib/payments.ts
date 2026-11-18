@@ -99,7 +99,15 @@ export class MercadoPagoProvider implements PaymentProvider {
       amountCents: cents(d.transaction_amount),
       externalReference: d.external_reference ?? null,
       ...(tx?.qr_code ? { pix: { qrCode: tx.qr_code, qrBase64: tx.qr_code_base64 ?? '', expiresAt: d.date_of_expiration ?? null } } : {}),
-      ...(d.card ? { card: { lastFour: d.card.last_four_digits ?? null, brand: d.payment_method_id ?? null, installments: d.installments ?? null } } : {}),
+      ...(d.card ? {
+        card: {
+          lastFour: typeof d.card.last_four_digits === 'string' && /^[0-9]{4}$/.test(d.card.last_four_digits)
+            ? d.card.last_four_digits
+            : null,
+          brand: d.payment_method_id ?? null,
+          installments: d.installments ?? null,
+        },
+      } : {}),
     };
   }
 

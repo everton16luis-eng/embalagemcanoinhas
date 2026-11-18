@@ -15,3 +15,11 @@ Toda alteração no código feita pelo Codex deve ser registrada neste arquivo. 
 - O vencimento enviado para `POST /v1/payments` passa a usar a saída direta de `toISOString()`, com sufixo `Z`, igual ao adaptador da Barbearia. O prazo mínimo da loja continua em 31 minutos e o timestamp representa o mesmo instante.
 - A Barbearia foi confirmada pelo responsável como funcional em teste e produção. O ajuste isola a diferença de serialização para investigar o HTTP 500 persistente da loja.
 - Validação local: checagem de tipos e captura simulada do JSON de criação de Pix, com confirmação do vencimento esperado e leitura do QR Code. O efeito no ambiente de teste do Mercado Pago ainda precisa ser verificado na VPS.
+
+## 18/11/2026 — Recusa de cartão com final mascarado
+
+- Arquivos: `apps/api/src/lib/payments.ts` e `apps/api/test/payment-provider.test.ts`.
+- O teste real com OTHE devolveu rejected/cc_rejected_other_reason e final de cartão ***2. Ao gravar esse valor, o PostgreSQL recusou a atualização pela restrição payments_card_last_four_check e o checkout mostrou erro genérico.
+- O adaptador passa a conservar o final somente quando ele é uma string com exatamente quatro dígitos. Valores mascarados, ausentes ou fora do formato viram null, preservando a restrição do banco.
+- A normalização cobre a criação do cartão e a reconsulta usada nas notificações. A regressão verifica o status recusado e preserva finais válidos, inclusive com zero inicial.
+- Validação local: checagem de tipos da API e web aprovada, 8 testes de regressão aprovados com transporte HTTP simulado. Retestar OTHE na VPS após a publicação.

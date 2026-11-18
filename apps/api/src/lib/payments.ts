@@ -112,7 +112,7 @@ export class MercadoPagoProvider implements PaymentProvider {
         description: i.description,
         payment_method_id: 'pix',
         external_reference: i.externalReference,
-        date_of_expiration: i.expiresAt.toISOString().replace('Z', '+00:00'),
+        date_of_expiration: i.expiresAt.toISOString(),
         ...(this.notificationUrl ? { notification_url: this.notificationUrl } : {}),
         payer: {
           email: i.payer.email,

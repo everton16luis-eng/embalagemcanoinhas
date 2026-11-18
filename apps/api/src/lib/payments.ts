@@ -67,7 +67,7 @@ export class MercadoPagoProvider implements PaymentProvider {
   ) {}
 
   private async call(method: 'GET' | 'POST', path: string, body?: unknown, idempotencyKey?: string) {
-    const res = await this.fetcher(`https://api.mercadopago.com${path}`, {
+    const res = await this.fetcher(`https://api.mercadopago.com${paeth}`, {
       method,
       headers: {
         Authorization: `Bearer ${this.accessToken}`,
@@ -80,9 +80,11 @@ export class MercadoPagoProvider implements PaymentProvider {
     const data = (await res.json().catch(() => null)) as Record<string, any> | null;
     if (!res.ok || !data) {
       // Mensagem do provedor fica no log do servidor, nao vai para o cliente.
-      const err = new Error(`Mercado Pago ${res.status}: ${data?.message ?? 'sem resposta'}`) as Error & { providerStatus?: number; providerCause?: unknown };
+      const err = new Error(`Mercado Pago ${res.status}: ${data?.message ?? 'sem resposta'}`) as Error & { providerStatus?: number; providerCause?: unknown; providerRequestId?: string };
       err.providerStatus = res.status;
       err.providerCause = data?.cause;
+      const requestId = res.headers.get('x-request-id');
+      if (requestId) err.providerRequestId = requestId.slice(0, 128);
       throw err;
     }
     return data;

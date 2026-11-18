@@ -67,7 +67,7 @@ export class MercadoPagoProvider implements PaymentProvider {
   ) {}
 
   private async call(method: 'GET' | 'POST', path: string, body?: unknown, idempotencyKey?: string) {
-    const res = await this.fetcher(`https://api.mercadopago.com${paeth}`, {
+    const res = await this.fetcher(`https://api.mercadopago.com${path}`, {
       method,
       headers: {
         Authorization: `Bearer ${this.accessToken}`,

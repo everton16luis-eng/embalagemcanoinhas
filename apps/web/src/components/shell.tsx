@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowLeftRight, BarChart3, Blocks, Building, Mail, MessageCircle, TrendingUp, Boxes, Building2, ClipboardCheck, ClipboardList, FileText, FolderTree, History, LogOut, MapPinned, Menu, Package, ReceiptText, RefreshCw, Search, Settings, ShoppingCart, Store, Truck, UserRound, Users, Warehouse, X } from 'lucide-react';
+import { ArrowLeftRight, BarChart3, Blocks, Building, Mail, MessageCircle, TrendingUp, Boxes, Building2, ClipboardCheck, ClipboardList, FileText, FolderTree, History, LogOut, MapPinned, Menu, Package, ReceiptText, RefreshCw, Route, Search, Settings, ShoppingCart, Store, Truck, UserRound, Users, Warehouse, X } from 'lucide-react';
 import Link from '@/components/painel-link';
 import { usePathname, useRouter } from 'next/navigation';
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
@@ -27,6 +27,8 @@ const NAV = [
   { href: '/painel/produtos', label: 'Produtos', icon: Boxes, perm: 'catalog.view' },
   { href: '/painel/categorias', label: 'Categorias', icon: FolderTree, perm: 'catalog.view' },
   // Menu LOGISTICA (SGLog Fase 3, D3-6): agrupa o que ja existia, sem mudar endereco nem permissao.
+  // SGLog Fase 4: alocacao dos pedidos pagos (deposito ou fornecedor).
+  { href: '/painel/logistica/alocacao', label: 'Alocação', icon: Route, perm: 'logistics.view', group: 'Logística' },
   { href: '/painel/estoque', label: 'Estoque', icon: Warehouse, perm: 'stock.view', group: 'Logística' },
   { href: '/painel/inventario', label: 'Inventário', icon: ClipboardList, perm: 'stock.view', group: 'Logística' },
   { href: '/painel/transferencias', label: 'Transferências', icon: ArrowLeftRight, perm: 'stock.view', group: 'Logística' },

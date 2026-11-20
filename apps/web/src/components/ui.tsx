@@ -79,7 +79,7 @@ export function PageHeader({ title, description, actions }: { title: string; des
   );
 }
 
-type Tone = 'neutral' | 'good' | 'warn' | 'bad' | 'act';
+export type Tone = 'neutral' | 'good' | 'warn' | 'bad' | 'act';
 export function Badge({ tone = 'neutral', children }: { tone?: Tone; children: ReactNode }) {
   return (
     <span

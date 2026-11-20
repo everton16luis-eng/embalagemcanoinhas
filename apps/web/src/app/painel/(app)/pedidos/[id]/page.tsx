@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { DOC_STATUS } from '@/components/fiscal';
 import { CHANNEL_LABEL, INVOICE_STATUS, METHOD_LABEL, ORDER_STATUS, PAYMENT_STATUS } from '@/components/orders';
+import { AllocationPanel, LogisticsBadge } from '@/components/logistics';
 import { Guard, useMe } from '@/components/shell';
 import { Badge, Button, Field, Input, Notice, PageHeader, Panel, Textarea } from '@/components/ui';
 import { api } from '@/lib/api';
@@ -37,6 +38,9 @@ type Order = {
   events: { status: string; note: string | null; created_at: string; actor_name: string | null }[];
   shipment: { carrier: string | null; tracking_code: string | null; tracking_url: string | null; volumes: number | null; shipped_at: string | null; delivered_at: string | null } | null;
   reservations: { id: string; sku: string; qty: string; backorder: boolean; status: string }[];
+  // SGLog Fase 4 (so no painel).
+  logistics_status?: string | null;
+  allocation_required?: boolean;
 };
 
 type FiscalCheck = {
@@ -198,6 +202,7 @@ function Detail() {
             <Badge tone={st.tone}>{st.label}</Badge>
             <Badge tone={INVOICE_STATUS[o.invoice_status]!.tone}>{INVOICE_STATUS[o.invoice_status]!.label}</Badge>
             {o.has_backorder && <Badge tone="warn">Tem item sob encomenda</Badge>}
+            <LogisticsBadge status={o.logistics_status ?? null} />
             <span>Criado {when(o.created_at)}</span>
           </span>
         }
@@ -318,6 +323,11 @@ function Detail() {
               {o.status === 'ready' && can('shipping.manage') && (
                 <form onSubmit={dispatch} className="mt-4 border-t border-line pt-4">
                   <p className="mb-2 text-sm font-semibold">Despacho</p>
+                  {o.allocation_required && o.logistics_status !== 'processing' && (
+                    <div className="mb-3">
+                      <Notice tone="warn">Confirme a alocação (depósito ou fornecedor) antes de despachar.</Notice>
+                    </div>
+                  )}
                   {o.invoice_status !== 'authorized' && o.invoice_status !== 'not_required' && (
                     <div className="mb-3">
                       <Notice tone="warn">A NF-e deste pedido ainda não foi autorizada. O despacho fica bloqueado até a autorização.</Notice>
@@ -329,7 +339,7 @@ function Detail() {
                     <Field label="Código de rastreio">{(fid) => <Input id={fid} value={ship.trackingCode} onChange={(e) => setShip({ ...ship, trackingCode: e.target.value })} />}</Field>
                     <Field label="Link de rastreio">{(fid) => <Input id={fid} type="url" value={ship.trackingUrl} onChange={(e) => setShip({ ...ship, trackingUrl: e.target.value })} />}</Field>
                   </div>
-                  <Button type="submit" variant="primary" className="mt-3" busy={busy === 'dispatch'} disabled={o.invoice_status !== 'authorized' && o.invoice_status !== 'not_required'}>
+                  <Button type="submit" variant="primary" className="mt-3" busy={busy === 'dispatch'} disabled={(o.invoice_status !== 'authorized' && o.invoice_status !== 'not_required') || (Boolean(o.allocation_required) && o.logistics_status !== 'processing')}>
                     Despachar e baixar estoque
                   </Button>
                 </form>
@@ -343,6 +353,8 @@ function Detail() {
               </Button>
             </Panel>
           )}
+
+          {can('logistics.view') && (o.allocation_required || o.logistics_status) && <AllocationPanel orderId={o.id} onChange={load} />}
 
           {can('fiscal.view') && <InvoicePanel order={o} onChange={load} />}
 

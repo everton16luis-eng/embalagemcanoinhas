@@ -182,7 +182,7 @@ function ItemRow({ it, s, busy, run }: { it: Item; s: Shipment; busy: string; ru
             {it.packaging_label && ` · ${it.packaging_label}`}
           </p>
         </div>
-        <p className="num text-right text-sm">
+        <p className="num text-sm sm:text-right">
           <span className="block">
             Previsto <b>{qty(it.base_qty)}</b> {it.base_unit}
           </span>

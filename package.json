@@ -21,6 +21,10 @@
     "backup:restore-test": "node scripts/backup.mjs restore-test",
     "backup:migrate-rehearsal": "node scripts/backup.mjs migrate-rehearsal",
     "demo:seed": "npm run demo -w apps/api -- seed",
-    "demo:reset": "npm run demo -w apps/api -- reset"
+    "demo:reset": "npm run demo -w apps/api -- reset",
+    "e2e": "playwright test -c tests/e2e/playwright.config.ts"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.56.1"
   }
 }

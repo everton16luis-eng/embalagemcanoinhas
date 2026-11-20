@@ -11,3 +11,6 @@ playwright-report/
 
 # Copias de seguranca (dados reais de clientes e notas): nunca no git.
 backups/
+
+# Playwright (tests/e2e): traces, capturas e relatorio local.
+tests/e2e/.resultados/

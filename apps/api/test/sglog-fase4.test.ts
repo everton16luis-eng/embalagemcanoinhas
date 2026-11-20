@@ -50,6 +50,15 @@ async function move(variantId: string, kind: 'adjustment' | 'loss', qty: string,
   const r = await boss.post(`${S}/movements`, { variantId, kind, qty, reason: 'Teste da Fase 4', requestKey: key(), ...(warehouseId ? { warehouseId } : {}) });
   expect(r.statusCode, r.body).toBe(201);
 }
+/** Inventario do padrao que encontra `qty` da variante (fecha a contagem). */
+async function countTo(variantId: string, qty: string) {
+  const I = '/api/v1/admin/inventory-counts';
+  const inv = await boss.post(I, { variantIds: [variantId], warehouseId: principal });
+  expect(inv.statusCode, inv.body).toBe(201);
+  await boss.put(`${I}/${inv.json().count.id}/items`, [{ variantId, countedQty: qty }]);
+  const closed = await boss.post(`${I}/${inv.json().count.id}/close`);
+  expect(closed.statusCode, closed.body).toBe(200);
+}
 async function newWarehouse(priority?: number) {
   const r = await boss.post('/api/v1/admin/warehouses', { code: `G${uid()}`.slice(0, 12).toUpperCase(), name: `Galpão ${uid()}`, ...(priority === undefined ? {} : { allocationPriority: priority }) });
   expect(r.statusCode, r.body).toBe(201);
@@ -521,7 +530,8 @@ describe('falta descoberta e rotina', () => {
       ['stock', 60],
       ['purchase_to_order', 40],
     ]);
-    const r = await confirm(id, { logisticsVersion: d.order.logistics_version, planKey: d.proposal.recommended.key });
+    const body = { logisticsVersion: d.order.logistics_version, planKey: d.proposal.recommended.key, requestKey: key() };
+    const r = await confirm(id, body);
     expect(r.statusCode, r.body).toBe(200);
     expect(await orderRow(id)).toMatchObject({ logistics_status: 'processing', logistics_note: null });
     expect((await decisions(id)).map((x) => x.kind)).toEqual(['manual', 'shortage', 'manual']);
@@ -542,6 +552,80 @@ describe('falta descoberta e rotina', () => {
       ['40.000', true],
     ]);
     expect(await loc(principal, variantId)).toMatchObject({ on_hand: '60.000', reserved: '100.000' });
+    expect(await reconcile()).toEqual([]);
+    // Repetir a mesma confirmacao nao age de novo.
+    const again = await confirm(id, body);
+    expect(again.statusCode, again.body).toBe(200);
+    expect(again.json()).toMatchObject({ replayed: true });
+    expect((await decisions(id)).length).toBe(3);
+    expect((await owner.query('SELECT count(*)::int AS n FROM fulfillments WHERE order_id = $1', [id])).rows[0].n).toBe(3);
+    // Situacao comercial e financeira intactas.
+    expect(await orderRow(id)).toMatchObject({ status: 'paid' });
+    expect((await owner.query('SELECT status FROM payments WHERE order_id = $1', [id])).rows.map((p) => p.status)).toEqual(['approved']);
+  });
+
+  it('encomenda em pedido nunca alocado, produto de pronta entrega: estoque + fornecedor confirma', async () => {
+    // Isola a encomenda da falta descoberta: o pedido nunca teve atendimento.
+    const { variantId, pack50, purchase } = await newProduct('100');
+    const sup = await newSupplier();
+    const offer = await newOffer(sup, purchase.id, { costCents: 1500 });
+    const id = await paidOrder([{ pack: pack50, packs: 2 }]);
+    // O fisico cai antes da alocacao (pedido aguardando: nao e falta de pedido alocado).
+    await countTo(variantId, '70');
+    expect(await orderRow(id)).toMatchObject({ logistics_status: 'awaiting' });
+    const d = await detail(id);
+    expect(d.proposal.recommended.key).toBe(`order:${principal}:${offer}`);
+    const r = await confirm(id, { logisticsVersion: d.order.logistics_version, planKey: d.proposal.recommended.key });
+    expect(r.statusCode, r.body).toBe(200);
+    expect(await orderRow(id)).toMatchObject({ status: 'paid', logistics_status: 'processing' });
+    expect((await active(id)).map((x) => [x.qty, x.backorder]).sort((p, q) => Number(p[1]) - Number(q[1]))).toEqual([
+      ['70.000', false],
+      ['30.000', true],
+    ]);
+    expect(await reconcile()).toEqual([]);
+  });
+
+  it('falha no meio da realocação desfaz tudo: atendimento, alocação e reservas anteriores ficam como estavam', async () => {
+    const { variantId, pack50 } = await newProduct('100');
+    const id = await paidOrder([{ pack: pack50, packs: 2 }]);
+    await confirmRecommended(id);
+    await countTo(variantId, '40');
+    expect(await orderRow(id)).toMatchObject({ logistics_status: 'analysis' });
+    const snap = async () => ({
+      f: (await owner.query('SELECT id, status, cancel_reason FROM fulfillments WHERE order_id = $1 ORDER BY id', [id])).rows,
+      a: (await owner.query('SELECT id, status FROM fulfillment_allocations WHERE order_id = $1 ORDER BY id', [id])).rows,
+      r: await reservations(id),
+      d: await decisions(id),
+      o: await orderRow(id),
+      l: await loc(principal, variantId),
+    });
+    const before = await snap();
+    // Estoque proprio de 100 com 40 no deposito: encerra o atendimento, depois a reserva falha.
+    const d = await detail(id);
+    const r = await confirm(id, { logisticsVersion: d.order.logistics_version, justification: 'Forçar falha', lines: [{ orderItemId: d.items[0].id, qty: '100', mode: 'stock', warehouseId: principal }] });
+    expect(r.statusCode, r.body).toBe(409);
+    expect(r.json().error.code).toBe('INSUFFICIENT_STOCK');
+    expect(await snap()).toEqual(before);
+    expect(before.f.map((x: { status: string }) => x.status)).toEqual(['confirmed']);
+    expect(await reconcile()).toEqual([]);
+  });
+
+  it('depois da falta e da reposição, realocar no mesmo depósito reaproveita a reserva sem duplicar', async () => {
+    const { variantId, pack50 } = await newProduct('100');
+    const id = await paidOrder([{ pack: pack50, packs: 2 }]);
+    await confirmRecommended(id);
+    const [oldRes] = await active(id);
+    await countTo(variantId, '40');
+    await move(variantId, 'adjustment', '60');
+    const d = await confirmRecommended(id);
+    expect(d.proposal.recommended.lines.map((l: { mode: string; qty: number }) => [l.mode, l.qty])).toEqual([['stock', 100]]);
+    const now = await active(id);
+    expect(now).toHaveLength(1);
+    expect(now[0]).toMatchObject({ qty: '100.000', backorder: false, warehouse_id: principal });
+    expect(now[0].allocation_id).not.toBe(oldRes.allocation_id);
+    const live = (await owner.query(`SELECT id FROM fulfillment_allocations WHERE order_id = $1 AND status = 'active'`, [id])).rows;
+    expect(live.map((x) => x.id)).toEqual([now[0].allocation_id]);
+    expect(await loc(principal, variantId)).toMatchObject({ on_hand: '100.000', reserved: '100.000' });
     expect(await reconcile()).toEqual([]);
   });
 

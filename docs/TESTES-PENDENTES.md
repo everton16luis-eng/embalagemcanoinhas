@@ -552,9 +552,18 @@ Validação pelo painel HTTPS, depois da implantação:
   `INTERNAL_ERROR`. Precisa de correção no código antes de ligar `ALLOCATION_AUTO`. Até lá, não usar a alocação nos
   pedidos que voltarem com "Falta descoberta".
 
-  Corrigido no ramo `correcao/realocar-apos-falta` (ainda não implantado). A nova confirmação encerra o atendimento
-  anterior com o motivo da análise e grava o novo. Teste automatizado "depois da falta, a nova alocação (estoque +
-  encomenda) substitui o atendimento anterior": dava 500 sem a correção e passa com ela. Suíte da API: 413 testes
-  passando. Depois da implantação, refazer o cenário "Encomenda" no painel e marcar este item.
+  Corrigido no commit `b80d6b1` (ainda não implantado). A nova confirmação encerra o atendimento anterior com o motivo
+  da análise e grava o novo. Os testes automatizados conferem:
+  - a realocação depois da falta, com estoque e encomenda;
+  - a repetição da mesma chave, sem agir de novo;
+  - que o pagamento continua aprovado;
+  - que uma falha no meio desfaz tudo, com o atendimento, a alocação e as reservas anteriores intactos;
+  - a realocação no mesmo depósito, que reaproveita a reserva sem duplicar;
+  - C1–C9 sem divergência.
+
+  Sem a correção, os três casos de realocação depois da falta falham. A encomenda em pedido nunca alocado passa com ou
+  sem ela, inclusive com produto de pronta entrega. O erro 500 do pedido nº 1436 veio do atendimento anterior, não da
+  encomenda. Suíte da API: 416 testes passando. Depois da implantação, refazer no painel a encomenda e a realocação
+  depois de falta e marcar este item.
 - [ ] **Depois de tudo aprovado.** Decidir se liga `ALLOCATION_AUTO=on` (D4-2). Ligada, a rotina passa a confirmar
   sozinha o caso simples.

@@ -137,8 +137,17 @@ O `/status` manual recusa (`SHIPMENT_DRIVEN`) quando o pedido é novo ou quando 
 | Despachar e marcar entregue | `shipping.manage` (como hoje) | expedição, logística, gerente, proprietário |
 | Liberar remessas múltiplas e exigir conferente distinto | `settings.manage` com MFA | proprietário, gerente |
 
-Diferença em relação ao planejamento: o estoquista não ganhou `shipping.manage`, que também despacha. Ganhou a
-permissão nova `shipping.pick`, só para separar, conferir e embalar.
+**Estoquista (D5-8, confirmado):** separa, confere e embala pela permissão nova `shipping.pick`. Diferença em relação
+ao planejamento: ele não ganhou `shipping.manage`, que também despacha.
+
+Sem permissão específica, a API recusa com 403 e não muda nada:
+- despachar, entregar ou entregar no balcão (`shipping.manage`);
+- liberar, dividir, criar ou cancelar remessa (`logistics.manage`);
+- usar os botões antigos do pedido: `/orders/:id/dispatch`, `/deliver` e `/status` (`shipping.manage` ou
+  `orders.manage`).
+
+A checagem é feita no backend, em cada rota. A tela só esconde os botões. O teste "estoquista separa e confere, mas não
+despacha nem cancela" cobre cada uma dessas recusas.
 
 ## Migração `0024_sglog_remessas`
 
@@ -184,13 +193,32 @@ Ensaio local no `loja_dev`, com a demonstração anterior à 0024 (447 pedidos):
 
   Os testes antigos de pedido, alocação, WhatsApp, bot e marketplace foram ajustados para o despacho por remessa e
   continuam passando.
-- **Playwright** (`tests/e2e`, `npm run e2e`):
-  - `fluxo-atual.spec.ts` registra vitrine → produto → carrinho → checkout com retirada e Pix simulado, até a tela
-    do pedido, sem pagar, e abre a lista e o detalhe de pedidos no painel;
-  - `expedicao.spec.ts` confere a fila, as abas, a busca vazia, as regras travadas, a remessa aberta, a entregue e o
-    erro de remessa inexistente;
-  - cada teste roda em desktop e em 375 px, conferindo também que a página não rola para o lado.
-  - Ver [../tests/e2e/README.md](../tests/e2e/README.md).
+- **Falhas intermitentes investigadas (20/11/2026).** Houve duas, com causas diferentes:
+  1. **Defeito do teste de despacho simultâneo, corrigido.**
+     - Dois despachos ao mesmo tempo, com chaves diferentes: qualquer um pode ganhar. O teste supunha que ganhava
+       sempre o primeiro e repetia a chave dele.
+     - Quando o segundo ganhava, a chave repetida era a do recusado. Ela devolvia 409, como deve, porque não tinha
+       despachado nada. Aconteceu em cerca de 1 a cada 10 rodadas.
+     - Agora o teste repete a chave de quem passou e confere que a recusada continua recusada, sem baixar estoque.
+     - Repetido 15 vezes seguidas sem falha.
+     - O código não mudou: a idempotência e a proteção contra despacho duplo já estavam certas.
+  2. **Preparação dos testes passando de 10 s: limpeza incompleta, corrigida.**
+     - Em algumas rodadas, um arquivo inteiro falhava com `Hook timed out in 10000ms` e todos os testes dele pulados.
+       Aconteceu em `bot-security`, `bot-performance` e `sglog-fase4`, inclusive com a suíte rodando sozinha.
+     - A limpeza (`resetCatalog`) costuma levar de 1,1 a 1,7 s. Nas falhas, levou de 10,5 a 12 s.
+     - Uma sonda com acesso total ao Postgres mostrou a sessão ativa, sem esperar bloqueio nem disco. Não há disputa de
+       banco, porta ou estado.
+     - O tempo ia todo no `DELETE FROM products` do fim da limpeza:
+       - `product_import_rows.product_id` aponta para `products` sem índice;
+       - a limpeza não apagava essa tabela, que já tinha cerca de 21 mil linhas no `loja_test` e crescia a cada rodada
+         dos testes de importação;
+       - cada produto apagado percorria a tabela inteira.
+     - Era intermitente porque o vitest muda a ordem dos arquivos, e com ela o número de produtos que sobram do arquivo
+       anterior.
+     - Correção: a limpeza passou a incluir `product_import_rows` e `product_imports`, como as demais tabelas. O
+       limite de tempo não foi aumentado. O problema é anterior à Fase 5.
+     - Sem índice nessa coluna, apagar um produto na VPS também percorre a tabela de importação inteira. É raro e não
+       foi mudado nesta fase: o índice é uma migração futura, a combinar.
 
 ## Limites e riscos conhecidos
 
@@ -203,5 +231,11 @@ Ensaio local no `loja_dev`, com a demonstração anterior à 0024 (447 pedidos):
   cancelamento vindo do marketplace cancela as remessas e registra "devolver a mercadoria
   ao lugar". Alguém precisa guardar fisicamente.
 - **Estados de transporte** (`in_transit`, `delivery_failed` e outros) ficam sem tela até a Fase 8.
+- **Código anterior sobre o banco migrado:** a 0024 troca a unicidade dos avisos de WhatsApp para "pedido + evento +
+  remessa". O código anterior grava com `ON CONFLICT (order_id, event)` e dá erro sobre a 0024. Por isso:
+  - a implantação para o `loja-api` entre a migração e o reinício;
+  - voltar só o código exige antes desfazer a 0024 (`down`), que recusa se a expedição já foi usada.
+
+  Ver [27-sglog-fase5-implantacao.md](27-sglog-fase5-implantacao.md).
 - **Playwright:** `npm ci` na VPS instala o pacote (dependência de desenvolvimento, sem navegador). Ele não entra no
   build nem roda no servidor.

@@ -593,9 +593,10 @@ Validação pelo painel HTTPS, depois da implantação:
 
 ## SGLog Fase 5 — remessas e expedição ([26-sglog-fase5.md](26-sglog-fase5.md))
 
-**Situação: implementada só no local, branch `sglog/fase5`. Não implantada.** A implantação depende da sua
-autorização e de um roteiro próprio (backup, ensaio da 0024 numa cópia, migração, builds, bloco 5.1 com C10 e C11).
-`ALLOCATION_AUTO` continua desligado. Remessas múltiplas nascem travadas.
+**Situação: implementada só no local, branch `sglog/fase5`. Não implantada.** O roteiro está em
+[27-sglog-fase5-implantacao.md](27-sglog-fase5-implantacao.md) e foi ensaiado no local; executar só depois do merge
+e do push autorizados. `ALLOCATION_AUTO` continua desligado. Remessas múltiplas nascem travadas. A trava da NF-e não
+muda: não alterar `invoice_status` de pedido na VPS.
 
 Validação pelo painel HTTPS, depois da implantação:
 

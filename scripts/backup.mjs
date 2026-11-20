@@ -188,6 +188,15 @@ async function migrateRehearsal(dir) {
     console.log(`  migrations aplicadas na copia em ${ms} ms (processo inteiro; o tempo de bloqueio aparece nos avisos acima)`);
 
     const after = countAll();
+    // A 0024 (Fase 5) cria remessas pendentes para pedidos ja alocados: em shipments, o que precisa bater sao as
+    // remessas que ja existiam (agora 'legacy'); as novas sao mostradas a parte.
+    const hasKind = q(`SELECT count(*) FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'shipments' AND column_name = 'kind'`) === '1';
+    if (hasKind && 'shipments' in before) {
+      const legacy = Number(q(`SELECT count(*) FROM shipments WHERE kind = 'legacy'`));
+      const created = Number(q(`SELECT count(*) FROM shipments WHERE kind <> 'legacy'`));
+      console.log(`  remessas: ${legacy} antiga(s) preservada(s), ${created} pendente(s) nova(s) para pedido(s) ja alocado(s)`);
+      after.shipments = legacy;
+    }
     for (const [t, n] of Object.entries(before)) if (after[t] !== n) problems.push(`contagem de ${t} mudou: antes ${n}, depois ${after[t]}`);
 
     if (exists('stock_opening_balances')) {
@@ -211,7 +220,7 @@ async function migrateRehearsal(dir) {
       const rows = q(`SELECT check_code || '|' || coalesce(field, '') || '|' || expected || '|' || found FROM stock_reconcile()`).split('\n').filter(Boolean);
       const run = rows.find((r) => r.startsWith('run|'));
       const divs = rows.filter((r) => !r.startsWith('run|'));
-      console.log(`  conferencia do estoque (C1-C5): ${run ? Number(run.split('|')[2]) : '?'} variante(s) conferidas, ${divs.length} divergencia(s)`);
+      console.log(`  conferencia do estoque (stock_reconcile): ${run ? Number(run.split('|')[2]) : '?'} variante(s) conferidas, ${divs.length} divergencia(s)`);
       for (const d of divs.slice(0, 20)) console.log(`    ${d}`);
       if (divs.length) problems.push(`${divs.length} divergencia(s) na conferencia do estoque depois da migration`);
     }

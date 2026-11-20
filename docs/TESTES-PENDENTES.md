@@ -584,5 +584,9 @@ Validação pelo painel HTTPS, depois da implantação:
   Implantado na VPS em 20/11/2026: `d3c15f6`, com o backup `20261120-143652` conferido, o build só da API e o
   reinício do `loja-api`. Depois disso, o bloco 5.1 deu `RESULTADO: OK`, com C1–C9 sem divergência nas 204 variantes.
   Retestado no pedido nº 1426 (ver "Encomenda" acima): a realocação depois da falta confirmou sem erro.
+  O bloco 5.1 rodado depois do reteste deu `RESULTADO: OK`:
+  - C1–C9 sem divergência nas 204 variantes e 0 reservas ativas sem depósito;
+  - 8 atendimentos (4 novos no pedido nº 1426) e 11 decisões (4 novas);
+  - dropshipping `blocked`.
 - [ ] **Depois de tudo aprovado.** Decidir se liga `ALLOCATION_AUTO=on` (D4-2). Ligada, a rotina passa a confirmar
   sozinha o caso simples.

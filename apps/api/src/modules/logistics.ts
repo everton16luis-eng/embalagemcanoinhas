@@ -71,10 +71,9 @@ export async function engineInput(db: Db | typeof pool, order: OrderRow, items: 
     )
   ).rows;
   const offers: EngineInput['offers'] = {};
-  for (const o of offerInputs(await offerRows(db, variantIds))) {
-    const variant = (await db.query<{ variant_id: string }>('SELECT variant_id FROM supplier_products WHERE id = $1', [o.offerId])).rows[0]!.variant_id;
-    (offers[variant] ??= []).push(o);
-  }
+  const rows = await offerRows(db, variantIds);
+  const variantOf = new Map(rows.map((r) => [r.id as string, r.variant_id as string]));
+  for (const o of offerInputs(rows)) (offers[variantOf.get(o.offerId)!] ??= []).push(o);
   const cfg = await supplierSettings(db);
   const ls = (await db.query<{ dropship_status: string }>('SELECT dropship_status FROM logistics_settings')).rows[0]!;
   return {
@@ -269,7 +268,8 @@ async function swapReservations(
         [order.id, variantId],
       )
     ).rows;
-    const want = targets.filter((t) => t.variantId === variantId);
+    // Estoque firme antes da encomenda: a encomenda reserva alem do fisico e nao pode consumir o livre da parte firme.
+    const want = targets.filter((t) => t.variantId === variantId).sort((x, y) => Number(x.mode !== 'stock') - Number(y.mode !== 'stock'));
     const dflt = await defaultWarehouseId(db);
     if (current.length === 1 && want.length === 1) {
       const r = current[0]!;

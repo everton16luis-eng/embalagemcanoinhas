@@ -499,7 +499,7 @@ Validação pelo painel HTTPS, depois da implantação:
   no TESTE-F3. O pedido foi realocado no PRINCIPAL (35/8 e TESTE-F3 3/0) e a mercadoria voltou pela transferência
   nº 4. Situação final igual à de antes: BIC-21 com 38/8, só no PRINCIPAL, e TESTE-F3 desativado. Histórico do
   pedido: confirmada 10:46, trocada 11:05, desfeita 11:05, confirmada 11:06.
-- [ ] **Encomenda.** Num produto sob encomenda com fornecedor e falta de estoque:
+- [x] **Encomenda.** Num produto sob encomenda com fornecedor e falta de estoque:
   - a proposta mostra parte em estoque e parte "Encomenda ao fornecedor";
   - depois de confirmar, a reserva da parte encomendada aparece "aguardando mercadoria";
   - o despacho só passa depois da entrada da mercadoria.
@@ -507,8 +507,24 @@ Validação pelo painel HTTPS, depois da implantação:
   Parcial em 20/11/2026, no pedido de demonstração nº 1436 (POT-150, 25 un.), depois da falta descoberta abaixo. A
   proposta mostrou "Estoque do Depósito principal + encomenda ao fornecedor": 20 em estoque e 5 por encomenda à
   Embalagens Exemplo Eta. **Confirmar deu "Erro interno"** (HTTP 500), duas vezes, sem mudar nada. É o defeito
-  registrado em "Problema encontrado" abaixo. A reserva "aguardando mercadoria" e o despacho depois da entrada não
-  puderam ser vistos. Refazer num pedido que nunca foi alocado, ou depois da correção.
+  registrado em "Problema encontrado" abaixo.
+
+  Retestado em 20/11/2026, depois da implantação de `d3c15f6`, no pedido de demonstração nº 1426 (FRM-4-VER, 300 un.):
+  - antes: pedido aguardando alocação, reserva de 300 sem alocação, PRINCIPAL 4400 físico / 400 reservado;
+  - alocado no estoque próprio às 11:42;
+  - Perda de teste de 4150 (PRINCIPAL 250/400): o pedido voltou para "Em análise" com "Falta descoberta";
+  - a proposta passou a 150 em estoque + 150 por encomenda à Distribuidora Exemplo Alfa;
+  - "Confirmar alocação" funcionou, sem erro. O atendimento anterior ficou encerrado com o motivo da análise;
+  - o painel mostrou "150 no Depósito principal · aguardando mercadoria" e "150 no Depósito principal";
+  - o total reservado continuou 400, sem reserva duplicada, e o pagamento seguiu "Aprovado";
+  - histórico: confirmada 11:42, falta 11:43, confirmada 11:43.
+
+  Restauração:
+  - perda estornada com Ajuste de entrada de 4150 (PRINCIPAL 4400/400, como antes);
+  - origem trocada de volta para estoque próprio, com motivo: uma reserva firme de 300 e decisão `change`;
+  - o pedido nº 1426 ficou alocado ("Alocado"), em vez de "Aguardando alocação".
+
+  O despacho depois da entrada da mercadoria continua dependente da NF-e e fica para o teste de despacho.
 - [x] **Cancelar pedido alocado.** A reserva volta para o disponível e o histórico mostra "Pedido cancelado". O estorno
   no Mercado Pago continua manual, como antes.
   Em 20/11/2026, no pedido nº 1436, que estava em análise com o atendimento da alocação ainda confirmado:
@@ -540,7 +556,7 @@ Validação pelo painel HTTPS, depois da implantação:
   logística.
 - [x] **Banco.** O bloco 5.1 do roteiro, rodado de novo, dá `RESULTADO: OK`, com C1–C9 sem divergência.
   Em 20/11/2026, depois da alocação do pedido nº 1421: C1–C9 sem divergência nas 204 variantes, com 1 atendimento e 1 decisão. A versão daquele dia do script acusava `PARAR` para o pedido alocado (`processing`); o roteiro foi corrigido para aceitar essa situação.
-- [ ] **Problema encontrado (20/11/2026): realocar depois de falta descoberta dá erro 500.** Depois da falta, o pedido
+- [x] **Problema encontrado (20/11/2026): realocar depois de falta descoberta dá erro 500.** Depois da falta, o pedido
   vai para "Em análise", mas o atendimento da alocação anterior continua confirmado:
   - "Confirmar alocação" trata o caso como alocação nova, porque o pedido não está em `processing`. Não encerra o
     atendimento anterior, e a trava `fulfillment_allocations_over` recusa passar da quantidade vendida. A API devolve
@@ -563,7 +579,10 @@ Validação pelo painel HTTPS, depois da implantação:
 
   Sem a correção, os três casos de realocação depois da falta falham. A encomenda em pedido nunca alocado passa com ou
   sem ela, inclusive com produto de pronta entrega. O erro 500 do pedido nº 1436 veio do atendimento anterior, não da
-  encomenda. Suíte da API: 416 testes passando. Depois da implantação, refazer no painel a encomenda e a realocação
-  depois de falta e marcar este item.
+  encomenda. Suíte da API: 416 testes passando.
+
+  Implantado na VPS em 20/11/2026: `d3c15f6`, com o backup `20261120-143652` conferido, o build só da API e o
+  reinício do `loja-api`. Depois disso, o bloco 5.1 deu `RESULTADO: OK`, com C1–C9 sem divergência nas 204 variantes.
+  Retestado no pedido nº 1426 (ver "Encomenda" acima): a realocação depois da falta confirmou sem erro.
 - [ ] **Depois de tudo aprovado.** Decidir se liga `ALLOCATION_AUTO=on` (D4-2). Ligada, a rotina passa a confirmar
   sozinha o caso simples.

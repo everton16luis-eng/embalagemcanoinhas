@@ -47,7 +47,7 @@ export async function orderView(db: Db | typeof pool, orderId: string, opts: { s
   const o = (
     await db.query(
       `SELECT id, number, status, channel, buyer, ship_to, shipping_snapshot, payment_method, subtotal_cents, discount_cents, freight_cents, total_cents,
-              notes, invoice_status, has_backorder, payment_due_at, paid_at, canceled_at, cancel_reason, created_at, version${opts.staff ? ', customer_id, request_key' : ''}
+              notes, invoice_status, has_backorder, payment_due_at, paid_at, canceled_at, cancel_reason, created_at, version${opts.staff ? ', customer_id, request_key, logistics_status, logistics_note, logistics_version, allocation_required' : ''}
        FROM orders WHERE id = $1`,
       [orderId],
     )
@@ -699,12 +699,21 @@ export async function adminOrderRoutes(app: FastifyInstance) {
       })
       .parse(req.body);
     return tx(auth.userId, async (db) => {
-      const o = (await db.query<{ status: string; version: number; invoice_status: string }>('SELECT status, version, invoice_status FROM orders WHERE id = $1 FOR UPDATE', [id])).rows[0];
+      const o = (
+        await db.query<{ status: string; version: number; invoice_status: string; allocation_required: boolean; logistics_status: string | null }>(
+          'SELECT status, version, invoice_status, allocation_required, logistics_status FROM orders WHERE id = $1 FOR UPDATE',
+          [id],
+        )
+      ).rows[0];
       if (!o) throw notFound();
       if (o.version !== b.version) throw new AppError(409, 'VERSION_CONFLICT', 'O pedido foi alterado por outra pessoa. Recarregue a página.');
       if (o.status !== 'ready') throw new AppError(409, 'INVALID_TRANSITION', 'Só pedidos separados (prontos) podem ser despachados.');
       if (o.invoice_status !== 'authorized' && o.invoice_status !== 'not_required') {
         throw new AppError(409, 'INVOICE_REQUIRED', 'Emita e autorize a NF-e antes de despachar a mercadoria.');
+      }
+      // SGLog Fase 4 (D4-9): pedido pago depois da 0023 so sai com alocacao confirmada. Pedido anterior segue como antes.
+      if (o.allocation_required && o.logistics_status !== 'processing') {
+        throw new AppError(409, 'ALLOCATION_REQUIRED', 'Confirme a alocação do pedido (depósito ou fornecedor) antes de despachar.');
       }
       const res = (await db.query<{ id: string }>(`SELECT id FROM stock_reservations WHERE source_type = 'order' AND source_id = $1 AND status = 'active'`, [id])).rows;
       for (const r of res) await consumeReservation(db, auth.userId, r.id, { sourceType: 'order', sourceId: id });

@@ -25,10 +25,12 @@ const body = z.strictObject({
   city: opt(z.string().trim().min(2).max(60)),
   uf: opt(z.string().trim().regex(/^[A-Z]{2}$/, 'UF com 2 letras maiúsculas.')),
   active: z.boolean().optional(),
+  // SGLog Fase 4 (D4-7): desempate entre depositos que atendem o pedido inteiro, depois do padrao. Menor vem antes.
+  allocationPriority: z.number().int().min(0).max(999).optional(),
 });
 const createBody = body.extend({ code: z.string().trim().toUpperCase().regex(/^[A-Z0-9_-]{2,20}$/, 'Código com 2 a 20 letras, números, - ou _.') });
 
-const COLS = 'id, code, name, cep, street, number, complement, district, city, uf, is_default, active, created_at, updated_at';
+const COLS = 'id, code, name, cep, street, number, complement, district, city, uf, is_default, active, allocation_priority, created_at, updated_at';
 
 export async function warehouseRoutes(app: FastifyInstance) {
   app.get('/', async (req) => {
@@ -64,9 +66,9 @@ export async function warehouseRoutes(app: FastifyInstance) {
       const warehouse = await tx(auth.userId, async (db) => {
         const w = (
           await db.query(
-            `INSERT INTO warehouses (code, name, cep, street, number, complement, district, city, uf, active)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, coalesce($10, true)) RETURNING ${COLS}`,
-            [b.code, b.name, b.cep, b.street, b.number, b.complement, b.district, b.city, b.uf, b.active ?? null],
+            `INSERT INTO warehouses (code, name, cep, street, number, complement, district, city, uf, active, allocation_priority)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, coalesce($10, true), coalesce($11, 100)) RETURNING ${COLS}`,
+            [b.code, b.name, b.cep, b.street, b.number, b.complement, b.district, b.city, b.uf, b.active ?? null, b.allocationPriority ?? null],
           )
         ).rows[0];
         await audit(db, { actorId: auth.userId, action: 'warehouse.created', entity: 'warehouse', entityId: w.id, after: w, ip: req.ip });
@@ -91,8 +93,8 @@ export async function warehouseRoutes(app: FastifyInstance) {
         const after = (
           await db.query(
             `UPDATE warehouses SET name = $2, cep = $3, street = $4, number = $5, complement = $6, district = $7, city = $8, uf = $9,
-               active = coalesce($10, active), updated_at = now() WHERE id = $1 RETURNING ${COLS}`,
-            [id, b.name, b.cep, b.street, b.number, b.complement, b.district, b.city, b.uf, b.active ?? null],
+               active = coalesce($10, active), allocation_priority = coalesce($11, allocation_priority), updated_at = now() WHERE id = $1 RETURNING ${COLS}`,
+            [id, b.name, b.cep, b.street, b.number, b.complement, b.district, b.city, b.uf, b.active ?? null, b.allocationPriority ?? null],
           )
         ).rows[0];
         await audit(db, { actorId: auth.userId, action: 'warehouse.updated', entity: 'warehouse', entityId: id, before, after, ip: req.ip });

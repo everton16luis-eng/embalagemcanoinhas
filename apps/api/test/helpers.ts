@@ -118,12 +118,13 @@ export async function resetCatalog() {
   // Tabelas fiscais e os historicos de fornecedor (0021) recusam TRUNCATE; so no banco de teste o dono desliga a trava para limpar.
   await owner.query('ALTER TABLE fiscal_documents DISABLE TRIGGER fiscal_documents_no_truncate; ALTER TABLE fiscal_files DISABLE TRIGGER fiscal_files_no_truncate; ALTER TABLE supplier_price_history DISABLE TRIGGER supplier_price_history_no_truncate; ALTER TABLE supplier_availability DISABLE TRIGGER supplier_availability_no_truncate');
   await owner.query(
-    'TRUNCATE ai_calls, bot_security_events, bot_runs, bot_pending_documents, bot_verify_failures, bot_test_sessions,whatsapp_conversations, whatsapp_messages, whatsapp_inbound,whatsapp_optouts, whatsapp_templates, shipping_quote_cache, marketplace_notifications, marketplace_orders, marketplace_listings, marketplace_oauth_states, marketplace_accounts, quote_events, quote_items, quotes, purchase_invoices, fiscal_files, fiscal_document_events, fiscal_documents, fiscal_inutilizations, fiscal_webhook_notifications, fiscal_certificates, fiscal_rules_history, fiscal_rules, shipments, payment_notifications, payments, order_events, order_items, orders, cart_items, carts, customer_addresses, customer_sessions, customers, shipping_options, price_tiers, inventory_count_items, inventory_counts, purchase_receipt_items, purchase_receipts, purchase_order_items, purchase_orders, supplier_price_history, supplier_availability, supplier_products, supplier_contacts, suppliers, stock_adjustment_requests, stock_location_settings, stock_transfer_events, stock_transfer_items, stock_transfers, stock_reservations, stock_reconciliations, stock_opening_balances, stock_location_balances, stock_movements, stock_balances',
+    'TRUNCATE allocation_decisions, fulfillment_allocations, fulfillments, ai_calls, bot_security_events, bot_runs, bot_pending_documents, bot_verify_failures, bot_test_sessions,whatsapp_conversations, whatsapp_messages, whatsapp_inbound,whatsapp_optouts, whatsapp_templates, shipping_quote_cache, marketplace_notifications, marketplace_orders, marketplace_listings, marketplace_oauth_states, marketplace_accounts, quote_events, quote_items, quotes, purchase_invoices, fiscal_files, fiscal_document_events, fiscal_documents, fiscal_inutilizations, fiscal_webhook_notifications, fiscal_certificates, fiscal_rules_history, fiscal_rules, shipments, payment_notifications, payments, order_events, order_items, orders, cart_items, carts, customer_addresses, customer_sessions, customers, shipping_options, price_tiers, inventory_count_items, inventory_counts, purchase_receipt_items, purchase_receipts, purchase_order_items, purchase_orders, supplier_price_history, supplier_availability, supplier_products, supplier_contacts, suppliers, stock_adjustment_requests, stock_location_settings, stock_transfer_events, stock_transfer_items, stock_transfers, stock_reservations, stock_reconciliations, stock_opening_balances, stock_location_balances, stock_movements, stock_balances',
   );
   await owner.query('ALTER TABLE fiscal_documents ENABLE TRIGGER fiscal_documents_no_truncate; ALTER TABLE fiscal_files ENABLE TRIGGER fiscal_files_no_truncate; ALTER TABLE supplier_price_history ENABLE TRIGGER supplier_price_history_no_truncate; ALTER TABLE supplier_availability ENABLE TRIGGER supplier_availability_no_truncate');
   // Depositos criados pelos testes (SGLog Fase 3); o padrao vem da migration e fica.
+  await owner.query(`UPDATE logistics_settings SET dropship_status = 'blocked', fiscal_validator_name = NULL, validated_by = NULL, validated_at = NULL, version = 0`);
   await owner.query('DELETE FROM warehouses WHERE NOT is_default');
-  await owner.query(`UPDATE warehouses SET name = 'Depósito principal', cep = NULL, street = NULL, number = NULL, complement = NULL, district = NULL, city = NULL, uf = NULL WHERE is_default`);
+  await owner.query(`UPDATE warehouses SET name = 'Depósito principal', allocation_priority = 100, cep = NULL, street = NULL, number = NULL, complement = NULL, district = NULL, city = NULL, uf = NULL WHERE is_default`);
   await owner.query(`UPDATE bot_settings SET audience = 'off', mode = 'menu', ai_plan = 'free', ai_monthly_limit_usd = 10, ai_daily_per_phone = 20, typebot_public_id = NULL, test_phones = '{}', hours = '{}', texts = '{}'`);
   await owner.query(`UPDATE supplier_settings SET tie_tolerance_pct = 3, stale_quote_days = 90, availability_warning_days = 3`);
   await owner.query('DELETE FROM product_images; DELETE FROM packagings; DELETE FROM product_variants; DELETE FROM products; DELETE FROM categories');
@@ -148,3 +149,23 @@ export const productPayload = (overrides: Record<string, unknown> = {}) => {
     ...overrides,
   };
 };
+
+/**
+ * SGLog Fase 4: confirma a alocacao recomendada do pedido (pedido pago so despacha com alocacao confirmada).
+ * `c` precisa de logistics.allocate (proprietario, gerente ou gerente de logistica).
+ */
+export async function allocateOrder(c: ReturnType<typeof client>, orderId: string, extra: Record<string, unknown> = {}) {
+  const d = await c.get(`/api/v1/admin/logistics/orders/${orderId}`);
+  if (d.statusCode !== 200) throw new Error(`detalhe da alocacao: ${d.body}`);
+  const body = d.json();
+  const planKey = body.proposal?.recommended?.key;
+  if (!planKey) throw new Error(`sem proposta recomendada: ${JSON.stringify(body.proposal)}`);
+  const r = await c.post(`/api/v1/admin/logistics/orders/${orderId}/allocation`, {
+    logisticsVersion: body.order.logistics_version,
+    planKey,
+    requestKey: `test-${randomBytes(6).toString('hex')}`,
+    ...extra,
+  });
+  if (r.statusCode !== 200) throw new Error(`alocacao: ${r.body}`);
+  return r.json();
+}

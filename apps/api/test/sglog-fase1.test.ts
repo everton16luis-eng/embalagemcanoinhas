@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { pool } from '../src/db/pool.js';
 import { FakeProvider } from '../src/lib/payments.js';
 import { testDatabaseProblem, testEnvProblem, TEST_DB_MARK } from './env-guard.js';
-import { appRole, loggedAs, makeApp, ORIGIN, owner, productPayload, randomIp, resetCatalog, uid } from './helpers.js';
+import { allocateOrder, appRole, loggedAs, makeApp, ORIGIN, owner, productPayload, randomIp, resetCatalog, uid } from './helpers.js';
 
 // SGLog Fase 1 (docs/15-sglog-fase1.md): depositos, saldo por deposito, abertura, conferencia, papeis e travas.
 
@@ -139,6 +139,7 @@ describe('saldo por depósito acompanha o saldo total', () => {
   it('pedido real: checkout, pagamento, despacho e entrega sem nenhuma divergência', async () => {
     const o = await readyOrder(3);
     expect((await totals(o.variantId)).location).toEqual(['500.000', '150.000']);
+    await allocateOrder(boss, o.id);
     const sent = await boss.post(`/api/v1/admin/orders/${o.id}/dispatch`, { version: o.version, carrier: 'Próprio', volumes: 1 });
     expect(sent.statusCode, sent.body).toBe(200);
     const t = await totals(o.variantId);
@@ -301,9 +302,9 @@ describe('referência de abertura', () => {
     await owner.query('UPDATE stock_balances SET on_hand = on_hand - 1 WHERE variant_id = $1', [inherited.variantId]);
     await owner.query('UPDATE stock_location_balances SET on_hand = on_hand - 1 WHERE variant_id = $1', [inherited.variantId]);
 
-    // Reserva mexida por fora: C4.
+    // Reserva mexida por fora: C4 no total e, desde a Fase 4, C8 no deposito.
     await owner.query(`UPDATE stock_reservations SET status = 'released', closed_at = now() WHERE variant_id = $1 AND status = 'active'`, [later.variantId]);
-    expect((await reconcile()).map((d) => `${d.check_code}:${d.expected}:${d.found}`)).toEqual(['C4:0.000:2.000']);
+    expect((await reconcile()).map((d) => `${d.check_code}:${d.expected}:${d.found}`)).toEqual(['C4:0.000:2.000', 'C8:0.000:2.000']);
     await owner.query(`UPDATE stock_reservations SET status = 'active', closed_at = NULL WHERE variant_id = $1`, [later.variantId]);
     expect(await reconcile()).toEqual([]);
   });
@@ -313,8 +314,9 @@ describe('papéis novos (menor privilégio)', () => {
   // suppliers.* entrou na Fase 2 (docs/18-sglog-fase2.md, matriz aprovada em D2-4).
   const expected = {
     // Fase 3 (D3-2): transferencia e ajuste com MFA (stock.adjust) para o gerente de logistica.
-    logistics: ['catalog.view', 'orders.view', 'purchases.view', 'shipping.manage', 'stock.adjust', 'stock.manage', 'stock.transfer', 'stock.view', 'suppliers.view'],
-    buyer: ['catalog.view', 'purchases.manage', 'purchases.view', 'stock.view', 'suppliers.manage', 'suppliers.view'],
+    // Fase 4 (D4-11): logistics.view para logistica e comprador; logistics.allocate so para a logistica. Financeiro sem.
+    logistics: ['catalog.view', 'logistics.allocate', 'logistics.view', 'orders.view', 'purchases.view', 'shipping.manage', 'stock.adjust', 'stock.manage', 'stock.transfer', 'stock.view', 'suppliers.view'],
+    buyer: ['catalog.view', 'logistics.view', 'purchases.manage', 'purchases.view', 'stock.view', 'suppliers.manage', 'suppliers.view'],
     finance: ['orders.view', 'purchases.view', 'reports.view', 'suppliers.view'],
   };
 
@@ -345,6 +347,7 @@ describe('papéis novos (menor privilégio)', () => {
     expect((await lg.get('/api/v1/admin/sales-reports/summary')).statusCode).toBe(403);
     expect((await lg.post('/api/v1/admin/suppliers', { name: `Fornecedor ${uid()}` })).statusCode).toBe(403);
     expect((await lg.get('/api/v1/admin/users')).statusCode).toBe(403);
+    await allocateOrder(lg, o.id);
     const sent = await lg.post(`${A}/dispatch`, { version: o.version, carrier: 'Próprio', volumes: 1 });
     expect(sent.statusCode, sent.body).toBe(200);
     expect(await reconcile()).toEqual([]);

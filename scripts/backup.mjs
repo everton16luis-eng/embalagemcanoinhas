@@ -173,6 +173,8 @@ async function migrateRehearsal(dir) {
   try {
     run('pg_restore', [...conn(a.user, REHEARSAL_DB), '--exit-on-error', '--no-owner', '--role', DB.user, path.join(dir, 'db.dump')], a.password);
     const before = countAll();
+    const kindQuery = `SELECT count(*) FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'shipments' AND column_name = 'kind'`;
+    const hadKind = q(kindQuery) === '1';
     const pending = q(`SELECT coalesce(string_agg(name, ',' ORDER BY name), '') FROM schema_migrations`).split(',').filter(Boolean);
     console.log(`  migrations na copia: ${pending.length} (ultima: ${pending.at(-1) ?? 'nenhuma'})`);
 
@@ -189,13 +191,16 @@ async function migrateRehearsal(dir) {
 
     const after = countAll();
     // A 0024 (Fase 5) cria remessas pendentes para pedidos ja alocados: em shipments, o que precisa bater sao as
-    // remessas que ja existiam (agora 'legacy'); as novas sao mostradas a parte.
-    const hasKind = q(`SELECT count(*) FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'shipments' AND column_name = 'kind'`) === '1';
-    if (hasKind && 'shipments' in before) {
+    // remessas que ja existiam (agora 'legacy'); as novas sao mostradas a parte. So vale quando a 0024 roda neste
+    // ensaio: com ela ja aplicada antes (copia com a coluna kind), as remessas nao-legacy ja estavam na contagem de
+    // antes e o total precisa bater como nas outras tabelas.
+    if (!hadKind && q(kindQuery) === '1' && 'shipments' in before) {
       const legacy = Number(q(`SELECT count(*) FROM shipments WHERE kind = 'legacy'`));
       const created = Number(q(`SELECT count(*) FROM shipments WHERE kind <> 'legacy'`));
       console.log(`  remessas: ${legacy} antiga(s) preservada(s), ${created} pendente(s) nova(s) para pedido(s) ja alocado(s)`);
       after.shipments = legacy;
+    } else if ('shipments' in before) {
+      console.log(`  remessas: ${after.shipments} (antes ${before.shipments})`);
     }
     for (const [t, n] of Object.entries(before)) if (after[t] !== n) problems.push(`contagem de ${t} mudou: antes ${n}, depois ${after[t]}`);
 

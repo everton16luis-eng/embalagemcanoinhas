@@ -29,6 +29,8 @@ type Item = {
   baseUnit: string;
   available: number;
   inbound: number;
+  // Fase 7: requisicoes abertas e as que ja estao em compra ainda nao enviada (descontadas da necessidade).
+  requested?: number;
   minStock: string;
   soldInPeriod: number;
   dailyAvg: number;
@@ -154,7 +156,8 @@ function Replenishment() {
                     {i.productName}
                   </Link>
                   <p className="text-xs text-ink-faint">
-                    <span className="font-mono">{i.sku}</span> · disponível {qty(i.available)} · a caminho {qty(i.inbound)} · vendeu {qty(i.soldInPeriod)} ({qty(i.dailyAvg)}/dia) ·{' '}
+                    <span className="font-mono">{i.sku}</span> · disponível {qty(i.available)} · a caminho {qty(i.inbound)}
+                    {Number(i.requested ?? 0) > 0 && ` · em requisição ${qty(i.requested ?? 0)}`} · vendeu {qty(i.soldInPeriod)} ({qty(i.dailyAvg)}/dia) ·{' '}
                     {i.coverageDays === null ? 'sem venda no período' : `dura ~${i.coverageDays} dia(s)`}
                   </p>
                 </div>

@@ -6,6 +6,7 @@ import Link from '@/components/painel-link';
 import { SHIPMENT_STATUS } from '@/components/shipments';
 import { useMe } from '@/components/shell';
 import { newKey } from '@/components/stock';
+import { day, SUPPLY } from '@/components/supply';
 import { Badge, Button, Field, Notice, Panel, Textarea, type Tone } from '@/components/ui';
 import { api } from '@/lib/api';
 import { money, qty, when } from '@/lib/format';
@@ -73,7 +74,9 @@ type Detail = {
   auto: boolean;
 };
 
-type PurchaseLink = { id: string; purchase_order_id: string; purchase_number: number; purchase_status: string; base_qty: string; status: string; cancel_reason: string | null; sku: string; awaiting: boolean };
+type PurchaseLink = { id: string; purchase_order_id: string; purchase_number: number; purchase_status: string; base_qty: string; status: string; cancel_reason: string | null; sku: string; awaiting: boolean;
+  // Fase 7: situacao da compra com o fornecedor (confirmacao, atraso, previsao).
+  supply?: { category: string; refDate: string | null; late: boolean } | null };
 type Conversion = { id: string; sku: string; qty: string; rule: string; justification: string | null; created_at: string; purchase_number: number | null };
 const CONVERSION_RULE: Record<string, string> = { linked: 'vinculada', queue: 'fila de pagamento', reprocess: 'reprocessamento', manual: 'antecipação manual' };
 
@@ -221,6 +224,13 @@ export function AllocationPanel({ orderId, onChange }: { orderId: string; onChan
                 `compra nº ${l.purchase_number}`
               )}{' '}
               ({l.sku}: {qty(l.base_qty)})
+              {l.status === 'active' && l.supply && (
+                <span className={l.supply.late ? 'text-bad' : ''}>
+                  {' '}
+                  · {SUPPLY[l.supply.category]?.label ?? l.supply.category}
+                  {l.supply.refDate ? ` (${day(l.supply.refDate)})` : ''}
+                </span>
+              )}
               {l.status === 'canceled' && `: ${l.cancel_reason}`}
               {l.status === 'canceled' && l.awaiting && ' — pendente: a encomenda continua aguardando mercadoria, sem cancelamento do pedido.'}
             </p>

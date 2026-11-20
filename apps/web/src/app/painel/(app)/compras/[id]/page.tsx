@@ -8,6 +8,7 @@ import { Guard, useMe } from '@/components/shell';
 import { newKey, packLabel, PackagingPicker, PO_STATUS } from '@/components/stock';
 import { ApprovalPanel, EventsPanel, IssuesPanel, LinksPanel, PURPOSE, RULE, ShippingPanel, WarehouseSelect, type ApprovalInfo, type PoConversion, type PoEvent, type PoIssue, type PoLink } from '@/components/purchases';
 import { SupplierComparisonCompact } from '@/components/suppliers';
+import { ConfirmationPanel, day, DocumentPanel, FollowupPanel, RequestsPanel, suggestionToForm, SupplyBadge, XmlSuggest, type SupplyOrder } from '@/components/supply';
 import { Badge, Button, Field, Input, Notice, PageHeader, Panel, Select, Textarea } from '@/components/ui';
 import { api } from '@/lib/api';
 import { centsToInput, money, parseMoney, parseQty, qty, qtyToInput, unitMoney, when } from '@/lib/format';
@@ -30,8 +31,17 @@ type Item = {
   min_order_packs: string | null;
   order_multiple_packs: string | null;
   min_exception_reason: string | null;
+  // Fase 7: saldo cancelado pelo fornecedor, pendente e prazos.
+  canceled_packs: string;
+  pending_packs: string;
+  supplier_outcome: string | null;
+  promised_at: string | null;
+  partial_packs: string | null;
+  rest_promised_at: string | null;
 };
-type Order = ApprovalInfo & {
+type Order = ApprovalInfo &
+  Omit<SupplyOrder, 'items'> & {
+  invoices: { id: string; series: string; number: number }[];
   id: string;
   purpose: string;
   warehouse_id: string;
@@ -295,7 +305,8 @@ const blankExtra: Extra = { rejected: '', destination: 'damaged', reason: '', in
 type ReceiptResult = { order: Order; conversions?: { variantId: string; converted: { orderNumber: number; qty: string; rule: string }[]; stoppedAt: { orderNumber: number; qty: string; free: string } | null }[] };
 
 function ReceiveForm({ order, onDone }: { order: Order; onDone: (o: Order, summary: string | null) => void }) {
-  const pending = (i: Item) => Math.max(0, Number(i.packs) - Number(i.received_packs));
+  // Fase 7: pendente = pedido - recebido - cancelado pelo fornecedor.
+  const pending = (i: Item) => Math.max(0, Number(i.pending_packs));
   const [packs, setPacks] = useState<Record<string, string>>(() => Object.fromEntries(order.items.map((i) => [i.id, pending(i) ? qtyToInput(String(pending(i))) : ''])));
   const [extra, setExtra] = useState<Record<string, Extra>>({});
   // Vindo da conferencia da nota de compra (?nf=numero), o numero da NF ja vem preenchido.
@@ -353,6 +364,16 @@ function ReceiveForm({ order, onDone }: { order: Order; onDone: (o: Order, summa
       <p className="text-xs text-ink-soft">
         Destino: <span className="font-medium text-ink">{order.warehouse_name}</span>. O recebimento só entra neste depósito.
       </p>
+      <XmlSuggest
+        orderId={order.id}
+        invoices={order.invoices ?? []}
+        onApply={(sug) => {
+          const f = suggestionToForm(sug);
+          setPacks({ ...Object.fromEntries(order.items.map((i) => [i.id, ''])), ...f.packs });
+          setExtra(Object.fromEntries(Object.entries(f.invoiced).map(([k, v]) => [k, { ...(extra[k] ?? blankExtra), invoiced: v, open: true }])));
+          if (!invoiceRef) setInvoiceRef(sug.invoiceRef.slice(0, 60));
+        }}
+      />
       <ul className="divide-y divide-line">
         {order.items.map((i) => {
           const x = ex(i.id);
@@ -363,6 +384,7 @@ function ReceiveForm({ order, onDone }: { order: Order; onDone: (o: Order, summa
                   <span className="block font-medium">{i.product_name}</span>
                   <span className="block text-xs text-ink-faint">
                     {i.packaging_label} · pendente {qty(pending(i))} de {qty(i.packs)}
+                    {Number(i.canceled_packs) > 0 && ` · ${qty(i.canceled_packs)} cancelada(s) pelo fornecedor`}
                   </span>
                 </span>
                 <Input aria-label={`Recebido de ${i.product_name}`} className="w-24" inputMode="decimal" disabled={!pending(i)} value={packs[i.id] ?? ''} onChange={(e) => setPacks({ ...packs, [i.id]: e.target.value })} />
@@ -492,11 +514,6 @@ function OrderPage() {
                   <Button onClick={() => action('reject-approval', 'Por que devolver sem aprovar?')}>Devolver</Button>
                 </>
               )}
-              {manage && order.status === 'approved' && (
-                <Button variant="primary" onClick={() => action('send')}>
-                  Marcar como enviado
-                </Button>
-              )}
               {manage && ['draft', 'pending_approval', 'approved', 'sent'].includes(order.status) && (
                 <Button variant="danger" onClick={() => action('cancel', 'Motivo do cancelamento:')}>
                   Cancelar
@@ -509,6 +526,7 @@ function OrderPage() {
       />
       <div className="mb-4 flex flex-wrap items-center gap-2 text-sm">
         <Badge tone={status.tone}>{status.label}</Badge>
+        <SupplyBadge supply={order.supply} />
         <span className="text-ink-soft">
           {PURPOSE[order.purpose] ?? order.purpose} · destino {order.warehouse_name}
         </span>
@@ -559,13 +577,24 @@ function OrderPage() {
                             <span className="font-mono">{i.sku}</span> · {packLabel(i.packaging_label, i.base_qty_per_pack, i.base_unit)} · {money(i.pack_cost_cents)} cada
                           </span>
                           {i.min_exception_reason && <span className="block text-xs text-warn">Abaixo do mínimo ou fora do múltiplo do fornecedor: {i.min_exception_reason}</span>}
+                          {Number(i.canceled_packs) > 0 && (
+                            <span className="block text-xs text-warn">
+                              {qty(i.canceled_packs)} cancelada(s): {i.supplier_outcome === 'refused' ? 'recusado pelo fornecedor' : 'quantidade reduzida pelo fornecedor'}
+                            </span>
+                          )}
+                          {i.partial_packs && Number(i.pending_packs) > 0 && (
+                            <span className="block text-xs text-ink-soft">
+                              Entrega parcial: {qty(i.partial_packs)} em {day(i.promised_at)}; restante {i.rest_promised_at ? `em ${day(i.rest_promised_at)}` : 'sem previsão'}
+                            </span>
+                          )}
+                          {!i.partial_packs && i.promised_at && Number(i.pending_packs) > 0 && <span className="block text-xs text-ink-soft">Entrega prometida {day(i.promised_at)}</span>}
                         </td>
                         <td className="num py-2 pl-3 text-right">{qty(i.packs)}</td>
                         <td className={`num py-2 pl-3 text-right ${Number(i.received_packs) >= Number(i.packs) ? 'text-good' : ''}`}>
                           {qty(i.received_packs)}
                           {Number(i.rejected_packs) > 0 && <span className="block text-xs text-warn">{qty(i.rejected_packs)} recusada(s)</span>}
                         </td>
-                        <td className="num py-2 pr-4 pl-3 text-right sm:pr-5">{money(Math.round(Number(i.packs) * Number(i.pack_cost_cents)))}</td>
+                        <td className="num py-2 pr-4 pl-3 text-right sm:pr-5">{money(Math.round((Number(i.packs) - Number(i.canceled_packs)) * Number(i.pack_cost_cents)))}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -626,7 +655,10 @@ function OrderPage() {
             </Panel>
           </div>
           <div className="min-w-0 space-y-5">
-            {receive && ['sent', 'partial'].includes(order.status) && (
+            {receive && ['sent', 'partial'].includes(order.status) && order.confirmation_status === 'pending_approval' && (
+              <Notice tone="warn">O fornecedor confirmou com aumento de preço que aguarda aprovação. O recebimento fica disponível depois da decisão.</Notice>
+            )}
+            {receive && ['sent', 'partial'].includes(order.status) && order.confirmation_status !== 'pending_approval' && order.items.some((i) => Number(i.pending_packs) > 0) && (
               <Panel title="Receber mercadoria" description="Confira com a nota. Quantidade em embalagens do pedido; pode receber em partes.">
                 <ReceiveForm
                   key={order.version}
@@ -641,15 +673,26 @@ function OrderPage() {
             {['draft', 'pending_approval', 'approved'].includes(order.status) && (
               <Notice>
                 {order.status === 'draft'
-                  ? 'Rascunho: envie para aprovação. Depois de aprovado, marque como enviado ao mandar o pedido ao fornecedor; só então o recebimento fica disponível.'
+                  ? 'Rascunho: envie para aprovação. Depois de aprovado, gere o pedido ao fornecedor e registre o envio; só então o recebimento fica disponível.'
                   : order.status === 'pending_approval'
                     ? 'Aguardando aprovação de outra pessoa com a permissão.'
-                    : 'Aprovado: marque como enviado depois de mandar o pedido ao fornecedor.'}
+                    : 'Aprovado: gere o pedido ao fornecedor abaixo, envie (impresso, PDF, WhatsApp ou e-mail) e registre o envio.'}
               </Notice>
             )}
+            <DocumentPanel order={order as never} canManage={manage} onChange={(o: Order) => (setOrder(o), setSummary(null))} />
+            <ConfirmationPanel
+              order={order as never}
+              canManage={manage}
+              canApprove={approve}
+              meId={me.user.id}
+              isOwner={me.user.role === 'owner'}
+              onChange={(o: Order, s?: string | null) => (setOrder(o), setSummary(s ?? null))}
+            />
+            <FollowupPanel order={order as never} canManage={manage} onChange={(o: Order) => setOrder(o)} />
             <ApprovalPanel order={order} canPay={can('purchases.pay')} onChange={(o: Order) => setOrder(o)} />
             <ShippingPanel order={order} canEdit={manage} onChange={(o: Order) => setOrder(o)} />
             <LinksPanel order={order} canManage={manage} onChange={(o: Order) => setOrder(o)} />
+            <RequestsPanel requests={order.requests ?? []} />
             <IssuesPanel issues={order.issues} items={order.items} />
             <EventsPanel events={order.events} />
           </div>

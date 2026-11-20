@@ -37,6 +37,14 @@ const EVENT: Record<string, string> = {
   shipping_updated: 'Transporte atualizado',
   closed_short: 'Encerrado com falta',
   canceled: 'Cancelado',
+  // Fase 7
+  document_resent: 'Pedido reenviado ao fornecedor',
+  confirmation: 'Confirmação do fornecedor registrada',
+  confirmation_approved: 'Aumento de preço aprovado',
+  confirmation_rejected: 'Aumento de preço recusado',
+  closed_by_confirmation: 'Encerrado pela confirmação (restante recusado)',
+  followup: 'Contato com o fornecedor',
+  requests_added: 'Requisições incluídas',
 };
 export const ISSUE: Record<string, string> = { quantity: 'Quantidade', quality: 'Qualidade', price: 'Preço', wrong_item: 'Item errado' };
 const DEST: Record<string, string> = { blocked: 'bloqueado', damaged: 'avariado' };
@@ -399,9 +407,10 @@ export function WarehouseSelect({ value, onChange, disabled }: { value: string; 
 
 /** Regras da compra (D6-3 limite de aprovacao, D6-12 tolerancia de preco). Ver todos; alterar so com settings.manage e MFA. */
 export function PurchaseRules({ canEdit }: { canEdit: boolean }) {
-  const [s, setS] = useState<{ approvalMinCents: number; priceTolerancePct: string } | null>(null);
+  const [s, setS] = useState<{ approvalMinCents: number; priceTolerancePct: string; confirmationDays?: number } | null>(null);
   const [min, setMin] = useState('');
   const [tol, setTol] = useState('');
+  const [days, setDays] = useState('');
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -414,10 +423,12 @@ export function PurchaseRules({ canEdit }: { canEdit: boolean }) {
     setError('');
     const cents = parseMoney(min);
     const pct = Number(tol.replace(',', '.'));
+    const d = Number(days);
     if (cents === null || !Number.isFinite(pct)) return setError('Informe o limite e a tolerância.');
+    if (!Number.isInteger(d) || d < 1 || d > 30) return setError('Prazo de confirmação: de 1 a 30 dias.');
     setBusy(true);
     try {
-      const r = await api('/admin/purchase-orders/settings', { method: 'PUT', body: { approvalMinCents: cents, priceTolerancePct: pct } });
+      const r = await api('/admin/purchase-orders/settings', { method: 'PUT', body: { approvalMinCents: cents, priceTolerancePct: pct, confirmationDays: d } });
       setS(r.settings);
       setOpen(false);
     } catch (err) {
@@ -430,10 +441,11 @@ export function PurchaseRules({ canEdit }: { canEdit: boolean }) {
     <Panel title="Regras da compra" className="mb-4">
       <p className="text-sm" data-testid="purchase-rules">
         {s.approvalMinCents === 0 ? 'Toda compra passa por aprovação.' : `Compras abaixo de ${money(s.approvalMinCents)} são aprovadas automaticamente.`} Preço da nota acima de{' '}
-        {Number(s.priceTolerancePct).toLocaleString('pt-BR')}% de diferença exige justificativa.
+        {Number(s.priceTolerancePct).toLocaleString('pt-BR')}% de diferença exige justificativa; na confirmação do fornecedor, aumento acima disso exige aprovação.
+        {s.confirmationDays ? ` O fornecedor tem ${s.confirmationDays} dia(s) corrido(s) para confirmar o pedido.` : ''}
       </p>
       {canEdit && !open && (
-        <Button className="mt-2" onClick={() => (setMin(String(s.approvalMinCents / 100).replace('.', ',')), setTol(String(Number(s.priceTolerancePct)).replace('.', ',')), setOpen(true))}>
+        <Button className="mt-2" onClick={() => (setMin(String(s.approvalMinCents / 100).replace('.', ',')), setTol(String(Number(s.priceTolerancePct)).replace('.', ',')), setDays(String(s.confirmationDays ?? 2)), setOpen(true))}>
           Alterar regras
         </Button>
       )}
@@ -443,6 +455,9 @@ export function PurchaseRules({ canEdit }: { canEdit: boolean }) {
             {(id) => <Input id={id} inputMode="decimal" value={min} onChange={(e) => setMin(e.target.value)} />}
           </Field>
           <Field label="Tolerância de preço da nota (%)">{(id) => <Input id={id} inputMode="decimal" value={tol} onChange={(e) => setTol(e.target.value)} />}</Field>
+          <Field label="Prazo para o fornecedor confirmar (dias)" hint="Dias corridos desde o envio. Depois disso, a compra aparece como confirmação atrasada.">
+            {(id) => <Input id={id} inputMode="numeric" value={days} onChange={(e) => setDays(e.target.value)} />}
+          </Field>
           {error && (
             <div className="sm:col-span-2">
               <Notice tone="bad">{error}</Notice>

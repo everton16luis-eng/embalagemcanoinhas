@@ -64,6 +64,7 @@ export const PERMISSION_LABELS: Record<string, string> = {
   'purchases.approve': 'Aprovar compras',
   'purchases.receive': 'Receber mercadoria de compras',
   'purchases.pay': 'Informar pagamento de compras (sem movimentar dinheiro)',
+  'purchases.request': 'Pedir compra (requisição interna)',
   'suppliers.view': 'Ver fornecedores, ofertas e disponibilidade',
   'suppliers.manage': 'Cadastrar fornecedores e alterar custos',
   'orders.view': 'Ver pedidos',

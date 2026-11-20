@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowLeftRight, BarChart3, Blocks, Building, Mail, MessageCircle, TrendingUp, Boxes, PackageCheck, Hourglass, Building2, ClipboardCheck, ClipboardList, FileText, FolderTree, History, LogOut, MapPinned, Menu, Package, ReceiptText, RefreshCw, Route, Search, Settings, ShoppingCart, Store, Truck, UserRound, Users, Warehouse, X } from 'lucide-react';
+import { Activity, ArrowLeftRight, BarChart3, Inbox, Blocks, Building, Mail, MessageCircle, TrendingUp, Boxes, PackageCheck, Hourglass, Building2, ClipboardCheck, ClipboardList, FileText, FolderTree, History, LogOut, MapPinned, Menu, Package, ReceiptText, RefreshCw, Route, Search, Settings, ShoppingCart, Store, Truck, UserRound, Users, Warehouse, X } from 'lucide-react';
 import Link from '@/components/painel-link';
 import { usePathname, useRouter } from 'next/navigation';
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
@@ -31,11 +31,14 @@ const NAV = [
   { href: '/painel/logistica/alocacao', label: 'Alocação', icon: Route, perm: 'logistics.view', group: 'Logística' },
   { href: '/painel/logistica/expedicao', label: 'Expedição', icon: PackageCheck, perm: 'logistics.view', group: 'Logística' },
   { href: '/painel/logistica/encomendas', label: 'Encomendas', icon: Hourglass, perm: 'logistics.view', group: 'Logística' },
+  // SGLog Fase 7: abastecimento (compras sem confirmacao, atrasos, a caminho) e requisicoes internas de compra.
+  { href: '/painel/logistica/abastecimento', label: 'Abastecimento', icon: Activity, perm: 'logistics.view|purchases.view', group: 'Logística' },
   { href: '/painel/estoque', label: 'Estoque', icon: Warehouse, perm: 'stock.view', group: 'Logística' },
   { href: '/painel/inventario', label: 'Inventário', icon: ClipboardList, perm: 'stock.view', group: 'Logística' },
   { href: '/painel/transferencias', label: 'Transferências', icon: ArrowLeftRight, perm: 'stock.view', group: 'Logística' },
   { href: '/painel/depositos', label: 'Depósitos', icon: Building, perm: 'stock.view', group: 'Logística' },
   { href: '/painel/compras', label: 'Compras', icon: ShoppingCart, perm: 'purchases.view', group: 'Logística' },
+  { href: '/painel/compras/requisicoes', label: 'Requisições', icon: Inbox, perm: 'purchases.view|purchases.request', group: 'Logística' },
   { href: '/painel/reposicao', label: 'Reposição', icon: RefreshCw, perm: 'purchases.view', group: 'Logística' },
   { href: '/painel/fornecedores', label: 'Fornecedores', icon: Truck, perm: 'suppliers.view|purchases.view', group: 'Logística' },
   { href: '/painel/fiscal', label: 'Nota fiscal', icon: FileText, perm: 'fiscal.view' },
@@ -72,7 +75,9 @@ export function AdminShell({ children }: { children: ReactNode }) {
   // "a|b": basta uma das permissoes (ex.: fornecedores aceita suppliers.view ou purchases.view).
   const can = (p: string) => p.split('|').some((x) => me.permissions.includes(x));
   const items = NAV.filter((n) => !n.perm || can(n.perm));
-  const active = (href: string) => (href === '/painel' ? pathname === href : pathname.startsWith(href));
+  // O item mais especifico vence (Compras x Compras > Requisicoes).
+  const active = (href: string) =>
+    href === '/painel' ? pathname === href : pathname.startsWith(href) && !NAV.some((n) => n.href.length > href.length && n.href.startsWith(href) && pathname.startsWith(n.href));
 
   const logout = async () => {
     await api('/auth/logout', { method: 'POST' }).catch(() => null);

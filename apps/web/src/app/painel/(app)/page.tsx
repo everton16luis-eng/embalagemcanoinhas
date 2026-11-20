@@ -3,6 +3,7 @@
 import { Check, Clock, Circle } from 'lucide-react';
 import Link from '@/components/painel-link';
 import { useEffect, useState } from 'react';
+import { useMe } from '@/components/shell';
 import { Badge, Notice, PageHeader, Panel } from '@/components/ui';
 import { api } from '@/lib/api';
 
@@ -18,7 +19,45 @@ function StatusIcon({ status }: { status: Item['status'] }) {
   return <Circle size={16} className="text-bad" aria-label="Pendente" />;
 }
 
+type SupplySummary = Record<string, number>;
+// SGLog Fase 7 (D7-12): resumo do abastecimento no inicio, para quem acompanha compras ou logistica.
+const SUPPLY_CARDS: { key: string; label: string; tone: string }[] = [
+  { key: 'delivery_late', label: 'Entregas atrasadas', tone: 'text-bad' },
+  { key: 'confirmation_late', label: 'Confirmação atrasada', tone: 'text-bad' },
+  { key: 'price_approval', label: 'Aumento a aprovar', tone: 'text-warn' },
+  { key: 'awaiting_confirmation', label: 'Aguardando confirmação', tone: 'text-ink' },
+  { key: 'requestsOpen', label: 'Requisições abertas', tone: 'text-ink' },
+  { key: 'backordersWithoutPurchase', label: 'Encomendas sem compra', tone: 'text-warn' },
+];
+
+function SupplyStrip() {
+  const [s, setS] = useState<SupplySummary | null>(null);
+  useEffect(() => {
+    api<{ summary: SupplySummary }>('/admin/supply/summary').then((r) => setS(r.summary), () => null);
+  }, []);
+  if (!s) return null;
+  return (
+    <section className="mb-5 rounded-lg border border-line bg-card px-5 py-4" data-testid="home-supply">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <h2 className="text-sm font-semibold">Abastecimento</h2>
+        <Link href="/painel/logistica/abastecimento" className="text-sm font-medium text-act hover:underline">
+          Abrir
+        </Link>
+      </div>
+      <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+        {SUPPLY_CARDS.map((c) => (
+          <div key={c.key}>
+            <dt className="text-xs text-ink-soft">{c.label}</dt>
+            <dd className={`num text-xl font-semibold ${(s[c.key] ?? 0) > 0 ? c.tone : 'text-ink-faint'}`}>{s[c.key] ?? 0}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  );
+}
+
 export default function SetupPage() {
+  const { can } = useMe();
   const [data, setData] = useState<Setup | null>(null);
   const [error, setError] = useState('');
   useEffect(() => {
@@ -31,6 +70,7 @@ export default function SetupPage() {
         title="Configuração inicial"
         description="O que a loja precisa para vender e emitir NF-e, até o lançamento. Nenhum dado é preenchido automaticamente: cada item é informado pela empresa ou pelo contador."
       />
+      {can('purchases.view|logistics.view') && <SupplyStrip />}
       {error && <Notice tone="bad">{error}</Notice>}
       {data && (
         <>

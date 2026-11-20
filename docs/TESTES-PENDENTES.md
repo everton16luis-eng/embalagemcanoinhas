@@ -624,8 +624,13 @@ Validação pelo painel HTTPS, depois da implantação:
 
 ## SGLog Fase 6 — compras, recebimento e encomendas ([29-sglog-fase6.md](29-sglog-fase6.md))
 
-**Situação: implementada só no local, branch `sglog/fase6`. Não implantada.** O roteiro de implantação está em
-[30-sglog-fase6-implantacao.md](30-sglog-fase6-implantacao.md); execute-o só depois do merge e do push autorizados.
+**Situação: implantada na VPS em 20/11/2026 (`5a07198`, migração 0025).** Bloco 5.1 logo após a implantação:
+`RESULTADO: OK`, 204 variantes, C1–C13 sem divergência. Roteiro em
+[30-sglog-fase6-implantacao.md](30-sglog-fase6-implantacao.md).
+
+Validado pelo HTTPS em 20/11/2026 com o proprietário (MFA ativo), na compra de teste nº 107 (3 pacotes de
+CPO-50-BRA, fornecedor de demonstração). Ficou no estoque de demonstração: +200 UN disponíveis e 100 UN em avariado
+(dar baixa da avaria quando quiser).
 Continuam assim:
 - `ALLOCATION_AUTO` desligado;
 - dropshipping e remessas múltiplas bloqueados;
@@ -634,34 +639,35 @@ Continuam assim:
 Validação pelo painel HTTPS, depois da implantação. Use só compras de teste, com valores pequenos, e não informe
 pagamento real.
 
-- [ ] **Regras.** Compras mostra "Regras da compra: Toda compra passa por aprovação" e tolerância 0%. Não altere.
-- [ ] **Aprovação.**
+- [x] **Regras.** Compras mostra "Regras da compra: Toda compra passa por aprovação" e tolerância 0%. Não altere.
+- [ ] **Aprovação.** Feito: envio para aprovação e aprovação própria do proprietário com justificativa e histórico.
+  Falta: recusa sem MFA e aprovação por um segundo usuário (precisa de outra conta).
   1. Crie um rascunho de compra de teste e clique "Enviar para aprovação": a compra fica "Aguardando aprovação".
   2. Com o mesmo usuário, "Aprovar" deve recusar. Sem MFA, a recusa pede para ativar a verificação. Com MFA, quem
      criou só aprova se for o proprietário, com justificativa, e a compra mostra "Aprovado pelo próprio proprietário".
   3. Se houver um segundo usuário gerente com MFA, aprove com ele.
 - [ ] **Edição depois de aprovada** volta para rascunho, com "Voltou para rascunho" no histórico.
-- [ ] **Pagamento informado.** Com o Financeiro, ou com você: informar data e valor fictícios mostra "Informação
+- [x] **Pagamento informado.** Registrado com `confirmedByProvider: false`. Com o Financeiro, ou com você: informar data e valor fictícios mostra "Informação
   administrativa: não confirma o pagamento no banco". Nada muda em Pagamentos e Vendas.
-- [ ] **Recebimento.** Marque como enviado e receba em parte, por exemplo 1 embalagem com outra recusada como
+- [x] **Recebimento.** 2000 → 2100 disponível, avariado 0 → 100, divergência de qualidade registrada. Marque como enviado e receba em parte, por exemplo 1 embalagem com outra recusada como
   "Avariado":
   1. Anote o saldo antes.
   2. Depois, o disponível sobe só o aceito e o avariado sobe o recusado.
   3. A divergência aparece em "Divergências do recebimento".
-- [ ] **Preço da nota.** Informe um custo de nota diferente sem justificativa: deve recusar. Com justificativa, entra e
+- [x] **Preço da nota.** Sem justificativa recusou; com justificativa entrou, custo médio pelo preço da nota. Informe um custo de nota diferente sem justificativa: deve recusar. Com justificativa, entra e
   registra divergência de preço.
-- [ ] **Encomenda.** Se houver um pedido pago de produto sob encomenda alocado como "comprar para atender":
+- [ ] **Encomenda.** Pendente: não havia encomenda aguardando na VPS. Se houver um pedido pago de produto sob encomenda alocado como "comprar para atender":
   1. vincule-o à compra em "Encomendas de clientes" e receba;
   2. o pedido aparece em "Atendidas na chegada desta compra";
   3. no detalhe logístico do pedido aparece "atendido pela compra nº ...";
   4. o pedido não muda de situação nem despacha sozinho.
-- [ ] **Encerrar com falta** uma compra com vínculo ainda aguardando:
+- [ ] **Encerrar com falta** (pendente, depende de encomenda vinculada) uma compra com vínculo ainda aguardando:
   - a tela lista as encomendas pendentes;
   - o pedido do cliente mostra "Vínculo desfeito ... pendente" e não é cancelado.
-- [ ] **Logística → Encomendas** abre a 375 px sem rolagem lateral. "Reprocessar encomendas" mostra só a prévia;
+- [x] **Logística → Encomendas** abre a 375 px sem rolagem lateral. "Reprocessar encomendas" mostra só a prévia;
   aplique só se a prévia fizer sentido.
 - [ ] **Bloco 5.1** do roteiro de implantação depois dos testes: `RESULTADO: OK`, C1–C13 sem divergência.
-- [ ] **Usuários por perfil**, quando houver:
+- [ ] **Usuários por perfil** (pendente, precisa de outras contas), quando houver:
   - comprador cria e envia para aprovação, mas não recebe;
   - estoquista recebe, mas não aprova;
   - financeiro informa pagamento, mas não aprova.

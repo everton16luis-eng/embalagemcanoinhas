@@ -13,7 +13,7 @@ test.describe('expedição', () => {
   test('fila: contadores, abas, busca vazia e regras travadas', async ({ page }, info) => {
     const erros = errosDoConsole(page);
     await page.goto('/painel/logistica/expedicao');
-    await expect(page.getByRole('heading', { name: 'Expedição' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Expedição', exact: true })).toBeVisible();
     for (const c of ['A separar', 'Em separação', 'Em conferência', 'Embaladas']) await expect(page.getByRole('button', { name: new RegExp(c) }).first()).toBeVisible();
     await expect(page.getByRole('tab', { name: 'Em aberto' })).toHaveAttribute('aria-selected', 'true');
     await semRolagemLateral(page);

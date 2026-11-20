@@ -590,3 +590,33 @@ Validação pelo painel HTTPS, depois da implantação:
   - dropshipping `blocked`.
 - [ ] **Depois de tudo aprovado.** Decidir se liga `ALLOCATION_AUTO=on` (D4-2). Ligada, a rotina passa a confirmar
   sozinha o caso simples.
+
+## SGLog Fase 5 — remessas e expedição ([26-sglog-fase5.md](26-sglog-fase5.md))
+
+**Situação: implementada só no local, branch `sglog/fase5`. Não implantada.** A implantação depende da sua
+autorização e de um roteiro próprio (backup, ensaio da 0024 numa cópia, migração, builds, bloco 5.1 com C10 e C11).
+`ALLOCATION_AUTO` continua desligado. Remessas múltiplas nascem travadas.
+
+Validação pelo painel HTTPS, depois da implantação:
+
+- [ ] **Fila.** Logística → Expedição abre a 375 px sem rolagem lateral, com os contadores e "Remessas múltiplas:
+  Travadas". Os pedidos de demonstração com alocação aberta (por exemplo, nº 1421 e nº 1426) aparecem em "A separar".
+- [ ] **Separar e conferir.** Num pedido de demonstração escolhido, anotar o saldo do produto antes. Depois:
+  1. iniciar a separação, separar e concluir;
+  2. conferir por SKU, tentar uma unidade a mais (deve recusar e aparecer no histórico) e concluir;
+  3. embalar.
+
+  O saldo do produto não muda em nenhuma dessas etapas.
+- [ ] **Pedido antigo.** Um pedido sem alocação obrigatória continua com os botões de antes.
+- [ ] **Troca de origem bloqueada.** Com a remessa em separação, "Trocar origem" e "Desfazer" na alocação recusam com a
+  mensagem de remessa em andamento. Depois de "Liberar para pendente", voltam a funcionar.
+- [ ] **Falta.** Registrar uma falta: a remessa volta para "A separar", o pedido vai para "Em análise" com a nota e o
+  saldo não muda.
+- [ ] **Despacho.** **Você**/**Contador**: sem NF-e configurada, a remessa para em "Embalada" com "Aguardando NF-e"
+  (esperado). Com a NF-e autorizada em homologação: despachar, conferir a baixa só da quantidade da remessa e o
+  WhatsApp "enviado" uma vez. Retirada na loja vai direto para "Entregue".
+- [ ] **Bloco 5.1** depois dos testes: `RESULTADO: OK`, com C1–C11 sem divergência.
+- [ ] **Contador.** Definir como emitir NF-e numa entrega parcial (uma nota por remessa ou outra regra). Só depois
+  liberar "Remessas múltiplas" em Expedição → Regras, com o nome de quem validou.
+- [ ] **Usuários por perfil.** Quando houver: estoquista separa e confere, mas não despacha nem cancela remessa;
+  financeiro não vê a expedição.

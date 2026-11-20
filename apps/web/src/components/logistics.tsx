@@ -2,6 +2,8 @@
 
 // SGLog Fase 4 (docs/23-sglog-fase4.md): alocacao do pedido em deposito ou fornecedor.
 import { useCallback, useEffect, useState } from 'react';
+import Link from '@/components/painel-link';
+import { SHIPMENT_STATUS } from '@/components/shipments';
 import { useMe } from '@/components/shell';
 import { newKey } from '@/components/stock';
 import { Badge, Button, Field, Notice, Panel, Textarea, type Tone } from '@/components/ui';
@@ -46,7 +48,10 @@ type Proposal = {
 type Detail = {
   order: { id: string; number: number; status: string; channel: string; logistics_status: string | null; logistics_note: string | null; logistics_version: number; allocation_required: boolean };
   items: { id: string; sku: string; product_name: string; need: string }[];
+  /** Mesmas regras do servidor (allocatable/undoable e remessa em manuseio): so mostra o que ele aceitaria. */
   canAllocate: boolean;
+  canUndo: boolean;
+  lock: { code: string; shipments: { id: string; seq: number; status: string }[]; allocateReason: string | null; undoReason: string | null } | null;
   proposal: Proposal | null;
   fulfillments: {
     id: string;
@@ -196,6 +201,28 @@ export function AllocationPanel({ orderId, onChange }: { orderId: string; onChan
         </div>
       )}
 
+      {d.lock && can('logistics.allocate') && (d.lock.allocateReason || d.lock.undoReason) && (
+        <div className="mb-4 rounded-md border border-line px-3 py-2 text-[13px] text-ink-soft" data-testid="allocation-lock">
+          {[d.lock.allocateReason, d.lock.undoReason]
+            .filter(Boolean)
+            .map((r) => (
+              <p key={r}>{r}</p>
+            ))}
+          <p className="mt-1 text-ink-faint">
+            {d.lock.shipments.map((s, i) => (
+              <span key={s.id}>
+                {i > 0 && ' · '}
+                <Link href={`/painel/logistica/expedicao/${s.id}`} className="underline underline-offset-2">
+                  Remessa nº {s.seq}
+                </Link>
+                : {SHIPMENT_STATUS[s.status]?.label ?? s.status}
+              </span>
+            ))}
+            . Para mudar, devolva a mercadoria ao lugar e libere a remessa na Expedição.
+          </p>
+        </div>
+      )}
+
       {p && d.canAllocate && (
         <div className="space-y-3">
           {p.analysisReason && <Notice tone="warn">{p.analysisReason}</Notice>}
@@ -256,7 +283,7 @@ export function AllocationPanel({ orderId, onChange }: { orderId: string; onChan
         </div>
       )}
 
-      {processing && can('logistics.allocate') && (
+      {d.canUndo && can('logistics.allocate') && (
         <div className="mt-4 border-t border-line pt-3">
           {!undoing ? (
             <Button variant="ghost" onClick={() => setUndoing(true)}>

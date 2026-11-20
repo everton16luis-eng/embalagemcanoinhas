@@ -262,6 +262,7 @@ describe('falta, troca de origem e cancelamento', () => {
     const prod = await newProduct('500');
     const id = await paidOrder([{ pack: prod.pack50, packs: 2 }]);
     let s = await allocated(id);
+    const planKey = (await boss.get(`${L}/orders/${id}`)).json().proposal.recommended.key;
     s = await ok(boss, s.id, '/start', { version: s.version });
     // Com a separacao iniciada, trocar ou desfazer a alocacao e recusado.
     const row = await orderRow(id);
@@ -277,7 +278,10 @@ describe('falta, troca de origem e cancelamento', () => {
     expect(await movements(prod.variantId)).toBe(m);
     expect((await owner.query(`SELECT kind FROM allocation_decisions WHERE order_id = $1 ORDER BY id`, [id])).rows.map((r) => r.kind)).toEqual(['manual', 'shortage']);
     // Nova alocacao recusada enquanto ha mercadoria separada (nao libera reserva de mercadoria fisicamente separada).
-    expect((await allocate(id)).json().error.code).toBe('SHIPMENT_IN_PROGRESS');
+    // A tela nao oferece (sem proposta); a requisicao direta e recusada.
+    expect((await boss.get(`${L}/orders/${id}`)).json()).toMatchObject({ canAllocate: false, proposal: null, lock: { code: 'SHIPMENT_IN_PROGRESS' } });
+    const direct = await boss.post(`${L}/orders/${id}/allocation`, { requestKey: key(), logisticsVersion: o.logistics_version, planKey });
+    expect(direct.json().error.code).toBe('SHIPMENT_IN_PROGRESS');
     s = await ok(boss, s.id, '/unpick', { itemId: s.items[0].id, qty: '70', note: 'Volta para a prateleira' });
     const re = await allocate(id);
     expect(re.statusCode, re.body).toBe(200);
@@ -317,6 +321,123 @@ describe('falta, troca de origem e cancelamento', () => {
     });
     expect((await shipments(id)).map((x) => x.status)).toEqual(['canceled']);
     expect((await checks(s.id)).at(-1)).toMatchObject({ kind: 'unpick', note: 'Pedido cancelado: devolver a mercadoria ao lugar' });
+    expect(await reconcile()).toEqual([]);
+  });
+});
+
+describe('ações da alocação conforme a remessa', () => {
+  const detail = async (id: string, c = boss) => {
+    const r = await c.get(`${L}/orders/${id}`);
+    expect(r.statusCode, r.body).toBe(200);
+    return r.json();
+  };
+  const CHANGE = 'A origem não pode ser alterada após o início da separação.';
+  const UNDO = 'A alocação não pode ser desfeita após o início da separação.';
+  // Estado que as acoes recusadas nao podem tocar: remessas, reservas, atendimentos, decisoes e o pedido.
+  const snapshot = async (id: string) => ({
+    shipments: (await owner.query('SELECT id, status, version FROM shipments WHERE order_id = $1 ORDER BY seq', [id])).rows,
+    reservations: (await owner.query(`SELECT id, qty, status, allocation_id, warehouse_id FROM stock_reservations WHERE source_type = 'order' AND source_id = $1 ORDER BY id`, [id])).rows,
+    decisions: (await owner.query('SELECT count(*)::int AS n FROM allocation_decisions WHERE order_id = $1', [id])).rows[0].n,
+    fulfillments: (await owner.query('SELECT id, status FROM fulfillments WHERE order_id = $1 ORDER BY id', [id])).rows,
+    order: await orderRow(id),
+  });
+
+  it('remessa pendente libera trocar e desfazer; em separação, conferência, embalada ou devolvida com mercadoria, esconde e o servidor recusa', async () => {
+    const prod = await newProduct('500');
+    const id = await paidOrder([{ pack: prod.pack50, packs: 1 }]);
+    let s = await allocated(id);
+    let d = await detail(id);
+    expect(d).toMatchObject({ canAllocate: true, canUndo: true, lock: null });
+    const planKey = d.proposal.recommended.key as string;
+    const movs = await movements(prod.variantId);
+
+    s = await ok(boss, s.id, '/start', { version: s.version });
+    const refused = async (status: string) => {
+      d = await detail(id);
+      expect(d.canAllocate, status).toBe(false);
+      expect(d.canUndo, status).toBe(false);
+      expect(d.proposal).toBeNull();
+      expect(d.lock).toEqual({ code: 'SHIPMENT_IN_PROGRESS', shipments: [{ id: s.id, seq: 1, status }], allocateReason: CHANGE, undoReason: UNDO });
+      // Requisicao direta, sem a tela: recusada sem mexer em nada.
+      const before = await snapshot(id);
+      const v = before.order.logistics_version;
+      const change = await boss.post(`${L}/orders/${id}/allocation`, { requestKey: key(), logisticsVersion: v, planKey, justification: 'Troca direta' });
+      expect(change.statusCode, status).toBe(409);
+      expect(change.json().error.code).toBe('SHIPMENT_IN_PROGRESS');
+      const undo = await boss.post(`${L}/orders/${id}/allocation/cancel`, { logisticsVersion: v, reason: 'Desfazer direto', requestKey: key() });
+      expect(undo.statusCode, status).toBe(409);
+      expect(undo.json().error.code).toBe('SHIPMENT_IN_PROGRESS');
+      expect(await snapshot(id)).toEqual(before);
+    };
+    await refused('picking');
+    s = await ok(boss, s.id, '/pick', { itemId: s.items[0].id, qty: '50' });
+    s = await ok(boss, s.id, '/finish-picking', { version: s.version });
+    await refused('checking');
+    s = await ok(boss, s.id, '/check', { sku: prod.sku, qty: '50' });
+    s = await ok(boss, s.id, '/pack', { version: s.version, packages: [{ weightG: 500 }] });
+    await refused('packed');
+    // Voltar para pendente com a mercadoria ainda separada continua travando.
+    s = await ok(boss, s.id, '/release', { version: s.version, note: 'Volta para a fila' });
+    expect(s.status).toBe('pending');
+    await refused('pending');
+    expect(await movements(prod.variantId)).toBe(movs);
+    expect(await reconcile()).toEqual([]);
+  });
+
+  it('liberada sem mercadoria separada volta a permitir; sem permissão o servidor recusa; desfeita, a remessa cancelada não trava', async () => {
+    const prod = await newProduct('500');
+    const id = await paidOrder([{ pack: prod.pack50, packs: 1 }]);
+    let s = await allocated(id);
+    s = await ok(boss, s.id, '/start', { version: s.version });
+    expect((await detail(id)).canUndo).toBe(false);
+    s = await ok(boss, s.id, '/release', { version: s.version, note: 'Ninguem separou' });
+    let d = await detail(id);
+    expect(d).toMatchObject({ canAllocate: true, canUndo: true, lock: null });
+    // Sem logistics.allocate: ve a tela, mas o servidor recusa as duas acoes mesmo com o pedido elegivel.
+    const st = await loggedAs(app, 'stock');
+    const v = (await orderRow(id)).logistics_version;
+    expect((await detail(id, st)).canUndo).toBe(true);
+    expect((await st.post(`${L}/orders/${id}/allocation/cancel`, { logisticsVersion: v, reason: 'Sem permissao', requestKey: key() })).statusCode).toBe(403);
+    expect((await st.post(`${L}/orders/${id}/allocation`, { logisticsVersion: v, planKey: d.proposal.recommended.key, justification: 'x y z', requestKey: key() })).statusCode).toBe(403);
+    const undo = await boss.post(`${L}/orders/${id}/allocation/cancel`, { logisticsVersion: v, reason: 'Cliente pediu outra loja', requestKey: key() });
+    expect(undo.statusCode, undo.body).toBe(200);
+    expect((await shipments(id)).map((x) => `${x.seq}:${x.status}`)).toEqual(['1:canceled']);
+    d = await detail(id);
+    expect(d).toMatchObject({ canAllocate: true, canUndo: false, lock: null });
+    expect(d.order.logistics_status).toBe('analysis');
+    expect(await reconcile()).toEqual([]);
+  });
+
+  it('despachada (retirada entregue) não oferece nada; com remessas múltiplas, basta uma em manuseio para travar', async () => {
+    const prod = await newProduct('500');
+    const id = await paidOrder([{ pack: prod.pack50, packs: 1 }]);
+    await allocated(id);
+    await authorize(id);
+    const p = await packOrder(boss, id);
+    await ok(boss, p.id, '/dispatch', { version: p.version });
+    expect((await orderRow(id)).status).toBe('delivered');
+    expect(await detail(id)).toMatchObject({ canAllocate: false, canUndo: false, lock: null, proposal: null });
+
+    const two = await paidOrder([{ pack: prod.pack50, packs: 4 }]);
+    let s = await allocated(two);
+    const en = await boss.put(`${SH}/settings/multi-shipment`, { status: 'enabled', fiscalValidatorName: 'Contador Fulano', version: await settingsVersion() });
+    expect(en.statusCode, en.body).toBe(200);
+    try {
+      s = await ok(boss, s.id, '/split', { version: s.version, items: [{ itemId: s.items[0].id, qty: '80' }] });
+      const [, second] = await shipments(two);
+      expect((await detail(two)).canUndo).toBe(true);
+      const started = await ok(boss, second.id, '/start', { version: second.version });
+      const d = await detail(two);
+      expect(d).toMatchObject({ canAllocate: false, canUndo: false });
+      expect(d.lock.shipments).toEqual([{ id: second.id, seq: 2, status: 'picking' }]);
+      const undo = await boss.post(`${L}/orders/${two}/allocation/cancel`, { logisticsVersion: d.order.logistics_version, reason: 'Teste', requestKey: key() });
+      expect(undo.json().error.code).toBe('SHIPMENT_IN_PROGRESS');
+      expect((await shipments(two)).map((x) => x.status)).toEqual(['pending', 'picking']);
+      await ok(boss, second.id, '/release', { version: started.version, note: 'Volta' });
+      expect((await detail(two)).canUndo).toBe(true);
+    } finally {
+      await boss.put(`${SH}/settings/multi-shipment`, { status: 'blocked', version: await settingsVersion() });
+    }
     expect(await reconcile()).toEqual([]);
   });
 });
@@ -418,6 +539,8 @@ describe('pedido antigo e permissões', () => {
     const d = await boss.post(`/api/v1/admin/orders/${id}/dispatch`, { version: v, carrier: 'Próprio' });
     expect(d.statusCode, d.body).toBe(200);
     expect((await shipments(id)).map((x) => `${x.seq}:${x.kind}:${x.status}`)).toEqual(['1:pickup:canceled', '2:legacy:shipped']);
+    // Remessa antiga e pedido despachado: a alocacao nao oferece trocar nem desfazer.
+    expect((await boss.get(`${L}/orders/${id}`)).json()).toMatchObject({ canAllocate: false, canUndo: false, lock: null });
     expect(await total(prod.variantId)).toMatchObject({ on_hand: '450.000', reserved: '0.000' });
     const del = await boss.post(`/api/v1/admin/orders/${id}/deliver`, { version: d.json().order.version });
     expect(del.statusCode, del.body).toBe(200);

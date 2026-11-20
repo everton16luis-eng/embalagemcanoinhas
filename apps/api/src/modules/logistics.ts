@@ -18,11 +18,15 @@ import { idParams, isUniqueViolation, pageQuery } from '../lib/http.js';
 import { defaultWarehouseId, lockVariants, releaseReservation, reserve, RES_COLS, type Reservation } from '../lib/stock.js';
 import { requireAnyPermission, requirePermission, type Auth } from './auth.js';
 import { mulQty } from './orders.js';
-import { closePendingShipments, createShipmentsForOrder } from './shipments.js';
+import { allocationLock, closePendingShipments, createShipmentsForOrder } from './shipments.js';
 import { offerInputs, offerRows, settings as supplierSettings } from './suppliers.js';
 
 export const OPEN_ORDER = ['paid', 'preparing', 'ready'];
 const ALLOCATABLE = ['awaiting', 'analysis', 'processing'];
+/** Pedido em que a alocacao pode ser feita ou trocada (a remessa em manuseio e conferida a parte: allocationLock). */
+const allocatable = (o: { status: string; logistics_status: string | null }) => OPEN_ORDER.includes(o.status) && ALLOCATABLE.includes(o.logistics_status ?? '');
+/** Pedido com alocacao confirmada em aberto, que pode ser desfeita (idem). */
+const undoable = (o: { status: string; logistics_status: string | null }) => o.logistics_status === 'processing' && OPEN_ORDER.includes(o.status);
 const MARKETPLACES = ['mercadolivre', 'shopee'];
 
 const milli = (v: string | number) => Math.round(Number(v) * 1000);
@@ -403,7 +407,7 @@ export async function confirmAllocation(auth: Auth, orderId: string, b: ConfirmB
       const order = await lockOrder(db, orderId);
       if (await replayed(db, b.requestKey)) return { replayed: true };
       if (order.logistics_version !== b.logisticsVersion) throw new AppError(409, 'VERSION_CONFLICT', 'A alocação do pedido mudou. Recarregue a página.');
-      if (!OPEN_ORDER.includes(order.status) || !ALLOCATABLE.includes(order.logistics_status ?? '')) {
+      if (!allocatable(order)) {
         throw new AppError(409, 'NOT_ALLOCATABLE', 'Só pedidos pagos, ainda não despachados nem cancelados, podem ser alocados.');
       }
       const change = order.logistics_status === 'processing';
@@ -454,7 +458,7 @@ export async function cancelAllocation(auth: Auth, orderId: string, b: z.infer<t
       const order = await lockOrder(db, orderId);
       if (await replayed(db, b.requestKey)) return { replayed: true };
       if (order.logistics_version !== b.logisticsVersion) throw new AppError(409, 'VERSION_CONFLICT', 'A alocação do pedido mudou. Recarregue a página.');
-      if (order.logistics_status !== 'processing' || !OPEN_ORDER.includes(order.status)) throw new AppError(409, 'NOT_ALLOCATED', 'O pedido não tem alocação confirmada em aberto.');
+      if (!undoable(order)) throw new AppError(409, 'NOT_ALLOCATED', 'O pedido não tem alocação confirmada em aberto.');
       const items = await orderItems(db, orderId);
       await closePendingShipments(db, auth.userId, orderId, `Alocação desfeita: ${b.reason}`);
       await lockVariants(db, items.map((i) => i.variant_id));
@@ -592,7 +596,21 @@ export async function logisticsRoutes(app: FastifyInstance) {
     const order = (await pool.query<OrderRow & { paid_at: string | null }>(`SELECT ${ORDER_COLS}, paid_at FROM orders WHERE id = $1`, [id])).rows[0];
     if (!order) throw notFound();
     const items = await orderItems(pool, id);
-    const canAllocate = OPEN_ORDER.includes(order.status) && ALLOCATABLE.includes(order.logistics_status ?? '');
+    // Mesmas regras de confirmAllocation e cancelAllocation (allocatable, undoable e a remessa em manuseio de
+    // closePendingShipments): a tela so mostra a acao que o servidor aceitaria. O servidor confere tudo de novo.
+    const lock = allocatable(order) || undoable(order) ? await allocationLock(pool, id) : null;
+    const canAllocate = allocatable(order) && !lock;
+    const canUndo = undoable(order) && !lock;
+    const processing = order.logistics_status === 'processing';
+    const lockInfo = lock && {
+      ...lock,
+      allocateReason: allocatable(order)
+        ? processing
+          ? 'A origem não pode ser alterada após o início da separação.'
+          : 'A alocação não pode ser refeita após o início da separação.'
+        : null,
+      undoReason: undoable(order) ? 'A alocação não pode ser desfeita após o início da separação.' : null,
+    };
     const proposal = canAllocate ? allocate(await engineInput(pool, order, items)) : null;
     const fulfillments = (
       await pool.query(
@@ -628,6 +646,8 @@ export async function logisticsRoutes(app: FastifyInstance) {
       order,
       items: items.map((i) => ({ ...i, need: mulQty(i.base_qty_per_pack, i.packs) })),
       canAllocate,
+      canUndo,
+      lock: lockInfo,
       proposal,
       fulfillments,
       reservations,

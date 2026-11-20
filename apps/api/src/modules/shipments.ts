@@ -125,20 +125,40 @@ const kindFor = (o: { channel: string; ship_kind: string | null }) =>
 // ---------------------------------------------------------------------------------------------------------------
 // Ligacao com a alocacao (modules/logistics.ts)
 
+/** Remessas novas em aberto do pedido (antigas e canceladas ficam de fora), com o total ja separado. */
+async function openShipments(db: Db | typeof pool, orderId: string, lock: boolean) {
+  return (
+    await db.query<ShipmentRow & { picked: string }>(
+      `SELECT s.id, s.order_id, s.seq, s.kind, s.status, s.warehouse_id, s.version,
+              coalesce((SELECT sum(i.picked_qty) FROM shipment_items i WHERE i.shipment_id = s.id AND i.status = 'active'), 0)::text AS picked
+       FROM shipments s WHERE s.order_id = $1 AND s.kind <> 'legacy' AND s.status = ANY($2::text[]) ORDER BY s.seq${lock ? ' FOR UPDATE' : ''}`,
+      [orderId, OPEN_SHIPMENT],
+    )
+  ).rows;
+}
+
+/** Remessa em manuseio: passou de pendente ou ja tem mercadoria separada. Trava a troca e o desfazer da alocacao. */
+const inProgress = (s: { status: string; picked: string }) => s.status !== 'pending' || milli(s.picked) > 0;
+
+export type AllocationLock = { code: 'SHIPMENT_IN_PROGRESS'; shipments: { id: string; seq: number; status: string }[] };
+
+/**
+ * A mesma regra que closePendingShipments aplica, so para leitura: a tela usa para esconder trocar e desfazer.
+ * Remessa ja despachada nao entra aqui porque o pedido deixa de ser 'paid/preparing/ready' (projectOrder) e a
+ * alocacao recusa antes (NOT_ALLOCATABLE / NOT_ALLOCATED).
+ */
+export async function allocationLock(db: Db | typeof pool, orderId: string): Promise<AllocationLock | null> {
+  const busy = (await openShipments(db, orderId, false)).filter(inProgress);
+  return busy.length ? { code: 'SHIPMENT_IN_PROGRESS', shipments: busy.map((s) => ({ id: s.id, seq: s.seq, status: s.status })) } : null;
+}
+
 /**
  * Antes de trocar ou desfazer a alocacao: remessa com mercadoria em separacao, conferencia ou embalagem recusa
  * (ajuste 3). Remessas so pendentes, sem nada separado, sao canceladas. Chamar com o pedido travado.
  */
 export async function closePendingShipments(db: Db, actorId: string | null, orderId: string, reason: string) {
-  const open = (
-    await db.query<ShipmentRow & { picked: string }>(
-      `SELECT s.id, s.order_id, s.seq, s.kind, s.status, s.warehouse_id, s.version,
-              coalesce((SELECT sum(i.picked_qty) FROM shipment_items i WHERE i.shipment_id = s.id AND i.status = 'active'), 0)::text AS picked
-       FROM shipments s WHERE s.order_id = $1 AND s.kind <> 'legacy' AND s.status = ANY($2::text[]) ORDER BY s.seq FOR UPDATE`,
-      [orderId, OPEN_SHIPMENT],
-    )
-  ).rows;
-  const busy = open.filter((s) => s.status !== 'pending' || milli(s.picked) > 0);
+  const open = await openShipments(db, orderId, true);
+  const busy = open.filter(inProgress);
   if (busy.length) {
     throw new AppError(
       409,

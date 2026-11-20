@@ -67,6 +67,19 @@ quantidade separada, trocar ou desfazer a alocação é recusado (`SHIPMENT_IN_P
 remessa para pendente e devolver a mercadoria ao lugar. O cancelamento do pedido também recusa com mercadoria
 separada (`GOODS_PICKED`). Reserva de mercadoria fisicamente separada nunca é liberada para outro pedido.
 
+A tela de alocação do pedido segue a mesma regra. O detalhe (`GET /admin/logistics/orders/:id`) devolve:
+- `canAllocate` e `canUndo`, calculados com as mesmas funções do servidor: `allocatable`, `undoable` e
+  `allocationLock`, que é a regra de `closePendingShipments` só para leitura;
+- `lock`, com as remessas em manuseio e o motivo.
+
+Com a trava, "Trocar origem" e "Desfazer alocação" somem. No lugar fica um aviso discreto, por exemplo "A origem não
+pode ser alterada após o início da separação.", com o link de cada remessa. Pontos da regra:
+- remessa cancelada ou antiga (`legacy`) não trava;
+- remessa já despachada também não, porque o pedido deixa de estar aberto e a alocação já é recusada antes;
+- com remessas múltiplas, basta uma remessa em manuseio para travar.
+
+O servidor continua conferindo permissão (`logistics.allocate`) e estado em cada requisição.
+
 **Despacho (ajuste 4).** Uma transação com:
 - trava do pedido, da remessa e das variantes;
 - `version` da remessa;

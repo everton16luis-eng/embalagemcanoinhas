@@ -36,13 +36,17 @@ export async function currentOptinText(db: Db | typeof pool) {
 
 /**
  * Coloca o aviso do pedido na fila, na transacao de quem chama. So com opt-in, telefone valido, modelo configurado
- * e numero fora da lista de bloqueio. Repetir o evento nao duplica.
+ * e numero fora da lista de bloqueio. Repetir o evento nao duplica. Com remessa (Fase 5), o aviso e por remessa: o
+ * despacho de cada remessa avisa uma vez, com o rastreio dela; sem remessa, um aviso por evento do pedido.
  */
-export async function queueOrderMessage(db: Db, orderId: string, event: WaEvent) {
+export async function queueOrderMessage(db: Db, orderId: string, event: WaEvent, shipmentId: string | null = null) {
   const o = (
     await db.query<{ number: number; buyer: { name?: string; phone?: string }; whatsapp_optin_at: Date | null; tracking_code: string | null }>(
-      `SELECT o.number, o.buyer, o.whatsapp_optin_at, s.tracking_code FROM orders o LEFT JOIN shipments s ON s.order_id = o.id WHERE o.id = $1`,
-      [orderId],
+      `SELECT o.number, o.buyer, o.whatsapp_optin_at, s.tracking_code FROM orders o
+       LEFT JOIN LATERAL (SELECT tracking_code FROM shipments x WHERE x.order_id = o.id AND ($2::uuid IS NULL OR x.id = $2)
+                          AND x.status <> 'canceled' ORDER BY x.seq DESC LIMIT 1) s ON true
+       WHERE o.id = $1`,
+      [orderId, shipmentId],
     )
   ).rows[0];
   if (!o?.whatsapp_optin_at) return false;
@@ -54,9 +58,10 @@ export async function queueOrderMessage(db: Db, orderId: string, event: WaEvent)
   const params: Record<string, string> = { nome: String(o.buyer?.name ?? '').trim().split(/\s+/)[0] || 'cliente', pedido: String(o.number) };
   if (event === 'order_shipped') params.rastreio = o.tracking_code || 'informado pela loja';
   const r = await db.query(
-    `INSERT INTO whatsapp_messages (order_id, event, kind, to_phone, template_name, language, params) VALUES ($1, $2, 'template', $3, $4, $5, $6)
-     ON CONFLICT (order_id, event) DO NOTHING`,
-    [orderId, event, to, t.name, t.language, JSON.stringify(params)],
+    `INSERT INTO whatsapp_messages (order_id, event, kind, to_phone, template_name, language, params, shipment_id)
+     VALUES ($1, $2, 'template', $3, $4, $5, $6, $7)
+     ON CONFLICT (order_id, event, coalesce(shipment_id, '00000000-0000-0000-0000-000000000000'::uuid)) DO NOTHING`,
+    [orderId, event, to, t.name, t.language, JSON.stringify(params), shipmentId],
   );
   return (r.rowCount ?? 0) > 0;
 }

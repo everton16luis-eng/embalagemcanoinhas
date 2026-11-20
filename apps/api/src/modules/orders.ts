@@ -738,7 +738,8 @@ export async function adminOrderRoutes(app: FastifyInstance) {
       if (!o) throw notFound();
       if (o.version !== version) throw new AppError(409, 'VERSION_CONFLICT', 'O pedido foi alterado por outra pessoa. Recarregue a página.');
       if (o.status !== 'shipped') throw new AppError(409, 'INVALID_TRANSITION', 'Só pedidos despachados podem ser marcados como entregues.');
-      await db.query('UPDATE shipments SET delivered_at = now() WHERE order_id = $1', [id]);
+      // Remessa antiga (despacho antigo): a situacao acompanha a data de entrega.
+      await db.query(`UPDATE shipments SET delivered_at = now(), status = 'delivered', updated_at = now() WHERE order_id = $1 AND kind = 'legacy' AND status = 'shipped'`, [id]);
       await db.query(`UPDATE orders SET status = 'delivered', updated_at = now(), version = version + 1 WHERE id = $1`, [id]);
       await addEvent(db, id, 'delivered', null, auth.userId);
       return { order: await orderView(db, id, { staff: true }) };

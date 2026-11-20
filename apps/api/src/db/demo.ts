@@ -842,7 +842,7 @@ async function seedDemo() {
     if (o.t.shipped) {
       const weight = Math.max(1, Math.round(linesWeight(o.lines)));
       const carrier = o.ship.key === 'marketplace' ? (o.channel === 'mercadolivre' ? 'Mercado Envios' : 'Shopee Xpress') : o.ship.key === 'pickup' ? null : 'Entrega própria';
-      shipmentRows.push([randomUUID(), o.id, carrier, o.ship.key === 'marketplace' ? `DEMO${int(100000000, 999999999)}BR` : null, int(1, 3), weight, at(o.t.shipped), o.t.delivered ? at(o.t.delivered) : null, SHIP, at(o.t.shipped)]);
+      shipmentRows.push([randomUUID(), o.id, carrier, o.ship.key === 'marketplace' ? `DEMO${int(100000000, 999999999)}BR` : null, int(1, 3), weight, at(o.t.shipped), o.t.delivered ? at(o.t.delivered) : null, SHIP, at(o.t.shipped), o.t.delivered ? 'delivered' : 'shipped']);
     }
   }
   await insertRows(
@@ -855,7 +855,7 @@ async function seedDemo() {
   eventRows.sort((a, b) => (a[4] as Date).getTime() - (b[4] as Date).getTime());
   await insertRows('order_events', ['order_id', 'status', 'note', 'actor_id', 'created_at'], eventRows);
   await insertRows('payments', ['id', 'order_id', 'provider', 'method', 'idempotency_key', 'provider_payment_id', 'status', 'status_detail', 'amount_cents', 'card_last_four', 'card_brand', 'installments', 'created_at', 'updated_at'], paymentRows);
-  await insertRows('shipments', ['id', 'order_id', 'carrier', 'tracking_code', 'volumes', 'weight_g', 'shipped_at', 'delivered_at', 'shipped_by', 'created_at'], shipmentRows);
+  await insertRows('shipments', ['id', 'order_id', 'carrier', 'tracking_code', 'volumes', 'weight_g', 'shipped_at', 'delivered_at', 'shipped_by', 'created_at', 'status'], shipmentRows);
 
   // Estoque
   await insertRows('stock_reservations', ['id', 'variant_id', 'qty', 'status', 'backorder', 'source_type', 'source_id', 'expires_at', 'created_at', 'closed_at'], reservations);

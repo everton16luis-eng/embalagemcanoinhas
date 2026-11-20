@@ -219,7 +219,12 @@ async function findOrder(ctx: Ctx, number: number) {
       await ctx.db.query<OrderRow>(
         `SELECT o.number, o.status, o.buyer->>'phone' AS phone, o.buyer->>'document' AS document, o.shipping_snapshot->>'kind' AS kind,
                 o.shipping_snapshot->>'name' AS ship_name, s.carrier, s.tracking_code, s.tracking_url
-         FROM orders o LEFT JOIN shipments s ON s.order_id = o.id WHERE o.number = $1`,
+         FROM orders o
+         -- Varias remessas (Fase 5): uma linha por pedido, com o rastreio da remessa despachada mais recente.
+         LEFT JOIN LATERAL (SELECT carrier, tracking_code, tracking_url FROM shipments x
+                            WHERE x.order_id = o.id AND x.status NOT IN ('pending', 'picking', 'checking', 'packed', 'canceled')
+                            ORDER BY x.seq DESC LIMIT 1) s ON true
+         WHERE o.number = $1`,
         [number],
       )
     ).rows[0] ?? null

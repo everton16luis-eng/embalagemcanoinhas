@@ -337,7 +337,7 @@ describe('40 cenários de ataque', () => {
     ai.script = [{ parts: [{ functionCall: { name: 'consultar_pedido', args: { numero: o.number } } }, { functionCall: { name: 'consultar_pedido', args: { numero: o.number } } }] as AiPart[], inputTokens: 1, outputTokens: 1 }];
     const spy = vi.spyOn(pool, 'query');
     await say(ALICE, `pedido ${o.number} duas vezes`);
-    const orderQueries = spy.mock.calls.filter((c) => String(c[0]).includes('FROM orders o LEFT JOIN shipments')).length;
+    const orderQueries = spy.mock.calls.filter((c) => String(c[0]).includes("o.shipping_snapshot->>'name' AS ship_name")).length;
     spy.mockRestore();
     expect(orderQueries).toBe(1);
   });

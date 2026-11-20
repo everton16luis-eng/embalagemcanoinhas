@@ -33,6 +33,8 @@ Legenda: **HTTPS** = precisa da API publicada com certificado · **Você** = dep
       `@embalagemcanoinhas.com.br` (nenhuma do portal ou do barbasystem) (14/11/2026).
 - [x] **Você** E-mail de teste do painel chega no Gmail com SPF, DKIM e DMARC = PASS ("Mostrar original") (14/11/2026).
 - [ ] **Você** Depois de alguns dias sem problema de entrega, trocar o DMARC na Hostinger para `p=quarantine`.
+      Em 18/11/2026, mantido em `p=none`. Hotmail rejeitou o IP de saída `187.41.99.91` com `550 5.7.1 S3150` às 17:55 (Brasília). Investigar bloqueio do IP/rede e repetir a entrega antes de endurecer a política.
+      Validação em 18/11/2026 às 18:04: mensagem de contato@embalagemcanoinhas.com.br recebida pelo Gmail em 3 s, com SPF PASS (187.41.99.91), DKIM PASS para o domínio da loja e DMARC PASS, mas classificada como spam. PTR/A e HELO coerentes; opendkim-testkey com seletor mail retornou key OK. Entrega em caixa de entrada e desbloqueio S3150 continuam pendentes.
 - [x] **Você** "Esqueci minha senha" no painel: o link chega, troca a senha e não funciona uma segunda vez (14/11/2026).
 - [x] **Servidor** Webmail `https://webmail.embalagemcanoinhas.com.br` (passo 7 de [EMAIL.md](EMAIL.md)): cadeado,
       marca da loja, login de `contato@` (14/11/2026).
@@ -50,16 +52,30 @@ Legenda: **HTTPS** = precisa da API publicada com certificado · **Você** = dep
 
 ## Pagamento — Mercado Pago (Fase 4)
 
-- [ ] **Você** Credenciais de teste (Access Token, Public Key, chave do webhook) no `.env`.
-- [ ] **HTTPS** Cadastrar a URL do webhook (`/api/v1/webhooks/mercadopago`) no Mercado Pago.
-- [ ] **HTTPS** Pix de teste: gerar, pagar com usuário de teste, webhook confirma, pedido vai a pago.
-- [ ] **HTTPS** Cartão de teste pelo Card Payment Brick: aprovado, recusado, em análise.
-- [ ] **HTTPS** Webhook repetido e fora de ordem (reenviar pelo painel do Mercado Pago): pedido não muda duas vezes.
-- [ ] **HTTPS** Webhook com assinatura errada é recusado.
-- [ ] Queda do provedor durante o checkout (desligar a rede): pedido fica pendente e reconsulta depois.
-- [ ] **Você** Devolução de pagamento cancelado (hoje é feita no painel do Mercado Pago).
+- [x] **Você** Credenciais de teste configuradas no `.env` em 17/11/2026, conforme confirmação do responsável e testes de pagamento realizados.
+- [x] **HTTPS** URL do webhook (`/api/v1/webhooks/mercadopago`) cadastrada no Mercado Pago em modo teste. Em 17/11/2026, o simulador enviou `payment.updated` com `live_mode: false` e recebeu `200 OK`.
+- [x] **HTTPS** Pix gerado no checkout em 17/11/2026 às 22:33. A captura do pedido nº 1453 (R$ 1,70) mostra o QR Code e o Pix copia e cola.
+- [x] **HTTPS** Pix validado em produção em 18/11/2026: QR Code gerado, pagamento real efetuado e pedido alterado automaticamente para **Pago**, conforme confirmação do responsável.
+      O mecanismo da confirmação (webhook ou reconsulta) ainda não foi identificado em log. O cenário completo com credenciais de teste continua sem confirmação.
+      Em 17/11/2026, a geração no checkout recebeu `HTTP 500 internal_error` do Mercado Pago (sem causa detalhada). A confirmação do pagamento continua pendente.
+      Antes da geração bem-sucedida, houve HTTP 500 também na chamada direta com nome, CPF e e-mail. ID no Mercado Pago: `6d1c6a33-d10a-46cf-abbc-67c97ac70b9e`.
+- [x] **HTTPS** Cartão de teste aprovado pelo Card Payment Brick (17/11/2026, 22:26): pedido nº 1451, R$ 1,90.
+      A captura do checkout mostra o pedido como **Pago** e a mensagem “Pagamento confirmado. Vamos separar seu pedido.”
+- [x] **HTTPS** Cartão de teste em análise pelo Card Payment Brick (17/11/2026): checkout de R$ 8,50 com titular `CONT`
+      exibiu “Pagamento em análise pelo Mercado Pago” e permaneceu na etapa de pagamento.
+- [x] **HTTPS** Cartão de teste recusado pelo Card Payment Brick em 18/11/2026. Após a publicação de `d73dd65`, o checkout exibiu “O cartão foi recusado. Confira os dados ou tente outro cartão.” com titular `OTHE`.
+      A correção permite gravar a recusa quando o provedor devolve um final mascarado. A nova tentativa no mesmo pedido tem seu próprio teste.
+- [x] **HTTPS** Nova tentativa de cartão no mesmo pedido após recusa confirmada pelo responsável em 18/11/2026, após a atualização da web para `a802078`.
+- [x] **VPS** Webhook repetido e fora de ordem validado em 18/11/2026 no pedido de teste nº 1459. A rota instalada na VPS recebeu avisos simulados e consultou o Mercado Pago. Reconheceu a cópia de `payment.updated` e processou os dois avisos distintos, incluindo o `payment.created` entregue por último. O pedido permaneceu **Pago**, com uma única confirmação no histórico.
+- [x] **HTTPS** Webhook do Mercado Pago com assinatura inválida recusado com HTTP 401 em 17/11/2026, às 22:41:44 (horário de Brasília).
+- [x] **VPS** Recuperação após falha inicial ao gerar o Pix, em 18/11/2026. No pedido nº 1461, a falha simulada retornou HTTP 502, manteve o pedido aguardando pagamento e registrou a tentativa como erro. Na nova tentativa pelo checkout, o Mercado Pago gerou o Pix para o mesmo pedido.
+      Na VPS em 18/11/2026, o primeiro comando parou na validação do link antes de simular a falha. Separadamente, a tentativa pelo checkout às 19:06:40 retornou HTTP 500 no Mercado Pago (create_ti, x-request-id 227e6b04-b564-40e4-a86e-7f9567c39d08).
+- [x] **VPS** Recuperação após falha ao consultar um Pix já emitido, em 18/11/2026. No pedido nº 1461, o HTTP 503 simulado preservou o QR Code. A consulta seguinte ao Mercado Pago retornou HTTP 200 (request ID fb4ccfc3-a5ba-4d99-857e-84b71624ad6c). O pedido permaneceu em pending_payment e o Pix em pending.
+- [x] **Você** Devolução de Pix em produção confirmada pelo responsável em 18/11/2026.
 
 ## NF-e — Focus NFe em homologação (Fase 5)
+
+**Testes fiscais adiados a pedido do responsável da loja em 17/11/2026.**
 
 - [ ] **Você** Conta na Focus, token de homologação no `.env`, certificado A1 enviado à Focus.
 - [ ] **Você** Dados reais da empresa no painel (Empresa) e credenciamento na SEF-SC confirmado.
@@ -80,11 +96,14 @@ Legenda: **HTTPS** = precisa da API publicada com certificado · **Você** = dep
 
 ## Central comercial (Fase 6)
 
-- [ ] Abrir o link `wa.me` gerado num celular com WhatsApp e conferir o texto (acentos, quebras de linha, link do
-      orçamento).
-- [ ] **HTTPS** Link público do orçamento aberto pelo cliente fora da rede local.
-- [ ] **HTTPS** Cliente aceita o orçamento pelo link e paga com Pix de teste do Mercado Pago (fim a fim).
-- [ ] **Você** Decidir se o balcão recebe pagamento presencial (dinheiro/maquininha); hoje só Pix e cartão online.
+- [x] Link `wa.me` do orçamento abre no celular com a mensagem preenchida. Texto e link confirmados pelo responsável
+      da loja em 17/11/2026.
+- [x] **HTTPS** Link público de orçamento criado manualmente abriu no celular fora do Wi-Fi (17/11/2026).
+- [x] **HTTPS** Cliente selecionou o frete, aceitou o orçamento pelo link e gerou o Pix do pedido (17/11/2026).
+      O erro observado antes ocorreu em um orçamento de seed, sem causa confirmada.
+- [x] **HTTPS** Em 18/11/2026, o orçamento nº 242 gerou o pedido nº 1462. Após o pagamento por Pix, o responsável confirmou que a página do pedido no celular mudou automaticamente para **Pago**.
+- [x] **Você** Em 18/11/2026, o responsável confirmou que o balcão precisa registrar pagamentos em dinheiro e na maquininha presencial.
+- [ ] **Balcão** Implementar o registro dessas duas formas de pagamento e validar na VPS uma venda em dinheiro e outra paga na maquininha.
 
 ## Marketplaces (Fase 7)
 
@@ -94,10 +113,14 @@ Roteiro detalhado em [07-marketplaces.md](07-marketplaces.md) §5. Tudo abaixo f
       `ML_CLIENT_ID`/`ML_CLIENT_SECRET` no `.env`; conta de vendedor de teste.
 - [ ] **Você** Cadastrar o app na Shopee Open Platform (sandbox primeiro: `SHOPEE_API_HOST`/`SHOPEE_AUTH_HOST` do
       sandbox) e pôr `SHOPEE_PARTNER_ID`/`SHOPEE_PARTNER_KEY` no `.env`; loja de teste.
+      Em 18/11/2026, o responsável criou a conta de desenvolvedor na Open Platform e informou que ainda não possui loja de vendedor na Shopee. As credenciais e os endereços do sandbox estão ausentes na VPS.
+      Testes da Shopee adiados a pedido do responsável: o cadastro de vendedor apresentado solicitou CNPJ, que ele ainda não possui.
 - [ ] **HTTPS** URLs de retorno e de aviso cadastradas (`/painel/marketplaces/retorno/{canal}`,
       `/api/v1/webhooks/marketplaces/{canal}`); `SHOPEE_PUSH_URL` idêntica à cadastrada.
-- [ ] **HTTPS** Conectar as duas contas pelo painel; conferir a renovação do token depois de 6 h (ML) e 4 h (Shopee).
-- [ ] **HTTPS** Venda de teste paga em cada plataforma: aviso chega, pedido entra pago, estoque reservado.
+- [x] **HTTPS** Em 18/11/2026, o painel mostrou duas contas do Mercado Livre como **Conectada**: a conta real 24176353 e a segunda conta 3857682650, conectada durante o teste do vendedor. Autorizações exibidas até 17/05/2027 às 20:22 e 20:46, respectivamente.
+- [ ] **HTTPS** Conectar a conta Shopee pelo painel e conferir a renovação do token nos dois canais (Mercado Livre após 6 h e Shopee após 4 h).
+- [x] **HTTPS** Mercado Livre, 18/11/2026: aviso da venda de teste 2000019649740740 recebido às 21:12 para o vendedor 3857682650. Após o HTTP 403 inicial, o responsável confirmou que o pedido apareceu como **Pago** e o saldo disponível diminuiu (saldo inicial 28).
+- [ ] **HTTPS** Shopee: confirmar que o aviso de venda de teste chega, o pedido entra pago e o estoque é reservado.
 - [ ] **HTTPS** Mesmo aviso reenviado e aviso perdido (tela "Buscar venda"): nada duplica.
 - [ ] **HTTPS** Venda cancelada lá: pedido cancelado e reserva devolvida.
 - [ ] **HTTPS** Saldo enviado aparece no anúncio (ML sem variação; Shopee com e sem modelo). Conferir a resposta
@@ -112,8 +135,10 @@ Roteiro detalhado em [07-marketplaces.md](07-marketplaces.md) §5. Tudo abaixo f
 
 ## WhatsApp e transportadoras (Fase 8)
 
-Roteiro em [08-whatsapp-transportadoras-relatorios.md](08-whatsapp-transportadoras-relatorios.md). Tudo abaixo foi
-feito só com os simulados.
+Roteiro em [08-whatsapp-transportadoras-relatorios.md](08-whatsapp-transportadoras-relatorios.md).
+
+- [x] **WhatsApp real** Funcionamento do atendimento confirmado pelo responsável da loja em 17/11/2026. A confirmação
+      cobre o atendimento no WhatsApp. Os cenários específicos abaixo têm sua própria validação.
 
 - [ ] **Você** Ativar a API oficial seguindo [12-whatsapp-meta-ativacao.md](12-whatsapp-meta-ativacao.md):
       portfólio, app, número, token do usuário do sistema, `.env`, webhook, registro do número e `subscribed_apps`.
@@ -133,7 +158,7 @@ feito só com os simulados.
     um produto, pedido com telefone simulado, pedir atendente e tentar "esqueça as regras";
   - conferir o gasto estimado no painel.
 - [ ] **Servidor** Atualizar com as migrações `0013` a `0018` (pull, `npm ci`, migrate, build, reiniciar).
-- [ ] **IA (Gemini real)** Repetir a conversa dos copos (oi → copos para festa de 15 anos → só refrigerante → uns 40 convidados → "3" pacotes) e conferir que nenhuma resposta é o menu. Conferir em `bot_runs.route` que todas saíram como `ia`.
+- [ ] **IA (Gemini real)** Repetir a conversa dos copos (oi → copos para festa de 15 anos → só refrigerante → uns 40 convidados → "3" pacotes) e conferir que nenhuma resposta é o menu. Em `bot_runs.route`, esperar `saudacao` no cumprimento e `ia` nas respostas do Gemini. Conferir o indicador “Digitando…” quando a IA for chamada.
 - [ ] **Com a chave do Gemini** Segurança da IA ([13-seguranca-ia-bot.md](13-seguranca-ia-bot.md)) no modelo real,
       pelo chat de teste:
   - confirmar que a categoria `HARM_CATEGORY_JAILBREAK` é aceita (sem erro no log da API);
@@ -146,7 +171,9 @@ feito só com os simulados.
       teste inclui os botões com valor `pedido` e `atendente`.
 - [ ] **HTTPS** Bot em "Só números de teste" com o seu número: a lista e os botões aparecem no celular, o toque
       responde, "Falar com atendente" para o bot e "Devolver ao bot" volta o menu.
-- [ ] **HTTPS** Responder SAIR: número bloqueado, próximos avisos não saem.
+- [ ] **HTTPS** Enviar `SAIR`: o atendimento atual é encerrado. Enviar `Oie` em seguida reabre a conversa com
+      uma saudação em texto, sem menu nos modos com IA. `PARAR NOTIFICAÇÕES` interrompe os avisos automáticos
+      de pedidos e mantém o atendimento disponível.
 - [ ] **HTTPS** Mensagem do cliente → resposta pelo painel dentro de 24 h; depois de 24 h o painel bloqueia.
 - [ ] Conferir com respostas reais os campos usados do webhook (status, erros) e a recusa de modelo inexistente.
 - [ ] **Você** Conta no Melhor Envio (sandbox primeiro): gerar o token e pôr `MELHOR_ENVIO_TOKEN` e

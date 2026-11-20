@@ -31,6 +31,9 @@ const schema = z.object({
   CARD_PAYMENT_WINDOW_MINUTES: z.coerce.number().int().min(10).max(1440).default(30),
   // Somente desenvolvimento: provedor simulado para testar a loja sem conta no Mercado Pago.
   PAYMENT_FAKE: blankAsMissing(z.enum(['true', 'false']).optional()).transform((v) => v === 'true'),
+  // SGLog Fase 4: alocacao automatica dos pedidos pagos (docs/23-sglog-fase4.md). Desligada (padrao): a rotina so
+  // separa os que precisam de analise, com o motivo; a confirmacao e manual. Ligada: confirma tambem o caso simples.
+  ALLOCATION_AUTO: blankAsMissing(z.enum(['on', 'off']).optional()).transform((v) => v === 'on'),
   // Provedor fiscal (docs/05-fiscal-nfe.md). Um token por ambiente; vazio = emissao desligada naquele ambiente.
   FOCUS_TOKEN_HOMOLOGACAO: blankAsMissing(z.string().min(16).optional()),
   FOCUS_TOKEN_PRODUCAO: blankAsMissing(z.string().min(16).optional()),

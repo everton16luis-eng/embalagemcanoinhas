@@ -137,7 +137,56 @@ const OFFER_COLS = `t.id, t.supplier_id, t.supplier_name, t.supplier_status, t.p
   sp.created_at, sp.updated_at`;
 
 type Settings = { tie_tolerance_pct: string; stale_quote_days: number; availability_warning_days: number; version: number };
-const settings = async (db: Db | typeof pool) => (await db.query<Settings>('SELECT tie_tolerance_pct, stale_quote_days, availability_warning_days, version, updated_at FROM supplier_settings')).rows[0]!;
+export const settings = async (db: Db | typeof pool) => (await db.query<Settings>('SELECT tie_tolerance_pct, stale_quote_days, availability_warning_days, version, updated_at FROM supplier_settings')).rows[0]!;
+
+type OfferRow = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+
+/** Ofertas de uma ou mais variantes, como a comparacao e o motor de alocacao (Fase 4) leem. */
+export async function offerRows(db: Db | typeof pool, variantIds: string[]): Promise<OfferRow[]> {
+  if (!variantIds.length) return [];
+  return (
+    await db.query(
+      `SELECT ${OFFER_COLS}, t.supplier_archived_at, t.supplier_blocked_reason, t.min_order_cents, t.order_freight_cents, t.order_extra_cents,
+              t.dropship_enabled
+       FROM supplier_offer_terms t JOIN supplier_products sp ON sp.id = t.id WHERE t.variant_id = ANY($1::uuid[])
+       ORDER BY t.status = 'ended', t.supplier_name, t.base_qty, t.id`,
+      [variantIds],
+    )
+  ).rows;
+}
+
+/** Linha da visao para a entrada da escolha de fornecedor (ofertas encerradas ficam de fora). */
+export function offerInputs(offers: OfferRow[]): SupplierOfferInput[] {
+  return offers
+    .filter((o) => o.status !== 'ended')
+    .map((o) => ({
+      offerId: o.id,
+      supplierId: o.supplier_id,
+      supplierName: o.supplier_name,
+      supplierStatus: o.supplier_status,
+      supplierBlockedReason: o.supplier_blocked_reason,
+      supplierArchived: o.supplier_archived_at !== null,
+      offerStatus: o.status,
+      packagingLabel: o.packaging_label,
+      packagingActive: o.packaging_active,
+      variantActive: o.variant_active,
+      costCents: o.cost_cents === null ? null : Number(o.cost_cents),
+      baseQty: Number(o.base_qty),
+      minOrderPacks: o.min_order_packs === null ? null : Number(o.min_order_packs),
+      orderMultiplePacks: o.order_multiple_packs === null ? null : Number(o.order_multiple_packs),
+      leadDays: o.lead_days,
+      isPrimary: o.is_primary,
+      orderFreightCents: o.order_freight_cents === null ? null : Number(o.order_freight_cents),
+      orderExtraCents: o.order_extra_cents === null ? null : Number(o.order_extra_cents),
+      minOrderCents: o.min_order_cents === null ? null : Number(o.min_order_cents),
+      quotedAt: typeof o.quoted_at === 'string' ? o.quoted_at.slice(0, 10) : new Date(o.quoted_at).toISOString().slice(0, 10),
+      dropshipEnabled: o.dropship_enabled,
+      dropshipAllowed: o.dropship_allowed,
+      availableQty: o.available_qty === null ? null : Number(o.available_qty),
+      availabilityConfirmedAt: o.availability_confirmed_at ? new Date(o.availability_confirmed_at).toISOString() : null,
+      availabilityValidUntil: o.availability_valid_until ? new Date(o.availability_valid_until).toISOString() : null,
+    }));
+}
 
 const values = (s: Omit<SupplierInput, 'active'>) => [
   s.name,
@@ -369,46 +418,10 @@ export async function supplierRoutes(app: FastifyInstance) {
     ).rows[0];
     if (!variant) throw notFound();
     const cfg = await settings(pool);
-    const offers = (
-      await pool.query(
-        `SELECT ${OFFER_COLS}, t.supplier_archived_at, t.supplier_blocked_reason, t.min_order_cents, t.order_freight_cents, t.order_extra_cents,
-                t.dropship_enabled
-         FROM supplier_offer_terms t JOIN supplier_products sp ON sp.id = t.id WHERE t.variant_id = $1
-         ORDER BY t.status = 'ended', t.supplier_name, t.base_qty, t.id`,
-        [variantId],
-      )
-    ).rows;
+    const offers = await offerRows(pool, [variantId]);
     // Sem necessidade informada: uma embalagem da maior oferta ativa (so para comparar custos equivalentes).
     const need = q.need ?? Math.max(1, ...offers.filter((o) => o.status === 'active').map((o) => Number(o.base_qty)));
-    const input: SupplierOfferInput[] = offers
-      .filter((o) => o.status !== 'ended')
-      .map((o) => ({
-        offerId: o.id,
-        supplierId: o.supplier_id,
-        supplierName: o.supplier_name,
-        supplierStatus: o.supplier_status,
-        supplierBlockedReason: o.supplier_blocked_reason,
-        supplierArchived: o.supplier_archived_at !== null,
-        offerStatus: o.status,
-        packagingLabel: o.packaging_label,
-        packagingActive: o.packaging_active,
-        variantActive: o.variant_active,
-        costCents: o.cost_cents === null ? null : Number(o.cost_cents),
-        baseQty: Number(o.base_qty),
-        minOrderPacks: o.min_order_packs === null ? null : Number(o.min_order_packs),
-        orderMultiplePacks: o.order_multiple_packs === null ? null : Number(o.order_multiple_packs),
-        leadDays: o.lead_days,
-        isPrimary: o.is_primary,
-        orderFreightCents: o.order_freight_cents === null ? null : Number(o.order_freight_cents),
-        orderExtraCents: o.order_extra_cents === null ? null : Number(o.order_extra_cents),
-        minOrderCents: o.min_order_cents === null ? null : Number(o.min_order_cents),
-        quotedAt: typeof o.quoted_at === 'string' ? o.quoted_at.slice(0, 10) : new Date(o.quoted_at).toISOString().slice(0, 10),
-        dropshipEnabled: o.dropship_enabled,
-        dropshipAllowed: o.dropship_allowed,
-        availableQty: o.available_qty === null ? null : Number(o.available_qty),
-        availabilityConfirmedAt: o.availability_confirmed_at ? new Date(o.availability_confirmed_at).toISOString() : null,
-        availabilityValidUntil: o.availability_valid_until ? new Date(o.availability_valid_until).toISOString() : null,
-      }));
+    const input = offerInputs(offers);
     const choice = chooseSupplier(input, { need, context: 'purchase', maxLeadDays: q.maxLeadDays ?? null, dropshipReleased: false, now: new Date() }, {
       tieTolerancePct: Number(cfg.tie_tolerance_pct),
       staleQuoteDays: cfg.stale_quote_days,

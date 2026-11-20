@@ -16,6 +16,7 @@ import { audit } from '../lib/audit.js';
 import { AppError, notFound } from '../lib/errors.js';
 import { idParams, isUniqueViolation, pageQuery } from '../lib/http.js';
 import { defaultWarehouseId, lockVariants, releaseReservation, reserve, RES_COLS, type Reservation } from '../lib/stock.js';
+import { supplyOrders } from '../lib/supply.js';
 import { requireAnyPermission, requirePermission, type Auth } from './auth.js';
 import { mulQty } from './orders.js';
 import { allocationLock, closePendingShipments, createShipmentsForOrder } from './shipments.js';
@@ -646,12 +647,20 @@ export async function logisticsRoutes(app: FastifyInstance) {
     const purchaseLinks = (
       await pool.query(
         `SELECT l.id, l.purchase_order_id, po.number AS purchase_number, po.status AS purchase_status, l.base_qty, l.status, l.cancel_reason, l.closed_at, v.sku,
+                po.confirmation_status AS purchase_confirmation_status, l.purchase_order_item_id,
                 EXISTS (SELECT 1 FROM stock_reservations r WHERE r.allocation_id = l.allocation_id AND r.status = 'active' AND r.backorder) AS awaiting
          FROM purchase_order_links l JOIN purchase_orders po ON po.id = l.purchase_order_id JOIN purchase_order_items i ON i.id = l.purchase_order_item_id
          JOIN product_variants v ON v.id = i.variant_id WHERE l.order_id = $1 ORDER BY l.created_at`,
         [id],
       )
     ).rows;
+    // Fase 7 (D7-9): situacao da compra vinculada (confirmacao, data de referencia do item, atraso). So para a equipe.
+    const supply = await supplyOrders(pool, { orderIds: [...new Set(purchaseLinks.filter((l) => l.status === 'active').map((l) => l.purchase_order_id as string))] });
+    for (const l of purchaseLinks) {
+      const o = supply.find((x) => x.id === l.purchase_order_id);
+      const it = o?.items.find((x) => x.item_id === l.purchase_order_item_id);
+      l.supply = o ? { category: o.category, refDate: it?.ref_date ?? o.ref_date, late: it?.late ?? o.category === 'delivery_late' } : null;
+    }
     const conversions = (
       await pool.query(
         `SELECT c.id::text, v.sku, c.qty, c.rule, c.justification, c.created_at, po.number AS purchase_number, u.name AS actor_name

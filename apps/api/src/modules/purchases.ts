@@ -6,7 +6,9 @@ import { convertOnReceipt, type PlanResult } from '../lib/backorders.js';
 import { AppError, notFound } from '../lib/errors.js';
 import { idParams, isUniqueViolation, pageQuery } from '../lib/http.js';
 import { activeWarehouse, assertWhole, lockVariants, moveStock, qty, variantInfo } from '../lib/stock.js';
+import { applyConfirmation, buildDocument, CHANNELS, documentHash, registerConfirmation, supplyOrders, type Channel } from '../lib/supply.js';
 import { requireAnyPermission, requirePermission } from './auth.js';
+import { conference } from './purchase-invoices.js';
 
 const opt = <T extends z.ZodType>(s: T) => s.nullable().optional();
 const money = z.number().int().min(0).max(1_000_000_000);
@@ -71,7 +73,8 @@ const ORDER_COLS = `o.id, o.number, o.supplier_id, s.name AS supplier_name, o.st
   o.submitted_at, o.approved_at, o.approved_by, ua.name AS approved_by_name, o.approval_self, o.approval_note,
   o.payment_informed_on::text AS payment_informed_on, o.payment_informed_amount_cents, o.payment_informed_ref, o.payment_informed_at, up.name AS payment_informed_by_name,
   o.carrier, o.tracking_code,
-  (SELECT coalesce(sum(round(i.packs * i.pack_cost_cents)), 0)::bigint FROM purchase_order_items i WHERE i.order_id = o.id) AS goods_cents`;
+  o.sent_via, o.sent_document_version, o.supplier_ref, o.confirmation_status, o.confirmed_at, o.promised_at::text AS promised_at, o.followup_on::text AS followup_on,
+  (SELECT coalesce(sum(round((i.packs - i.canceled_packs) * i.pack_cost_cents)), 0)::bigint FROM purchase_order_items i WHERE i.order_id = o.id) AS goods_cents`;
 const ORDER_FROM = `purchase_orders o JOIN suppliers s ON s.id = o.supplier_id JOIN users u ON u.id = o.created_by JOIN warehouses w ON w.id = o.warehouse_id
   LEFT JOIN users ua ON ua.id = o.approved_by LEFT JOIN users up ON up.id = o.payment_informed_by`;
 
@@ -85,6 +88,8 @@ async function load(db: Db | typeof pool, id: string) {
     await db.query(
       `SELECT i.id, i.variant_id, i.packaging_id, i.packaging_label, i.base_qty_per_pack, i.packs, i.pack_cost_cents, i.received_packs, i.rejected_packs,
               i.min_order_packs, i.order_multiple_packs, i.min_exception_reason, v.sku, p.name AS product_name, p.base_unit, (i.packs * i.base_qty_per_pack)::numeric(14,3) AS base_qty,
+              i.canceled_packs, i.supplier_outcome, i.promised_at::text AS promised_at, i.partial_packs, i.partial_from_packs, i.rest_promised_at::text AS rest_promised_at,
+              (i.packs - i.received_packs - i.canceled_packs) AS pending_packs,
               round(i.pack_cost_cents / i.base_qty_per_pack, 4) AS unit_cost_cents,
               coalesce((SELECT sum(l.base_qty) FROM purchase_order_links l WHERE l.purchase_order_item_id = i.id AND l.status = 'active'), 0)::numeric(14,3) AS linked_qty
        FROM purchase_order_items i JOIN product_variants v ON v.id = i.variant_id JOIN products p ON p.id = v.product_id
@@ -137,7 +142,64 @@ async function load(db: Db | typeof pool, id: string) {
       [id],
     )
   ).rows;
+  // Fase 7: versoes enviadas (sem o conteudo: GET /:id/documents/:version), confirmacoes, requisicoes, notas e situacao.
+  order.documents = (
+    await db.query(
+      `SELECT d.version, d.channel, d.content_hash, d.note, d.created_at, u.name AS actor_name FROM purchase_order_documents d JOIN users u ON u.id = d.actor_id
+       WHERE d.order_id = $1 ORDER BY d.version`,
+      [id],
+    )
+  ).rows;
+  order.confirmations = (
+    await db.query(
+      `SELECT c.id, c.version, c.outcome, c.channel, c.supplier_ref, c.promised_at::text AS promised_at, c.note, c.price_increase_cents, c.status,
+              c.decided_at, ud.name AS decided_by_name, c.decision_note, c.decision_self, c.actor_id, c.created_at, u.name AS actor_name,
+              (SELECT json_agg(json_build_object('itemId', ci.item_id, 'label', i.packaging_label, 'outcome', ci.outcome, 'pendingPacks', ci.pending_packs,
+                 'confirmedPacks', ci.confirmed_packs, 'orderedPackCostCents', ci.ordered_pack_cost_cents, 'confirmedPackCostCents', ci.confirmed_pack_cost_cents,
+                 'promisedAt', ci.promised_at, 'restPromisedAt', ci.rest_promised_at, 'note', ci.note) ORDER BY i.packaging_label)
+                 FROM purchase_confirmation_items ci JOIN purchase_order_items i ON i.id = ci.item_id WHERE ci.confirmation_id = c.id) AS items
+       FROM purchase_confirmations c JOIN users u ON u.id = c.actor_id LEFT JOIN users ud ON ud.id = c.decided_by
+       WHERE c.order_id = $1 ORDER BY c.version DESC`,
+      [id],
+    )
+  ).rows;
+  order.requests = (
+    await db.query(
+      `SELECT q.id, q.number, q.source, q.status, q.base_qty, q.reason, q.order_id, o.number AS order_number, q.purchase_order_item_id, v.sku, p.name AS product_name
+       FROM purchase_requests q JOIN product_variants v ON v.id = q.variant_id JOIN products p ON p.id = v.product_id LEFT JOIN orders o ON o.id = q.order_id
+       WHERE q.purchase_order_id = $1 OR EXISTS (SELECT 1 FROM purchase_request_events e WHERE e.request_id = q.id AND e.purchase_order_id = $1)
+       ORDER BY q.number`,
+      [id],
+    )
+  ).rows;
+  order.invoices = (
+    await db.query('SELECT id, series, number, issued_at, total_cents, protocol_status FROM purchase_invoices WHERE purchase_order_id = $1 ORDER BY created_at', [id])
+  ).rows;
+  const supply = (await supplyOrders(db, { orderIds: [id] }))[0];
+  order.supply = supply ? { category: supply.category, refDate: supply.ref_date, daysLate: supply.days_late, confirmationDue: supply.confirmation_due } : null;
   return order;
+}
+
+const sendSchema = z.strictObject({
+  channel: z.enum(CHANNELS).default('other'),
+  // Mensagem ao fornecedor, impressa no documento. A observacao interna da compra nunca vai para o documento.
+  message: opt(z.string().trim().max(1000)),
+  note: opt(z.string().trim().max(500)),
+});
+
+/** Gera e guarda a proxima versao do documento (imutavel). 422 DOCUMENT_INCOMPLETE com o que falta. */
+async function saveDocument(db: Db, actorId: string, orderId: string, channel: Channel, message: string | null, docNote: string | null) {
+  const built = await buildDocument(db, orderId, message);
+  if (!built.document) {
+    throw new AppError(422, 'DOCUMENT_INCOMPLETE', 'Faltam dados obrigatórios para gerar o pedido ao fornecedor.', { missing: built.missing });
+  }
+  const hash = documentHash(built.document, built.text!);
+  const version = (await db.query<{ v: number }>('SELECT coalesce(max(version), 0)::int + 1 AS v FROM purchase_order_documents WHERE order_id = $1', [orderId])).rows[0]!.v;
+  await db.query(
+    `INSERT INTO purchase_order_documents (order_id, version, channel, content, body_text, content_hash, note, actor_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    [orderId, version, channel, JSON.stringify(built.document), built.text, hash, docNote, actorId],
+  );
+  return { version, hash, text: built.text! };
 }
 
 type MinException = { packagingId: string; label: string; packs: string; minOrderPacks: string | null; orderMultiplePacks: string | null; reason: string | null };
@@ -150,7 +212,7 @@ type MinException = { packagingId: string; label: string; packs: string; minOrde
  * Fase 6: atualiza o item existente da mesma embalagem (o id fica, e os vinculos com encomendas apontam para ele).
  * Item com vinculo nao e removido, e a quantidade nao fica abaixo do que esta vinculado.
  */
-async function saveItems(db: Db, orderId: string, supplierId: string, items: OrderInput['items']): Promise<MinException[]> {
+export async function saveItems(db: Db, orderId: string, supplierId: string, items: OrderInput['items']): Promise<MinException[]> {
   const seen = new Set<string>();
   const exceptions: MinException[] = [];
   const existing = new Map(
@@ -234,12 +296,15 @@ type LockedOrder = {
   other_costs_cents: string;
   created_by: string;
   submitted_by: string | null;
+  confirmation_status: string;
+  sent_document_version: number | null;
 };
 
 async function lockOrder(db: Db, id: string) {
   const o = (
     await db.query<LockedOrder>(
-      'SELECT id, number, status, supplier_id, warehouse_id, version, freight_cents, other_costs_cents, created_by, submitted_by FROM purchase_orders WHERE id = $1 FOR UPDATE',
+      `SELECT id, number, status, supplier_id, warehouse_id, version, freight_cents, other_costs_cents, created_by, submitted_by, confirmation_status, sent_document_version
+       FROM purchase_orders WHERE id = $1 FOR UPDATE`,
       [id],
     )
   ).rows[0];
@@ -252,9 +317,18 @@ async function event(db: Db, orderId: string, kind: string, actorId: string, eve
 }
 
 export async function purchaseSettings(db: Db | typeof pool) {
-  return (await db.query<{ purchase_approval_min_cents: string; purchase_price_tolerance_pct: string }>('SELECT purchase_approval_min_cents, purchase_price_tolerance_pct FROM logistics_settings'))
-    .rows[0]!;
+  return (
+    await db.query<{ purchase_approval_min_cents: string; purchase_price_tolerance_pct: string; purchase_confirmation_days: number }>(
+      'SELECT purchase_approval_min_cents, purchase_price_tolerance_pct, purchase_confirmation_days FROM logistics_settings',
+    )
+  ).rows[0]!;
 }
+// Fase 7 (D7-8): prazo para o fornecedor confirmar, em dias corridos desde o envio.
+const settingsView = (s: Awaited<ReturnType<typeof purchaseSettings>>) => ({
+  approvalMinCents: Number(s.purchase_approval_min_cents),
+  priceTolerancePct: s.purchase_price_tolerance_pct,
+  confirmationDays: s.purchase_confirmation_days,
+});
 
 /** Valor total da compra (mercadoria + frete + despesas), em centavos. */
 async function orderTotal(db: Db, id: string) {
@@ -308,19 +382,24 @@ export async function purchaseRoutes(app: FastifyInstance) {
   // Regras da compra (D6-3 limite de aprovacao; D6-12 tolerancia de preco). Antes de /:id.
   app.get('/settings', async (req) => {
     requireAnyPermission(req, 'purchases.view', 'settings.manage');
-    const s = await purchaseSettings(pool);
-    return { settings: { approvalMinCents: Number(s.purchase_approval_min_cents), priceTolerancePct: s.purchase_price_tolerance_pct } };
+    return { settings: settingsView(await purchaseSettings(pool)) };
   });
 
   app.put('/settings', async (req) => {
     const auth = requirePermission(req, 'settings.manage');
-    const b = z.strictObject({ approvalMinCents: money, priceTolerancePct: z.number().min(0).max(100) }).parse(req.body);
+    const b = z
+      .strictObject({ approvalMinCents: money, priceTolerancePct: z.number().min(0).max(100), confirmationDays: z.number().int().min(1).max(30).optional() })
+      .parse(req.body);
     return tx(auth.userId, async (db) => {
-      const before = (await db.query('SELECT purchase_approval_min_cents, purchase_price_tolerance_pct FROM logistics_settings FOR UPDATE')).rows[0];
-      await db.query('UPDATE logistics_settings SET purchase_approval_min_cents = $1, purchase_price_tolerance_pct = $2', [b.approvalMinCents, b.priceTolerancePct]);
+      const before = (await db.query('SELECT purchase_approval_min_cents, purchase_price_tolerance_pct, purchase_confirmation_days FROM logistics_settings FOR UPDATE')).rows[0];
+      await db.query('UPDATE logistics_settings SET purchase_approval_min_cents = $1, purchase_price_tolerance_pct = $2, purchase_confirmation_days = coalesce($3, purchase_confirmation_days)', [
+        b.approvalMinCents,
+        b.priceTolerancePct,
+        b.confirmationDays ?? null,
+      ]);
       const after = await purchaseSettings(db);
       await audit(db, { actorId: auth.userId, action: 'purchases.settings', entity: 'logistics_settings', before, after, ip: req.ip });
-      return { settings: { approvalMinCents: Number(after.purchase_approval_min_cents), priceTolerancePct: after.purchase_price_tolerance_pct } };
+      return { settings: settingsView(after) };
     });
   });
 
@@ -478,9 +557,16 @@ export async function purchaseRoutes(app: FastifyInstance) {
     });
   });
 
+  /**
+   * Fase 7 (D7-1, D7-2): o envio gera o documento do pedido e guarda a versao enviada (imutavel: conteudo, texto e
+   * hash, com usuario, data e canal). O envio em si e manual (impresso, PDF, WhatsApp ou e-mail pela equipe): o
+   * sistema nao manda e-mail ao fornecedor. Faltando dado obrigatorio, 422 com a lista. A partir daqui a compra e
+   * acompanhada (aguardando confirmacao do fornecedor).
+   */
   app.post('/:id/send', async (req) => {
     const auth = requirePermission(req, 'purchases.manage');
     const { id } = idParams.parse(req.params);
+    const b = sendSchema.parse(req.body ?? {});
     return tx(auth.userId, async (db) => {
       const o = await lockOrder(db, id);
       if (o.status === 'draft' || o.status === 'pending_approval') throw new AppError(409, 'APPROVAL_REQUIRED', 'A compra precisa ser aprovada antes do envio ao fornecedor.');
@@ -488,10 +574,15 @@ export async function purchaseRoutes(app: FastifyInstance) {
       // Fornecedor bloqueado: o pedido nao e enviado (o ja enviado continua podendo ser recebido).
       const st = (await db.query<{ status: string; blocked_reason: string | null }>('SELECT status, blocked_reason FROM suppliers WHERE id = $1', [o.supplier_id])).rows[0];
       if (st?.status === 'blocked') throw new AppError(409, 'SUPPLIER_BLOCKED', `Fornecedor bloqueado${st.blocked_reason ? `: ${st.blocked_reason}` : ''}. O pedido não pode ser enviado.`);
-      await db.query(`UPDATE purchase_orders SET status = 'sent', sent_at = now(), version = version + 1, updated_at = now() WHERE id = $1`, [id]);
-      await event(db, id, 'sent', auth.userId);
-      await audit(db, { actorId: auth.userId, action: 'purchases.sent', entity: 'purchase_order', entityId: id, ip: req.ip });
-      return { order: await load(db, id) };
+      const doc = await saveDocument(db, auth.userId, id, b.channel, b.message ?? null, b.note ?? null);
+      await db.query(
+        `UPDATE purchase_orders SET status = 'sent', sent_at = now(), sent_via = $2, sent_document_version = $3, confirmation_status = 'awaiting', version = version + 1, updated_at = now()
+         WHERE id = $1`,
+        [id, b.channel, doc.version],
+      );
+      await event(db, id, 'sent', auth.userId, b.note ?? null, { channel: b.channel, documentVersion: doc.version, contentHash: doc.hash });
+      await audit(db, { actorId: auth.userId, action: 'purchases.sent', entity: 'purchase_order', entityId: id, metadata: { channel: b.channel, documentVersion: doc.version, contentHash: doc.hash }, ip: req.ip });
+      return { order: await load(db, id), document: { version: doc.version, text: doc.text } };
     });
   });
 
@@ -650,6 +741,225 @@ export async function purchaseRoutes(app: FastifyInstance) {
     });
   });
 
+  // ---------------------------------------------------------------------------------------------------------------
+  // Fase 7: documento do pedido, confirmacao do fornecedor, contato e sugestao pelo XML.
+
+  /** Previa do documento (sem gravar). Mostra o que falta para gerar. */
+  app.get('/:id/document', async (req) => {
+    requirePermission(req, 'purchases.view');
+    const { id } = idParams.parse(req.params);
+    const { message } = z.object({ message: z.string().trim().max(1000).optional() }).parse(req.query);
+    const built = await buildDocument(pool, id, message || null);
+    return { document: built.document, text: built.text, missing: built.missing };
+  });
+
+  /** Versao enviada, exatamente como foi guardada. */
+  app.get('/:id/documents/:version', async (req) => {
+    requirePermission(req, 'purchases.view');
+    const { id, version } = z.object({ id: z.uuid(), version: z.coerce.number().int().min(1) }).parse(req.params);
+    const d = (
+      await pool.query(
+        `SELECT d.version, d.channel, d.content, d.body_text, d.content_hash, d.note, d.created_at, u.name AS actor_name
+         FROM purchase_order_documents d JOIN users u ON u.id = d.actor_id WHERE d.order_id = $1 AND d.version = $2`,
+        [id, version],
+      )
+    ).rows[0];
+    if (!d) throw notFound();
+    return { document: d };
+  });
+
+  /**
+   * Reenvio (D7-2): nova versao com o conteudo atual (por exemplo, depois de confirmacao com mudanca). A anterior
+   * continua guardada como foi.
+   */
+  app.post('/:id/documents', async (req, reply) => {
+    const auth = requirePermission(req, 'purchases.manage');
+    const { id } = idParams.parse(req.params);
+    const b = sendSchema.parse(req.body ?? {});
+    const result = await tx(auth.userId, async (db) => {
+      const o = await lockOrder(db, id);
+      if (!['sent', 'partial'].includes(o.status)) throw new AppError(409, 'INVALID_STATUS', 'Só compra enviada e ainda não recebida é reenviada ao fornecedor.');
+      const doc = await saveDocument(db, auth.userId, id, b.channel, b.message ?? null, b.note ?? null);
+      await db.query(`UPDATE purchase_orders SET sent_via = $2, sent_document_version = $3, version = version + 1, updated_at = now() WHERE id = $1`, [id, b.channel, doc.version]);
+      await event(db, id, 'document_resent', auth.userId, b.note ?? null, { channel: b.channel, documentVersion: doc.version, contentHash: doc.hash });
+      await audit(db, { actorId: auth.userId, action: 'purchases.document_resent', entity: 'purchase_order', entityId: id, metadata: { channel: b.channel, documentVersion: doc.version, contentHash: doc.hash }, ip: req.ip });
+      return { order: await load(db, id), document: { version: doc.version, text: doc.text } };
+    });
+    return reply.code(201).send(result);
+  });
+
+  const confirmationSchema = z.strictObject({
+    channel: z.enum(CHANNELS).default('other'),
+    supplierRef: opt(z.string().trim().min(1).max(60)),
+    promisedAt: opt(z.iso.date()),
+    note: opt(note()),
+    items: z
+      .array(
+        z.strictObject({
+          itemId: z.uuid(),
+          // confirmed: tudo o pendente; partial: parte agora e o resto continua pendente; reduced: o resto e
+          // cancelado; refused: nada vem (todo o pendente e cancelado).
+          outcome: z.enum(['confirmed', 'partial', 'reduced', 'refused']),
+          packs: opt(qty),
+          packCostCents: opt(money),
+          promisedAt: opt(z.iso.date()),
+          restPromisedAt: opt(z.iso.date()),
+          note: opt(note()),
+        }),
+      )
+      .min(1)
+      .max(200),
+  });
+
+  /**
+   * Confirmacao do fornecedor (D7-3, D7-4). Cada registro e uma versao (imutavel). Entrega parcial nao libera nada;
+   * so reducao e recusa cancelam saldo e desfazem vinculos de encomendas que deixam de caber. Aumento de preco acima
+   * da tolerancia fica aguardando aprovacao (purchases.approve, com MFA). Nao mexe em estoque nem em custo medio.
+   */
+  app.post('/:id/confirmations', async (req, reply) => {
+    const auth = requirePermission(req, 'purchases.manage');
+    const { id } = idParams.parse(req.params);
+    const b = confirmationSchema.parse(req.body);
+    const result = await tx(auth.userId, async (db) => {
+      const o = await lockOrder(db, id);
+      if (!['sent', 'partial'].includes(o.status)) throw new AppError(409, 'INVALID_STATUS', 'Só compra enviada e ainda não recebida recebe confirmação do fornecedor.');
+      const r = await registerConfirmation(db, auth.userId, id, b);
+      await audit(db, {
+        actorId: auth.userId,
+        action: r.status === 'pending_approval' ? 'purchases.confirmation_pending' : 'purchases.confirmation',
+        entity: 'purchase_order',
+        entityId: id,
+        metadata: { confirmationId: r.confirmationId, version: r.version, outcome: r.outcome, increaseCents: r.increaseCents, released: r.released, items: r.summary },
+        ip: req.ip,
+      });
+      return { order: await load(db, id), confirmation: { id: r.confirmationId, version: r.version, outcome: r.outcome, status: r.status, increaseCents: r.increaseCents }, released: r.released, closed: r.closed };
+    });
+    return reply.code(201).send(result);
+  });
+
+  /**
+   * Aprovacao do aumento de preco (D7-4). A aprovacao nomeia a versao e o valor que a pessoa viu: se a confirmacao
+   * mudou (outra versao) ou o valor e outro, recusa. Quem registrou nao aprova; o proprietario pode, com justificativa.
+   */
+  app.post('/:id/confirmations/:cid/approve', async (req) => {
+    const auth = requirePermission(req, 'purchases.approve');
+    const { id, cid } = z.object({ id: z.uuid(), cid: z.uuid() }).parse(req.params);
+    const b = z.strictObject({ version: z.number().int().min(1), increaseCents: z.number().int().min(0), note: opt(note()) }).parse(req.body);
+    return tx(auth.userId, async (db) => {
+      await lockOrder(db, id);
+      const c = (
+        await db.query<{ id: string; version: number; status: string; actor_id: string; price_increase_cents: string }>(
+          'SELECT id, version, status, actor_id, price_increase_cents::text FROM purchase_confirmations WHERE id = $1 AND order_id = $2 FOR UPDATE',
+          [cid, id],
+        )
+      ).rows[0];
+      if (!c) throw notFound();
+      if (c.status !== 'pending_approval') throw new AppError(409, 'INVALID_STATUS', 'Esta confirmação não está aguardando aprovação (já decidida ou substituída por outra).');
+      if (c.version !== b.version || Number(c.price_increase_cents) !== b.increaseCents) {
+        throw new AppError(409, 'CONFIRMATION_CHANGED', 'A confirmação ou o valor do aumento não é o que você viu. Recarregue antes de aprovar.');
+      }
+      const own = c.actor_id === auth.userId;
+      if (own && auth.role !== 'owner') throw new AppError(403, 'SELF_APPROVAL', 'Quem registrou a confirmação não pode aprovar o aumento. Peça a outra pessoa com a permissão.');
+      if (own && !b.note) throw new AppError(422, 'JUSTIFICATION_REQUIRED', 'Proprietário aprovando o próprio registro: informe a justificativa.');
+      const items = (
+        await db.query(
+          `SELECT ci.item_id AS "itemId", i.packaging_label AS label, ci.outcome, ci.confirmed_packs AS "confirmedPacks",
+                  ci.ordered_pack_cost_cents AS "fromCents", ci.confirmed_pack_cost_cents AS "toCents"
+           FROM purchase_confirmation_items ci JOIN purchase_order_items i ON i.id = ci.item_id
+           WHERE ci.confirmation_id = $1 AND ci.confirmed_pack_cost_cents > ci.ordered_pack_cost_cents ORDER BY i.packaging_label`,
+          [cid],
+        )
+      ).rows;
+      await db.query(`UPDATE purchase_confirmations SET status = 'applied', decided_by = $2, decided_at = now(), decision_note = $3, decision_self = $4 WHERE id = $1`, [
+        cid,
+        auth.userId,
+        b.note ?? null,
+        own,
+      ]);
+      const data = { confirmationId: cid, version: c.version, increaseCents: b.increaseCents, items, self: own };
+      await event(db, id, 'confirmation_approved', auth.userId, b.note ?? null, data);
+      const applied = await applyConfirmation(db, auth.userId, id, cid);
+      await audit(db, { actorId: auth.userId, action: own ? 'purchases.confirmation_approved_self' : 'purchases.confirmation_approved', entity: 'purchase_order', entityId: id, metadata: { ...data, released: applied.released }, ip: req.ip });
+      return { order: await load(db, id), released: applied.released, closed: applied.closed };
+    });
+  });
+
+  /** Aumento recusado: nada e aplicado; a compra volta a aguardar a confirmacao (ou fica com a anterior aplicada). */
+  app.post('/:id/confirmations/:cid/reject', async (req) => {
+    const auth = requirePermission(req, 'purchases.approve');
+    const { id, cid } = z.object({ id: z.uuid(), cid: z.uuid() }).parse(req.params);
+    const { reason } = z.strictObject({ reason: note() }).parse(req.body);
+    return tx(auth.userId, async (db) => {
+      await lockOrder(db, id);
+      const c = (await db.query<{ version: number; status: string }>('SELECT version, status FROM purchase_confirmations WHERE id = $1 AND order_id = $2 FOR UPDATE', [cid, id])).rows[0];
+      if (!c) throw notFound();
+      if (c.status !== 'pending_approval') throw new AppError(409, 'INVALID_STATUS', 'Esta confirmação não está aguardando aprovação.');
+      await db.query(`UPDATE purchase_confirmations SET status = 'rejected', decided_by = $2, decided_at = now(), decision_note = $3 WHERE id = $1`, [cid, auth.userId, reason]);
+      const prior = (
+        await db.query<{ outcome: string }>(`SELECT outcome FROM purchase_confirmations WHERE order_id = $1 AND status = 'applied' ORDER BY version DESC LIMIT 1`, [id])
+      ).rows[0];
+      await db.query(`UPDATE purchase_orders SET confirmation_status = $2, version = version + 1, updated_at = now() WHERE id = $1`, [id, prior?.outcome ?? 'awaiting']);
+      await event(db, id, 'confirmation_rejected', auth.userId, reason, { confirmationId: cid, version: c.version });
+      await audit(db, { actorId: auth.userId, action: 'purchases.confirmation_rejected', entity: 'purchase_order', entityId: id, metadata: { confirmationId: cid, version: c.version, reason }, ip: req.ip });
+      return { order: await load(db, id) };
+    });
+  });
+
+  /** Contato de acompanhamento com o fornecedor (cobranca de confirmacao ou prazo) e o proximo retorno. */
+  app.post('/:id/followup', async (req) => {
+    const auth = requirePermission(req, 'purchases.manage');
+    const { id } = idParams.parse(req.params);
+    const b = z.strictObject({ note: note(), channel: z.enum(CHANNELS).default('other'), followupOn: opt(z.iso.date()) }).parse(req.body);
+    return tx(auth.userId, async (db) => {
+      const o = await lockOrder(db, id);
+      if (!['sent', 'partial'].includes(o.status)) throw new AppError(409, 'INVALID_STATUS', 'Só compra enviada e ainda não recebida tem acompanhamento.');
+      await db.query(`UPDATE purchase_orders SET followup_on = $2, version = version + 1, updated_at = now() WHERE id = $1`, [id, b.followupOn ?? null]);
+      await event(db, id, 'followup', auth.userId, b.note, { channel: b.channel, followupOn: b.followupOn ?? null });
+      await audit(db, { actorId: auth.userId, action: 'purchases.followup', entity: 'purchase_order', entityId: id, metadata: b, ip: req.ip });
+      return { order: await load(db, id) };
+    });
+  });
+
+  /**
+   * Sugestao do recebimento pelo XML da nota vinculada (D7-10): quantidades e custos para a pessoa conferir. Nao
+   * grava nada; o recebimento continua pelo POST /:id/receipts, com as mesmas verificacoes de preco e quantidade.
+   */
+  app.get('/:id/receipt-suggestions', async (req) => {
+    requireAnyPermission(req, 'purchases.receive', 'purchases.manage');
+    const { id } = idParams.parse(req.params);
+    const { invoiceId } = z.object({ invoiceId: z.uuid() }).parse(req.query);
+    const inv = (await pool.query('SELECT * FROM purchase_invoices WHERE id = $1', [invoiceId])).rows[0];
+    if (!inv) throw notFound();
+    if (inv.purchase_order_id !== id) throw new AppError(422, 'INVOICE_NOT_LINKED', 'Esta nota não está vinculada a esta compra. Vincule a nota em Notas de compra antes.');
+    const conf = await conference(pool, inv);
+    const items = conf.items
+      .filter((i) => i.order)
+      .map((i) => {
+        const pending = Number(i.order!.pendingPacks);
+        const packs = Math.min(Number(i.qty), pending);
+        return {
+          itemId: i.order!.itemId,
+          label: i.match!.label,
+          invoiceQty: String(i.qty),
+          pendingPacks: String(pending),
+          packs: String(Math.max(packs, 0)),
+          invoicedPackCostCents: Math.round(Number(i.unitValue) * 100),
+          orderedPackCostCents: Number(i.order!.packCostCents),
+          divergences: i.divergences,
+        };
+      })
+      .filter((i) => Number(i.pendingPacks) > 0);
+    const unmatched = conf.items.filter((i) => !i.order).map((i) => ({ description: i.description, code: i.code, qty: String(i.qty), divergences: i.divergences }));
+    return {
+      invoiceRef: `${inv.series}/${inv.number}`,
+      warnings: conf.warnings,
+      items,
+      unmatched,
+      missingFromInvoice: conf.missingFromInvoice,
+      note: 'Sugestão a partir do XML: confira a mercadoria antes de confirmar o recebimento.',
+    };
+  });
+
   /**
    * Recebimento (total ou parcial). Da entrada no estoque com o custo efetivo por unidade base:
    * custo da embalagem (o da nota, quando informado: D6-12) + parte do frete e das despesas, rateados pelo valor dos
@@ -675,6 +985,10 @@ export async function purchaseRoutes(app: FastifyInstance) {
         const o = await lockOrder(db, id);
         if (!['sent', 'partial'].includes(o.status)) {
           throw new AppError(409, 'INVALID_STATUS', ['draft', 'pending_approval', 'approved'].includes(o.status) ? 'Marque o pedido como enviado antes de receber.' : 'Pedido encerrado ou cancelado.');
+        }
+        // Fase 7 (D7-4): aumento de preco do fornecedor aguardando aprovacao trava o recebimento.
+        if (o.confirmation_status === 'pending_approval') {
+          throw new AppError(409, 'CONFIRMATION_APPROVAL_PENDING', 'A confirmação do fornecedor tem aumento de preço aguardando aprovação. Aprove ou recuse antes de receber.');
         }
         if (b.warehouseId && b.warehouseId !== o.warehouse_id) {
           throw new AppError(409, 'WRONG_WAREHOUSE', 'O recebimento é no depósito de destino da compra. Receba no destino e transfira depois, ou corrija o destino antes do primeiro recebimento.');
@@ -713,15 +1027,16 @@ export async function purchaseRoutes(app: FastifyInstance) {
           const line = (
             await db.query<{ variant_id: string; over: boolean; base_qty: string; rejected_base: string; unit_cost: string; extra: string; pack_cost: string; reject_over: boolean }>(
               `WITH tot AS (
-                 SELECT sum(packs * pack_cost_cents) AS goods, sum(packs * base_qty_per_pack) AS qty FROM purchase_order_items WHERE order_id = $1
+                 SELECT sum((packs - canceled_packs) * pack_cost_cents) AS goods, sum((packs - canceled_packs) * base_qty_per_pack) AS qty FROM purchase_order_items WHERE order_id = $1
                ), calc AS (
-                 SELECT i.variant_id, i.received_packs + $3::numeric > i.packs AS over, i.pack_cost_cents,
+                 SELECT i.variant_id, i.received_packs + i.canceled_packs + $3::numeric > i.packs AS over, i.pack_cost_cents,
                         ($3::numeric * i.base_qty_per_pack) AS base_qty,
                         ($6::numeric * i.base_qty_per_pack) AS rejected_base,
                         $6::numeric > $3::numeric AS reject_over,
                         ($3::numeric * coalesce($5::numeric, i.pack_cost_cents)) AS goods_line,
                         CASE WHEN tot.goods > 0 THEN ($4::numeric * $3::numeric * i.pack_cost_cents / tot.goods)
-                             ELSE ($4::numeric * $3::numeric * i.base_qty_per_pack / tot.qty) END AS extra
+                             WHEN tot.qty > 0 THEN ($4::numeric * $3::numeric * i.base_qty_per_pack / tot.qty)
+                             ELSE 0 END AS extra
                  FROM purchase_order_items i, tot WHERE i.id = $2 AND i.order_id = $1
                )
                SELECT variant_id, over, reject_over, pack_cost_cents::text AS pack_cost, base_qty::numeric(14,3)::text AS base_qty, rejected_base::numeric(14,3)::text AS rejected_base,
@@ -798,7 +1113,7 @@ export async function purchaseRoutes(app: FastifyInstance) {
           const plan = await convertOnReceipt(db, auth.userId, { warehouseId: wh.id, variantId, receiptId: receipt.id, purchaseOrderId: id });
           conversions.push({ ...plan, variantId });
         }
-        const done = (await db.query<{ done: boolean }>('SELECT bool_and(received_packs >= packs) AS done FROM purchase_order_items WHERE order_id = $1', [id])).rows[0]!.done;
+        const done = (await db.query<{ done: boolean }>('SELECT bool_and(received_packs + canceled_packs >= packs) AS done FROM purchase_order_items WHERE order_id = $1', [id])).rows[0]!.done;
         await db.query(
           `UPDATE purchase_orders SET status = $2, closed_at = CASE WHEN $2 = 'received' THEN now() END, version = version + 1, updated_at = now() WHERE id = $1`,
           [id, done ? 'received' : 'partial'],

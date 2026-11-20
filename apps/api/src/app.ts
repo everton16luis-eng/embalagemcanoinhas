@@ -38,6 +38,8 @@ import { aiFromConfig, type AiProvider } from './lib/gemini.js';
 import { publicQuoteRoutes, salesDeskRoutes } from './modules/quotes.js';
 import { purchaseInvoiceRoutes } from './modules/purchase-invoices.js';
 import { purchaseRoutes } from './modules/purchases.js';
+import { purchaseRequestRoutes } from './modules/purchase-requests.js';
+import { supplyRoutes } from './modules/supply.js';
 import { setupRoutes } from './modules/setup.js';
 import { stockReportRoutes } from './modules/stock-reports.js';
 import { stockRoutes } from './modules/stock.js';
@@ -191,6 +193,8 @@ export async function buildApp(opts: {
   await app.register(supplierRoutes, { prefix: '/api/v1/admin/suppliers' });
   await app.register(purchaseRoutes, { prefix: '/api/v1/admin/purchase-orders' });
   await app.register(purchaseInvoiceRoutes, { prefix: '/api/v1/admin/purchase-invoices' });
+  await app.register(purchaseRequestRoutes, { prefix: '/api/v1/admin/purchase-requests' });
+  await app.register(supplyRoutes, { prefix: '/api/v1/admin/supply' });
   await app.register(salesDeskRoutes, { prefix: '/api/v1/admin/sales-desk' });
   await app.register(publicQuoteRoutes, { prefix: '/api/v1/public/quotes' });
   await app.register(publicImageRoutes, { prefix: '/api/v1/public' });

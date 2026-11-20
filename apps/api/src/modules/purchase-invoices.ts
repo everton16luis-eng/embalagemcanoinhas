@@ -33,8 +33,9 @@ export async function conference(db: Q, inv: Record<string, any>) {
 
   const orderItems = inv.purchase_order_id
     ? (
-        await db.query<{ id: string; packaging_id: string; packaging_label: string; packs: string; pack_cost_cents: string; received_packs: string }>(
-          'SELECT id, packaging_id, packaging_label, packs, pack_cost_cents, received_packs FROM purchase_order_items WHERE order_id = $1',
+        // Fase 7: o saldo cancelado pelo fornecedor (reducao ou recusa) nao e mais esperado.
+        await db.query<{ id: string; packaging_id: string; packaging_label: string; packs: string; pack_cost_cents: string; received_packs: string; canceled_packs: string }>(
+          'SELECT id, packaging_id, packaging_label, packs, pack_cost_cents, received_packs, canceled_packs FROM purchase_order_items WHERE order_id = $1',
           [inv.purchase_order_id],
         )
       ).rows
@@ -74,14 +75,16 @@ export async function conference(db: Q, inv: Record<string, any>) {
       if (!oi) divergences.push('Item não está no pedido de compra.');
       else {
         used.add(oi.id);
-        order = { itemId: oi.id, packs: oi.packs, packCostCents: oi.pack_cost_cents, receivedPacks: oi.received_packs };
-        if (Number(it.qty) !== Number(oi.packs) - Number(oi.received_packs)) divergences.push(`Quantidade: nota ${Number(it.qty)}, pendente no pedido ${Number(oi.packs) - Number(oi.received_packs)}.`);
+        const pending = Number(oi.packs) - Number(oi.received_packs) - Number(oi.canceled_packs);
+        order = { itemId: oi.id, packs: oi.packs, packCostCents: oi.pack_cost_cents, receivedPacks: oi.received_packs, canceledPacks: oi.canceled_packs, pendingPacks: String(pending) };
+        if (Number(it.qty) !== pending) divergences.push(`Quantidade: nota ${Number(it.qty)}, pendente no pedido ${pending}.`);
         if (Math.abs(Number(it.unitValue) * 100 - Number(oi.pack_cost_cents)) >= 1) divergences.push(`Preço: nota R$ ${Number(it.unitValue).toFixed(2)}, pedido R$ ${(Number(oi.pack_cost_cents) / 100).toFixed(2)}.`);
       }
     }
     items.push({ ...it, match, order, divergences });
   }
-  const missing = orderItems.filter((o) => !used.has(o.id) && Number(o.received_packs) < Number(o.packs)).map((o) => ({ itemId: o.id, label: o.packaging_label, pending: String(Number(o.packs) - Number(o.received_packs)) }));
+  const pendingOf = (o: (typeof orderItems)[number]) => Number(o.packs) - Number(o.received_packs) - Number(o.canceled_packs);
+  const missing = orderItems.filter((o) => !used.has(o.id) && pendingOf(o) > 0).map((o) => ({ itemId: o.id, label: o.packaging_label, pending: String(pendingOf(o)) }));
   return { supplier, warnings, items, missingFromInvoice: missing, ok: !warnings.length && !missing.length && items.every((i) => !i.divergences.length) };
 }
 

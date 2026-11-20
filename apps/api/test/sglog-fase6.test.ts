@@ -3,7 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { pool } from '../src/db/pool.js';
 import { FakeProvider } from '../src/lib/payments.js';
-import { appRole, loggedAs, makeApp, ORIGIN, owner, productPayload, randomIp, resetCatalog, sendPurchase, uid } from './helpers.js';
+import { appRole, ensureCompany, loggedAs, makeApp, ORIGIN, owner, productPayload, randomIp, resetCatalog, sendPurchase, uid } from './helpers.js';
 
 // SGLog Fase 6 (docs/29-sglog-fase6.md): compras com aprovacao e pagamento informado, recebimento no destino com
 // recusa, divergencias e preco, vinculo encomenda x compra, conversao da encomenda (fila, vinculo, reprocessamento,
@@ -24,6 +24,7 @@ beforeAll(async () => {
   expect(p.statusCode, p.body).toBe(201);
   pickupId = p.json().option.id;
   principal = (await owner.query('SELECT id FROM warehouses WHERE is_default')).rows[0].id;
+  await ensureCompany();
 });
 afterAll(async () => {
   await app.close();
@@ -58,7 +59,17 @@ async function newSupplier(purchasePackId?: string, costCents = 2000) {
   return id;
 }
 async function newWarehouse() {
-  const r = await boss.post('/api/v1/admin/warehouses', { code: `G${uid()}`.slice(0, 12).toUpperCase(), name: `Galpão ${uid()}` });
+  // Fase 7: o pedido ao fornecedor exige o endereco de entrega do deposito de destino.
+  const r = await boss.post('/api/v1/admin/warehouses', {
+    code: `G${uid()}`.slice(0, 12).toUpperCase(),
+    name: `Galpão ${uid()}`,
+    cep: '89460000',
+    street: 'Rua do Galpão',
+    number: '10',
+    district: 'Industrial',
+    city: 'Canoinhas',
+    uf: 'SC',
+  });
   expect(r.statusCode, r.body).toBe(201);
   return r.json().warehouse.id as string;
 }

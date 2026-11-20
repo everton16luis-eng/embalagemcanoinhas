@@ -16,6 +16,7 @@ type Row = {
   on_hand: string;
   reserved: string;
   inbound: string;
+  requested: string;
   sold: string;
   avg_cost_cents: string;
   product_lead: number | null;
@@ -44,8 +45,11 @@ export async function replenishment(params: z.infer<typeof replenishmentQuery>) 
     await pool.query<Row>(
       `SELECT v.id AS variant_id, v.sku, p.name AS product_name, p.base_unit, u.allows_fraction, p.min_stock, p.lead_time_days AS product_lead,
               coalesce(b.on_hand, 0) AS on_hand, coalesce(b.reserved, 0) AS reserved, coalesce(b.avg_cost_cents, 0) AS avg_cost_cents,
-              coalesce((SELECT sum((i.packs - i.received_packs) * i.base_qty_per_pack) FROM purchase_order_items i JOIN purchase_orders o ON o.id = i.order_id
+              coalesce((SELECT sum((i.packs - i.received_packs - i.canceled_packs) * i.base_qty_per_pack) FROM purchase_order_items i JOIN purchase_orders o ON o.id = i.order_id
                         WHERE i.variant_id = v.id AND o.status IN ('sent', 'partial')), 0) AS inbound,
+              -- Fase 7: requisicao aberta ou ja numa compra ainda nao enviada (rascunho, aprovacao) nao e pedida de novo.
+              coalesce((SELECT sum(q.base_qty) FROM purchase_requests q LEFT JOIN purchase_orders o ON o.id = q.purchase_order_id
+                        WHERE q.variant_id = v.id AND (q.status = 'open' OR (q.status = 'in_purchase' AND o.status IN ('draft', 'pending_approval', 'approved')))), 0) AS requested,
               coalesce((SELECT -sum(m.on_hand_delta) FROM stock_movements m WHERE m.variant_id = v.id AND m.kind IN ('sale', 'return')
                         AND m.created_at >= now() - make_interval(days => $1)), 0) AS sold
        FROM product_variants v JOIN products p ON p.id = v.product_id JOIN units u ON u.code = p.base_unit LEFT JOIN stock_balances b ON b.variant_id = v.id
@@ -70,11 +74,12 @@ export async function replenishment(params: z.infer<typeof replenishmentQuery>) 
     const daily = sold / params.days;
     const available = Number(r.on_hand) - Number(r.reserved);
     const inbound = Number(r.inbound);
+    const requested = Number(r.requested);
     const min = Number(r.min_stock);
     const variantOffers = byVariant.get(r.variant_id) ?? [];
     const leads = variantOffers.map((o) => o.lead_time_days).filter((d): d is number => d !== null);
     const lead = leads.length ? Math.min(...leads) : (r.product_lead ?? DEFAULT_LEAD_DAYS);
-    let need = daily * (lead + params.coverDays) + min - (available + inbound);
+    let need = daily * (lead + params.coverDays) + min - (available + inbound + requested);
     if (!r.allows_fraction) need = Math.ceil(need);
     need = Math.max(0, round(need));
     const belowMin = min > 0 && available < min;
@@ -86,7 +91,7 @@ export async function replenishment(params: z.infer<typeof replenishmentQuery>) 
         const packs = Math.max(1, Math.ceil(need / base));
         const buyQty = round(packs * base);
         const unitCost = Number(o.cost_cents) / base;
-        const coverage = daily > 0 ? Math.floor((available + inbound + buyQty) / daily) : null;
+        const coverage = daily > 0 ? Math.floor((available + inbound + requested + buyQty) / daily) : null;
         return {
           supplierId: o.supplier_id,
           supplierName: o.supplier_name,
@@ -117,6 +122,7 @@ export async function replenishment(params: z.infer<typeof replenishmentQuery>) 
       reserved: r.reserved,
       available: round(available),
       inbound: round(inbound),
+      requested: round(requested),
       minStock: r.min_stock,
       soldInPeriod: round(sold),
       dailyAvg: round(daily, 3),

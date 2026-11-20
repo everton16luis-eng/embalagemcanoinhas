@@ -2,6 +2,7 @@ import { buildApp } from './app.js';
 import { config, isProduction, productionWarnings } from './config.js';
 import { pool, tx } from './db/pool.js';
 import { expireReservations } from './lib/stock.js';
+import { syncBackorderRequests } from './lib/supply.js';
 import { fiscalTick } from './modules/fiscal.js';
 import { marketplaceTick } from './modules/marketplaces.js';
 import { whatsappTick } from './modules/whatsapp.js';
@@ -29,6 +30,10 @@ const expiry = setInterval(() => {
   allocatePending({ auto: config.ALLOCATION_AUTO })
     .then((r) => (r.allocated || r.analysis || r.failed) && app.log.info({ allocation: r }, 'rotina de alocação'))
     .catch((err) => app.log.error(err, 'falha na rotina de alocação'));
+  // SGLog Fase 7: encomenda sem compra vira requisicao (idempotente; nao gera compra).
+  tx(null, (db) => syncBackorderRequests(db))
+    .then((r) => (r.created || r.canceled || r.linked || r.returned || r.done) && app.log.info({ requests: r }, 'requisições de encomenda'))
+    .catch((err) => app.log.error(err, 'falha nas requisições de encomenda'));
   // NF-e em processamento: consulta o provedor; com politica "ao pagar", emite as notas devidas.
   fiscalTick(app.fiscal)
     .then((r) => (r.synced || r.emitted) && app.log.info(`fiscal: ${r.synced} nota(s) consultada(s), ${r.emitted} emitida(s)`))

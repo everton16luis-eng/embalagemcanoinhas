@@ -175,7 +175,13 @@ describe('reposição: equivalência com o comportamento anterior à Fase 2', ()
     const current = async () => {
       const res = await boss.get(`/api/v1/admin/stock-reports/replenishment?days=${PARAMS.days}&coverDays=${PARAMS.coverDays}&maxCoverDays=${PARAMS.maxCoverDays}&all=true`);
       expect(res.statusCode, res.body).toBe(200);
-      return res.json().items.filter((i: { variantId: string }) => ids.includes(i.variantId));
+      // Fase 7: "requested" (requisicoes abertas) entrou depois; sem requisicao e zero e o resto segue igual ao legado.
+      return res.json().items
+        .filter((i: { variantId: string }) => ids.includes(i.variantId))
+        .map(({ requested, ...i }: { requested: number; variantId: string }) => {
+          expect(requested).toBe(0);
+          return i;
+        });
     };
     const same = async () => {
       const now = await current();

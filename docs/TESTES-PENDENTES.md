@@ -666,7 +666,8 @@ pagamento real.
   - o pedido do cliente mostra "Vínculo desfeito ... pendente" e não é cancelado.
 - [x] **Logística → Encomendas** abre a 375 px sem rolagem lateral. "Reprocessar encomendas" mostra só a prévia;
   aplique só se a prévia fizer sentido.
-- [ ] **Bloco 5.1** do roteiro de implantação depois dos testes: `RESULTADO: OK`, C1–C13 sem divergência.
+- [x] **Bloco 5.1** do roteiro de implantação depois dos testes: `RESULTADO: OK`, C1–C13 sem divergência (20/11/2026,
+  depois da compra de teste nº 107).
 - [ ] **Usuários por perfil** (pendente, precisa de outras contas), quando houver:
   - comprador cria e envia para aprovação, mas não recebe;
   - estoquista recebe, mas não aprova;

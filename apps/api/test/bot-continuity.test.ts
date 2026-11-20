@@ -98,10 +98,13 @@ afterAll(async () => {
   await appRole.end();
 });
 
-/** O cenário real até a pergunta dos convidados: 4 mensagens, 10 chamadas à API em menos de 5 minutos. */
+/**
+ * O cenário real até a pergunta dos convidados: 4 mensagens, 9 chamadas à API em menos de 5 minutos.
+ * Desde 0629d4a o "Oi." de abertura recebe a saudação pronta, sem chamar a IA.
+ */
 async function upToGuestsQuestion() {
-  ai.script = [answer('Olá! Tudo bem? Como posso te ajudar hoje com embalagens, descartáveis ou artigos para festa?')];
   await client('Oi.');
+  expect((await lastBot()).body).toBe('Oi! 😊 Como posso te ajudar hoje?');
   ai.script = [...consultant('Para ajudar a escolher o copo ideal, qual bebida será servida?', ['copo descartável', 'copo festa', 'copo plástico']).slice(1)];
   await client('Quero comprar copos para uma festinha de 15 anos.');
   ai.script = consultant(RECOMMENDATION, ['copo 300 ml', 'copo 200 ml', 'copo refrigerante']);
@@ -112,7 +115,7 @@ async function upToGuestsQuestion() {
 describe('continuidade da conversa com a IA', () => {
   it('1 continuidade após link: "Vai ser uns 40 convidados" continua com a IA, sem menu (cenário real)', async () => {
     await upToGuestsQuestion();
-    // Antes da correção a rajada contava chamadas (12 em 5 min): aqui já seriam 10 e a próxima resposta estouraria.
+    // Antes da correção a rajada contava chamadas (12 em 5 min): aqui já seriam 9 e a próxima resposta chegaria a 12.
     ai.script = consultant('Para 40 convidados, calculando 3 copos por pessoa, são 120 copos: 2 pacotes do copo de 300 ml.', ['copo 300 ml', 'copo 300 ml pacote', 'copo descartável']);
     await client('Vai ser uns 40 convidados, eu acho.');
     const last = await lastBot();
@@ -128,7 +131,8 @@ describe('continuidade da conversa com a IA', () => {
     await client('Vai ser uns 40 convidados.');
     expect((await lastBot()).body).toContain('copos por pessoa');
     expect((await botMessages()).every((m) => m.kind === 'text')).toBe(true);
-    expect(await routes()).toEqual(['ia', 'ia', 'ia', 'ia', 'ia']);
+    // A abertura é a saudação pronta; da primeira pergunta em diante, a IA.
+    expect(await routes()).toEqual(['saudacao', 'ia', 'ia', 'ia', 'ia']);
     expect(await conversation()).toEqual({ state: 'bot', step: 'ai' });
   });
 
@@ -203,9 +207,10 @@ describe('continuidade da conversa com a IA', () => {
 
   it('7 mensagens duplicadas: o mesmo webhook duas vezes é respondido uma vez', async () => {
     const wamid = `wamid.${uid()}`;
-    ai.script = [answer('Olá! Como posso ajudar?')];
-    expect((await signed(hook('Oi', wamid))).statusCode).toBe(200);
-    expect((await signed(hook('Oi', wamid))).statusCode).toBe(200);
+    ai.script = [answer('Temos copos de 200 e 300 ml. Qual bebida será servida?')];
+    // Texto que vai para a IA (um "Oi" de abertura teria a saudação pronta e não exercitaria a chamada).
+    expect((await signed(hook('Quero copos para festa', wamid))).statusCode).toBe(200);
+    expect((await signed(hook('Quero copos para festa', wamid))).statusCode).toBe(200);
     await Promise.all([botTick(wa), botTick(wa)]);
     await botTick(wa);
     expect((await owner.query('SELECT count(*)::int AS n FROM whatsapp_inbound WHERE wamid = $1', [wamid])).rows[0].n).toBe(1);

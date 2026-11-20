@@ -342,12 +342,13 @@ describe('painel', () => {
   it('chat de teste usa a IA e guarda o histórico da conversa', async () => {
     await setBot({ audience: 'off', mode: 'ai' });
     ai.script = [say_('Olá, posso ajudar!')];
-    const r1 = (await boss.post('/api/v1/admin/whatsapp/bot/test', { text: 'boa tarde' })).json();
+    // Texto livre (um cumprimento puro de abertura recebe a saudação pronta, sem IA).
+    const r1 = (await boss.post('/api/v1/admin/whatsapp/bot/test', { text: 'quero copos para festa' })).json();
     expect(r1).toMatchObject({ ai: true, replies: [{ kind: 'text', body: 'Olá, posso ajudar!' }] });
     ai.script = [say_('Claro.')];
     await boss.post('/api/v1/admin/whatsapp/bot/test', { text: 'e amanhã?' });
     expect(ai.requests[1]!.contents).toEqual([
-      { role: 'user', parts: [{ text: 'boa tarde' }] },
+      { role: 'user', parts: [{ text: 'quero copos para festa' }] },
       { role: 'model', parts: [{ text: 'Olá, posso ajudar!' }] },
       { role: 'user', parts: [{ text: 'e amanhã?' }] },
     ]);

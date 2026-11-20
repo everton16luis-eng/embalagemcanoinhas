@@ -44,6 +44,7 @@ import { stockRoutes } from './modules/stock.js';
 import { transferRoutes } from './modules/transfers.js';
 import { warehouseRoutes } from './modules/warehouses.js';
 import { logisticsRoutes } from './modules/logistics.js';
+import { shipmentRoutes } from './modules/shipments.js';
 import { supplierRoutes } from './modules/suppliers.js';
 import { userRoutes } from './modules/users.js';
 
@@ -181,6 +182,7 @@ export async function buildApp(opts: {
   await app.register(stockRoutes, { prefix: '/api/v1/admin/stock' });
   await app.register(warehouseRoutes, { prefix: '/api/v1/admin/warehouses' });
   await app.register(logisticsRoutes, { prefix: '/api/v1/admin/logistics' });
+  await app.register(shipmentRoutes, { prefix: '/api/v1/admin/shipments' });
   await app.register(transferRoutes, { prefix: '/api/v1/admin/stock-transfers' });
   await app.register(stockReportRoutes, { prefix: '/api/v1/admin/stock-reports' });
   await app.register(inventoryRoutes, { prefix: '/api/v1/admin/inventory-counts' });

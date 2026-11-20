@@ -387,7 +387,7 @@ export async function releaseReservation(db: Db, actorId: string | null, id: str
  * Baixa a reserva como venda: sai do fisico e do reservado no mesmo movimento, no deposito da reserva. Item sob
  * encomenda so baixa quando a mercadoria chegou (fisico suficiente no deposito).
  */
-export async function consumeReservation(db: Db, actorId: string | null, id: string, source: { sourceType: SourceType; sourceId: string }) {
+export async function consumeReservation(db: Db, actorId: string | null, id: string, source: { sourceType: SourceType; sourceId: string }, documentRef: string | null = null) {
   const res = await lockReservation(db, id);
   if (res.status === 'consumed') return { reservation: res, changed: false };
   if (res.status !== 'active') throw new AppError(409, 'RESERVATION_CLOSED', 'Esta reserva já foi liberada ou venceu.');
@@ -399,6 +399,7 @@ export async function consumeReservation(db: Db, actorId: string | null, id: str
     sourceType: source.sourceType,
     sourceId: source.sourceId,
     warehouseId: res.warehouse_id,
+    documentRef,
   });
   await db.query(`UPDATE stock_reservations SET status = 'consumed', closed_at = now() WHERE id = $1`, [id]);
   return { reservation: { ...res, status: 'consumed' as const }, changed: true, movement };

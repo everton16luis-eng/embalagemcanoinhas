@@ -146,6 +146,8 @@ CREATE TABLE shipment_checks (
   qty               numeric(14,3) NOT NULL CHECK (qty >= 0),
   result            text NOT NULL CHECK (result IN ('ok', 'over', 'wrong_sku', 'mismatch', 'shortage', 'corrected')),
   note              text CHECK (length(note) <= 300),
+  -- Repeticao do mesmo registro (duplo clique, rede) nao conta duas vezes.
+  request_key       text UNIQUE CHECK (length(request_key) BETWEEN 8 AND 100),
   actor_id          uuid REFERENCES users (id),
   created_at        timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT shipment_checks_item CHECK (kind = 'rejected' OR shipment_item_id IS NOT NULL),
@@ -231,6 +233,25 @@ CREATE OR REPLACE FUNCTION orders_logistics_close() RETURNS trigger LANGUAGE plp
 DECLARE n integer;
 BEGIN
   IF NEW.status = 'canceled' THEN
+    -- Remessas abertas: canceladas junto (cancelamento no painel, no marketplace ou por prazo). O que ja estava
+    -- separado fica registrado como devolvido ao lugar (so registro: a mercadoria nao saiu do deposito).
+    INSERT INTO shipment_checks (shipment_id, shipment_item_id, kind, qty, result, note, actor_id)
+    SELECT i.shipment_id, i.id, 'check_undo', i.checked_qty, 'corrected', 'Pedido cancelado', app_user_id()
+      FROM shipment_items i JOIN shipments s ON s.id = i.shipment_id
+     WHERE s.order_id = NEW.id AND s.status IN ('pending', 'picking', 'checking', 'packed') AND i.checked_qty > 0;
+    INSERT INTO shipment_checks (shipment_id, shipment_item_id, kind, qty, result, note, actor_id)
+    SELECT i.shipment_id, i.id, 'unpick', i.picked_qty, 'corrected', 'Pedido cancelado: devolver a mercadoria ao lugar', app_user_id()
+      FROM shipment_items i JOIN shipments s ON s.id = i.shipment_id
+     WHERE s.order_id = NEW.id AND s.status IN ('pending', 'picking', 'checking', 'packed') AND i.picked_qty > 0;
+    UPDATE shipment_items i SET checked_qty = 0, picked_qty = 0
+      FROM shipments s WHERE s.id = i.shipment_id AND s.order_id = NEW.id AND s.status IN ('pending', 'picking', 'checking', 'packed')
+       AND (i.picked_qty > 0 OR i.checked_qty > 0);
+    INSERT INTO shipment_events (shipment_id, from_status, to_status, action, source, note, actor_id)
+    SELECT id, status, 'canceled', 'order_canceled', 'system', left('Pedido cancelado: ' || coalesce(NEW.cancel_reason, ''), 500), app_user_id()
+      FROM shipments WHERE order_id = NEW.id AND status IN ('pending', 'picking', 'checking', 'packed');
+    UPDATE shipments SET status = 'canceled', canceled_at = now(), updated_at = now(), version = version + 1,
+           cancel_reason = left('Pedido cancelado: ' || coalesce(NEW.cancel_reason, 'sem motivo'), 500)
+     WHERE order_id = NEW.id AND status IN ('pending', 'picking', 'checking', 'packed');
     UPDATE fulfillment_allocations a SET status = 'canceled', canceled_at = now()
       FROM fulfillments f WHERE f.id = a.fulfillment_id AND f.order_id = NEW.id AND f.status = 'confirmed' AND a.status = 'active';
     UPDATE fulfillments SET status = 'canceled', closed_at = now(), cancel_reason = 'Pedido cancelado'

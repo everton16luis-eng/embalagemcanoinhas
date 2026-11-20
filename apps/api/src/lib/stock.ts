@@ -193,7 +193,7 @@ async function flagShortage(db: Db, variantId: string, warehouseId: string | nul
        SELECT o.id FROM orders o
         WHERE o.logistics_status = 'processing'
           AND (SELECT on_hand FROM loc) < (SELECT qty FROM firm)
-          AND EXISTS (SELECT 1 FROM stock_reservations r, wh WHERE r.source_type = 'order' AND r.source_id = o.id AND r.variant_id = $1
+          AND EXISTS (SELECT 1 FROM stock_reservations r, wh WHERE r.source_type = 'order' AND r.source_id = o.id::text AND r.variant_id = $1
                         AND r.status = 'active' AND NOT r.backorder AND r.allocation_id IS NOT NULL AND r.warehouse_id = wh.id)
         FOR UPDATE OF o SKIP LOCKED
      ),
@@ -355,7 +355,8 @@ export async function reserve(
     [r.variantId, r.qty, backorder, r.sourceType, r.sourceId, r.expiresAt ?? null, actorId || null, warehouseId, r.allocationId ?? null],
   );
   const res = rows[0]!;
-  await moveStock(db, actorId, { variantId: r.variantId, kind: 'reserve', reservedDelta: r.qty, sourceType: 'reservation', sourceId: res.id, warehouseId });
+  // Movimento sem deposito explicito continua nulo (= padrao), como o codigo anterior gravava.
+  await moveStock(db, actorId, { variantId: r.variantId, kind: 'reserve', reservedDelta: r.qty, sourceType: 'reservation', sourceId: res.id, warehouseId: warehouse?.id ?? null });
   return res;
 }
 

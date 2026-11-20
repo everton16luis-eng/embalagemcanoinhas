@@ -8,7 +8,7 @@ import { FakeCarrier, MelhorEnvioProvider, type Fetcher } from '../src/lib/carri
 import { FakeProvider } from '../src/lib/payments.js';
 import { CloudApiProvider, FakeWhatsApp, toWhatsAppNumber } from '../src/lib/whatsapp.js';
 import { whatsappTick } from '../src/modules/whatsapp.js';
-import { appRole, loggedAs, makeApp, ORIGIN, owner, productPayload, randomIp, resetCatalog, uid } from './helpers.js';
+import { allocateOrder, appRole, loggedAs, makeApp, ORIGIN, owner, productPayload, randomIp, resetCatalog, uid } from './helpers.js';
 
 let app: FastifyInstance;
 let boss: Awaited<ReturnType<typeof loggedAs>>;
@@ -138,6 +138,7 @@ describe('WhatsApp: avisos do pedido', () => {
       expect(r.statusCode, r.body).toBe(200);
       v = r.json().order.version;
     }
+    await allocateOrder(boss, o.id);
     const d = await boss.post(`/api/v1/admin/orders/${o.id}/dispatch`, { version: v, carrier: 'Correios', trackingCode: 'AB123456789BR' });
     expect(d.statusCode, d.body).toBe(200);
     // Repetir o evento nao duplica.

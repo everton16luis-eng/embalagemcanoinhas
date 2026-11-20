@@ -347,7 +347,7 @@ BEGIN
            coalesce(rw.qty, 0) + CASE WHEN coalesce(l.warehouse_id, rw.warehouse_id) = dflt
                                       THEN coalesce((SELECT o.reserved - o.reservations_active FROM o WHERE o.variant_id = coalesce(l.variant_id, rw.variant_id)), 0)
                                       ELSE 0 END AS expected,
-           coalesce(l.reserved, 0) AS found
+           coalesce(l.reserved, 0) AS got
     FROM stock_location_balances l FULL JOIN res_wh rw ON rw.warehouse_id = l.warehouse_id AND rw.variant_id = l.variant_id
   ),
   -- C9: alocacao com reserva x reserva da alocacao.
@@ -358,7 +358,7 @@ BEGIN
   ),
   c9 AS (
     SELECT coalesce(al.variant_id, r.variant_id) AS variant_id, coalesce(al.warehouse_id, r.warehouse_id) AS warehouse_id,
-           coalesce(al.base_qty, 0) AS expected, coalesce(r.qty, 0) AS found
+           coalesce(al.base_qty, 0) AS expected, coalesce(r.qty, 0) AS got
     FROM alloc al
     FULL JOIN (SELECT * FROM stock_reservations WHERE status = 'active' AND allocation_id IS NOT NULL) r ON r.allocation_id = al.id
     WHERE al.id IS NULL OR r.id IS NULL OR r.qty <> al.base_qty OR r.warehouse_id IS DISTINCT FROM al.warehouse_id
@@ -382,8 +382,8 @@ BEGIN
     UNION ALL SELECT 'C4', 'reserved', variant_id, NULL, exp_res_c4, b_res FROM base WHERE exp_res_c4 <> b_res
     UNION ALL SELECT 'C6', 'in_transit', variant_id, NULL, exp_trn_c6, b_trn FROM base WHERE exp_trn_c6 <> b_trn
     UNION ALL SELECT 'C7', field, variant_id, NULL, exp_v, got_v FROM rev
-    UNION ALL SELECT 'C8', 'reserved', variant_id, warehouse_id, expected, found FROM c8 WHERE expected <> found
-    UNION ALL SELECT 'C9', 'reserved', variant_id, warehouse_id, expected, found FROM c9
+    UNION ALL SELECT 'C8', 'reserved', variant_id, warehouse_id, expected, got FROM c8 WHERE expected <> got
+    UNION ALL SELECT 'C9', 'reserved', variant_id, warehouse_id, expected, got FROM c9
   ),
   ins AS (
     INSERT INTO stock_reconciliations (run_id, check_code, field, variant_id, warehouse_id, expected, found, created_by)

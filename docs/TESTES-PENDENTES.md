@@ -414,3 +414,45 @@ Depois dos testes:
   - `TESTE-F3` inativo, 2 transferências, 0 solicitação.
   - Os 5 saldos com total = soma dos depósitos, iguais aos da etapa F.
   - 0 negativo; C1–C7 com 204 variantes e 0 divergência.
+
+## SGLog Fase 4 — alocação dos pedidos ([23-sglog-fase4.md](23-sglog-fase4.md))
+
+**Situação: implementada localmente no ramo `sglog/fase4`, sem push, merge ou implantação.** Roteiro da VPS em
+[24-sglog-fase4-implantacao.md](24-sglog-fase4-implantacao.md). A alocação automática fica desligada
+(`ALLOCATION_AUTO` ausente) até esta validação terminar.
+
+Validação pelo painel HTTPS, depois da implantação:
+
+- [ ] **Fila.** Logística → Alocação abre a 375 px sem rolagem lateral. Mostra:
+  - os contadores;
+  - "Alocação automática desligada";
+  - os pedidos que estavam em aberto como "Aguardando alocação" ou "Em análise", com o motivo.
+- [ ] **Pedido antigo.** Um pedido em aberto antes da atualização despacha como antes, sem pedir alocação.
+- [ ] **Pedido novo, caso simples.** Pagar um pedido de teste e abrir o bloco "Alocação". Conferir:
+  - a recomendada é "Estoque próprio — Depósito principal";
+  - o despacho fica bloqueado com o aviso antes de confirmar;
+  - confirmar não pede motivo;
+  - o selo muda para "Alocado" e as reservas aparecem "no Depósito principal";
+  - o despacho é liberado.
+- [ ] **Outra opção e troca.** Com um segundo depósito cadastrado e com saldo, escolher a opção não recomendada.
+  - Sem motivo, a tela recusa.
+  - Com motivo, a origem muda e o histórico mostra "Origem trocada" com o motivo.
+- [ ] **Desfazer.** Desfazer pede motivo. A reserva continua com o pedido ("sem alocação") e o pedido vai para "Em
+  análise".
+- [ ] **Encomenda.** Num produto sob encomenda com fornecedor e falta de estoque:
+  - a proposta mostra parte em estoque e parte "Encomenda ao fornecedor";
+  - depois de confirmar, a reserva da parte encomendada aparece "aguardando mercadoria";
+  - o despacho só passa depois da entrada da mercadoria.
+- [ ] **Cancelar pedido alocado.** A reserva volta para o disponível e o histórico mostra "Pedido cancelado". O estorno
+  no Mercado Pago continua manual, como antes.
+- [ ] **Falta descoberta.** Contar a menos, no inventário, um item reservado para pedido alocado. O pedido volta para
+  "Em análise" com "Falta descoberta".
+- [ ] **Dropshipping.** Aparece "Bloqueado". Só o proprietário ou o gerente com MFA vê o campo para liberar. **Não
+  liberar** antes da validação fiscal.
+- [ ] **Permissões.**
+  - Estoquista e comprador veem a fila e o detalhe, sem os botões.
+  - Financeiro não vê o menu.
+  - Vendas não vê custo de fornecedor.
+- [ ] **Banco.** O bloco 5.1 do roteiro, rodado de novo, dá `RESULTADO: OK`, com C1–C9 sem divergência.
+- [ ] **Depois de tudo aprovado.** Decidir se liga `ALLOCATION_AUTO=on` (D4-2). Ligada, a rotina passa a confirmar
+  sozinha o caso simples.

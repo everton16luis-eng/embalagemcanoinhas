@@ -475,7 +475,8 @@ Validação pelo painel HTTPS, depois da implantação:
   - a fila passou a 28 aguardando e 1 alocado;
   - o bloco 5.1 seguinte deu C1–C9 sem divergência, com 1 atendimento e 1 decisão.
 
-  Falta o pedido novo pago. O aviso e a liberação do despacho só podem ser vistos com a NF-e autorizada ou dispensada, porque a trava da alocação vem depois da trava da NF-e.
+  Falta o pedido novo pago. Sem pagamento real, o único caminho é uma venda de teste do Mercado Livre, que depende da
+  conta de teste. Fica pendente. O aviso e a liberação do despacho só podem ser vistos com a NF-e autorizada ou dispensada, porque a trava da alocação vem depois da trava da NF-e.
 
   Conferir num pedido novo:
   - a recomendada é "Estoque próprio — Depósito principal";
@@ -483,26 +484,72 @@ Validação pelo painel HTTPS, depois da implantação:
   - confirmar não pede motivo;
   - o selo muda para "Alocado" e as reservas aparecem "no Depósito principal";
   - o despacho é liberado.
-- [ ] **Outra opção e troca.** Com um segundo depósito cadastrado e com saldo, escolher a opção não recomendada.
+- [x] **Outra opção e troca.** Com um segundo depósito cadastrado e com saldo, escolher a opção não recomendada.
   - Sem motivo, a tela recusa.
   - Com motivo, a origem muda e o histórico mostra "Origem trocada" com o motivo.
-- [ ] **Desfazer.** Desfazer pede motivo. A reserva continua com o pedido ("sem alocação") e o pedido vai para "Em
+
+  Em 20/11/2026, no pedido nº 1421 (BIC-21, 3 un.), com o depósito de teste TESTE-F3 abastecido pela transferência
+  nº 3. A troca para o TESTE-F3 foi feita com motivo e o histórico mostrou "Origem trocada". A recusa sem motivo não
+  foi conferida na tela; ela é coberta pelo teste automatizado (`JUSTIFICATION_REQUIRED`). Saldos de BIC-21:
+  - antes: PRINCIPAL 38 físico / 8 reservado;
+  - depois da troca: PRINCIPAL 35/5 e TESTE-F3 3/3.
+- [x] **Desfazer.** Desfazer pede motivo. A reserva continua com o pedido ("sem alocação") e o pedido vai para "Em
   análise".
+  Em 20/11/2026, no mesmo pedido: depois de desfazer, os saldos não mudaram e a reserva de 3 ficou "sem alocação"
+  no TESTE-F3. O pedido foi realocado no PRINCIPAL (35/8 e TESTE-F3 3/0) e a mercadoria voltou pela transferência
+  nº 4. Situação final igual à de antes: BIC-21 com 38/8, só no PRINCIPAL, e TESTE-F3 desativado. Histórico do
+  pedido: confirmada 10:46, trocada 11:05, desfeita 11:05, confirmada 11:06.
 - [ ] **Encomenda.** Num produto sob encomenda com fornecedor e falta de estoque:
   - a proposta mostra parte em estoque e parte "Encomenda ao fornecedor";
   - depois de confirmar, a reserva da parte encomendada aparece "aguardando mercadoria";
   - o despacho só passa depois da entrada da mercadoria.
-- [ ] **Cancelar pedido alocado.** A reserva volta para o disponível e o histórico mostra "Pedido cancelado". O estorno
+
+  Parcial em 20/11/2026, no pedido de demonstração nº 1436 (POT-150, 25 un.), depois da falta descoberta abaixo. A
+  proposta mostrou "Estoque do Depósito principal + encomenda ao fornecedor": 20 em estoque e 5 por encomenda à
+  Embalagens Exemplo Eta. **Confirmar deu "Erro interno"** (HTTP 500), duas vezes, sem mudar nada. É o defeito
+  registrado em "Problema encontrado" abaixo. A reserva "aguardando mercadoria" e o despacho depois da entrada não
+  puderam ser vistos. Refazer num pedido que nunca foi alocado, ou depois da correção.
+- [x] **Cancelar pedido alocado.** A reserva volta para o disponível e o histórico mostra "Pedido cancelado". O estorno
   no Mercado Pago continua manual, como antes.
-- [ ] **Falta descoberta.** Contar a menos, no inventário, um item reservado para pedido alocado. O pedido volta para
+  Em 20/11/2026, no pedido nº 1436, que estava em análise com o atendimento da alocação ainda confirmado:
+  - pedido "Cancelado", com o aviso de devolução manual pelo Mercado Pago (o pagamento era simulado, nada foi
+    devolvido);
+  - atendimento encerrado com "Pedido cancelado", nenhuma reserva ativa e "25 · liberado" no pedido;
+  - decisões: manual, shortage e order_canceled;
+  - POT-150 passou de PRINCIPAL 20 físico / 25 reservado para 20/0.
+- [x] **Falta descoberta.** Contar a menos, no inventário, um item reservado para pedido alocado. O pedido volta para
   "Em análise" com "Falta descoberta".
+  Em 20/11/2026, no pedido nº 1436, alocado no PRINCIPAL às 11:07, com POT-150 em 300 físico / 25 reservado. O
+  inventário não pôde ser aberto, porque há uma contagem de demonstração em aberto no PRINCIPAL desde 13/11 (só uma
+  por depósito), que foi preservada. A falta foi produzida por uma saída de Perda de 280 (20/25):
+  - o pedido voltou para "Em análise" com "Falta descoberta: POT-150 no depósito Depósito principal (físico 20.000,
+    reservado para pedidos 25.000)";
+  - nada foi cancelado nem liberado;
+  - antes, "Separar como avariado" 280 foi recusado ("livre … 275, pedido 280"), como previsto.
+
+  A perda foi estornada depois com um Ajuste de entrada de 280. POT-150 terminou com PRINCIPAL 300/0 (os 25 eram do
+  pedido nº 1436, cancelado acima).
 - [x] **Dropshipping.** Aparece "Bloqueado". Só o proprietário ou o gerente com MFA vê o campo para liberar. **Não
   liberar** antes da validação fiscal.
 - [ ] **Permissões.**
   - Estoquista e comprador veem a fila e o detalhe, sem os botões.
   - Financeiro não vê o menu.
   - Vendas não vê custo de fornecedor.
+
+  Pendente: precisa entrar com um usuário de cada perfil. Não há usuários de teste de comprador, financeiro nem
+  logística.
 - [x] **Banco.** O bloco 5.1 do roteiro, rodado de novo, dá `RESULTADO: OK`, com C1–C9 sem divergência.
   Em 20/11/2026, depois da alocação do pedido nº 1421: C1–C9 sem divergência nas 204 variantes, com 1 atendimento e 1 decisão. A versão daquele dia do script acusava `PARAR` para o pedido alocado (`processing`); o roteiro foi corrigido para aceitar essa situação.
+- [ ] **Problema encontrado (20/11/2026): realocar depois de falta descoberta dá erro 500.** Depois da falta, o pedido
+  vai para "Em análise", mas o atendimento da alocação anterior continua confirmado:
+  - "Confirmar alocação" trata o caso como alocação nova, porque o pedido não está em `processing`. Não encerra o
+    atendimento anterior, e a trava `fulfillment_allocations_over` recusa passar da quantidade vendida. A API devolve
+    500 em vez de uma mensagem.
+  - "Desfazer" recusa com "O pedido não tem alocação confirmada em aberto", porque exige `processing`.
+  - Na prática, o pedido fica sem saída pela alocação. Só o cancelamento do pedido encerra o atendimento.
+
+  Reproduzido no teste local, com o caso "perda que descobre a reserva" seguido de uma nova confirmação: 500
+  `INTERNAL_ERROR`. Precisa de correção no código antes de ligar `ALLOCATION_AUTO`. Até lá, não usar a alocação nos
+  pedidos que voltarem com "Falta descoberta".
 - [ ] **Depois de tudo aprovado.** Decidir se liga `ALLOCATION_AUTO=on` (D4-2). Ligada, a rotina passa a confirmar
   sozinha o caso simples.

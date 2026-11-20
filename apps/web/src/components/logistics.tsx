@@ -12,7 +12,9 @@ export const LOGISTICS_STATUS: Record<string, { label: string; tone: Tone }> = {
   awaiting: { label: 'Aguardando alocação', tone: 'warn' },
   analysis: { label: 'Em análise', tone: 'bad' },
   processing: { label: 'Alocado', tone: 'good' },
+  partially_shipped: { label: 'Despachado em parte', tone: 'act' },
   shipped: { label: 'Despachado', tone: 'neutral' },
+  partially_delivered: { label: 'Entregue em parte', tone: 'act' },
   completed: { label: 'Concluído', tone: 'neutral' },
   canceled: { label: 'Cancelado', tone: 'neutral' },
 };

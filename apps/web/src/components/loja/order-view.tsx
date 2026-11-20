@@ -26,10 +26,13 @@ export type Order = {
   payments: Payment[];
   events: { status: string; note: string | null; created_at: string }[];
   shipment: { carrier: string | null; tracking_code: string | null; tracking_url: string | null; shipped_at: string | null; delivered_at: string | null } | null;
+  // SGLog Fase 5: remessas (entrega parcial mostra cada uma com o seu rastreio).
+  shipments?: { id: string; seq: number; kind: string; status: string; carrier: string | null; tracking_code: string | null; tracking_url: string | null; shipped_at: string | null; delivered_at: string | null; items: { sku: string; productName: string; qty: string }[] }[];
   invoice: { status: 'authorized' | 'canceled'; number: string; series: string; access_key: string; environment: string; files: string[] } | null;
 };
 type PayConfig = { enabled: boolean; provider: 'mercadopago' | 'fake' | null; publicKey: string | null };
 
+const SHIP_LABEL: Record<string, string> = { shipped: 'Enviada', in_transit: 'Em trânsito', out_for_delivery: 'Saiu para entrega', delivered: 'Entregue' };
 const dt = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Sao_Paulo' });
 const STEPS = [
   ['pending_payment', 'Pagamento'],
@@ -131,7 +134,32 @@ export function OrderView({ base, devToken }: { base: string; devToken?: string 
           </ol>
         )}
         {DONE_TEXT[o.status] && <p className="mt-3 font-semibold">{DONE_TEXT[o.status]}</p>}
-        {o.shipment?.tracking_code && (
+        {(o.shipments ?? []).filter((s) => s.kind !== 'legacy').length > 1 && (
+          <ul className="mt-3 space-y-2 text-sm">
+            {(o.shipments ?? [])
+              .filter((s) => s.kind !== 'legacy')
+              .map((s) => (
+                <li key={s.id} className="border border-g-line p-3">
+                  <b>Entrega {s.seq}</b> · {SHIP_LABEL[s.status] ?? 'Em preparação'}
+                  <span className="block text-g-faint">{s.items.map((i) => `${i.productName} (${Number(i.qty).toLocaleString('pt-BR')})`).join(' · ')}</span>
+                  {s.tracking_code && (
+                    <span className="block">
+                      Rastreio:{' '}
+                      {s.tracking_url ? (
+                        <a href={s.tracking_url} target="_blank" rel="noreferrer" className="font-semibold text-g-green underline">
+                          {s.tracking_code}
+                        </a>
+                      ) : (
+                        <b>{s.tracking_code}</b>
+                      )}
+                      {s.carrier && ` · ${s.carrier}`}
+                    </span>
+                  )}
+                </li>
+              ))}
+          </ul>
+        )}
+        {o.shipment?.tracking_code && (o.shipments ?? []).filter((s) => s.kind !== 'legacy').length <= 1 && (
           <p className="mt-1 text-sm">
             Rastreio: {o.shipment.tracking_url ? (
               <a href={o.shipment.tracking_url} target="_blank" rel="noreferrer" className="font-semibold text-g-green underline">

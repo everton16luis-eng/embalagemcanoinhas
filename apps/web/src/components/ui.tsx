@@ -1,6 +1,6 @@
 'use client';
 
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from 'react';
+import type { ButtonHTMLAttributes, ComponentProps, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from 'react';
 import { useId } from 'react';
 
 const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(' ');
@@ -42,7 +42,7 @@ export function Field({ label, hint, error, required, children, className }: Fie
   );
 }
 
-export const Input = ({ className, ...p }: InputHTMLAttributes<HTMLInputElement>) => <input {...p} className={cx(control, 'h-9', className)} />;
+export const Input = ({ className, ...p }: ComponentProps<'input'>) => <input {...p} className={cx(control, 'h-9', className)} />;
 export const Textarea = ({ className, ...p }: TextareaHTMLAttributes<HTMLTextAreaElement>) => <textarea {...p} className={cx(control, 'min-h-24 py-2', className)} />;
 export const Select = ({ className, children, ...p }: SelectHTMLAttributes<HTMLSelectElement>) => (
   <select {...p} className={cx(control, 'h-9 pr-8', className)}>

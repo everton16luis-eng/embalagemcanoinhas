@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { DOC_STATUS } from '@/components/fiscal';
 import { CHANNEL_LABEL, INVOICE_STATUS, METHOD_LABEL, ORDER_STATUS, PAYMENT_STATUS } from '@/components/orders';
 import { AllocationPanel, LogisticsBadge } from '@/components/logistics';
+import { OrderShipmentsPanel, type OrderShipment } from '@/components/shipments';
 import { Guard, useMe } from '@/components/shell';
 import { Badge, Button, Field, Input, Notice, PageHeader, Panel, Textarea } from '@/components/ui';
 import { api } from '@/lib/api';
@@ -38,6 +39,8 @@ type Order = {
   events: { status: string; note: string | null; created_at: string; actor_name: string | null }[];
   shipment: { carrier: string | null; tracking_code: string | null; tracking_url: string | null; volumes: number | null; shipped_at: string | null; delivered_at: string | null } | null;
   reservations: { id: string; sku: string; qty: string; backorder: boolean; status: string }[];
+  // SGLog Fase 5: remessas do pedido (as antigas vem como 'legacy').
+  shipments: OrderShipment[];
   // SGLog Fase 4 (so no painel).
   logistics_status?: string | null;
   allocation_required?: boolean;
@@ -182,6 +185,10 @@ function Detail() {
   if (!o) return error ? <Notice tone="bad">{error}</Notice> : <p className="text-sm text-ink-soft">Carregando…</p>;
   const st = ORDER_STATUS[o.status]!;
   const open = ['paid', 'preparing', 'ready'].includes(o.status);
+  // SGLog Fase 5 (D5-5): com remessa nova, separar, embalar, despachar e entregar e pela Expedicao. Pedido antigo
+  // com a remessa ainda pendente continua com os botoes.
+  const live = (o.shipments ?? []).filter((s) => s.kind !== 'legacy' && s.status !== 'canceled');
+  const byShipment = live.length > 0 && (Boolean(o.allocation_required) || live.some((s) => s.status !== 'pending'));
 
   const dispatch = (e: FormEvent) => {
     e.preventDefault();
@@ -280,14 +287,22 @@ function Detail() {
           </Panel>
 
           {open && (can('orders.manage') || can('shipping.manage')) && (
-            <Panel title="Atendimento" description="Pago → em separação → pronto → despachado. O despacho só é liberado com a NF-e autorizada.">
+            <Panel
+              title="Atendimento"
+              description={byShipment ? 'A separação, a embalagem e o despacho deste pedido são feitos pela remessa, na Expedição.' : 'Pago → em separação → pronto → despachado. O despacho só é liberado com a NF-e autorizada.'}
+            >
               <div className="flex flex-wrap gap-2">
-                {o.status === 'paid' && can('orders.manage') && (
+                {byShipment && (
+                  <Link href={`/painel/logistica/expedicao/${live[0]!.id}`}>
+                    <Button variant="primary">Abrir na Expedição</Button>
+                  </Link>
+                )}
+                {!byShipment && o.status === 'paid' && can('orders.manage') && (
                   <Button variant="primary" busy={busy === 'preparing'} onClick={() => act('preparing', 'status', { to: 'preparing' }, 'Pedido em separação.')}>
                     Iniciar separação
                   </Button>
                 )}
-                {o.status === 'preparing' && can('orders.manage') && (
+                {!byShipment && o.status === 'preparing' && can('orders.manage') && (
                   <Button variant="primary" busy={busy === 'ready'} onClick={() => act('ready', 'status', { to: 'ready' }, 'Pedido pronto para nota e despacho.')}>
                     Marcar como pronto
                   </Button>
@@ -309,7 +324,10 @@ function Detail() {
                   <Field label="Motivo do cancelamento" required>
                     {(fid) => <Textarea id={fid} required minLength={3} maxLength={300} value={reason} onChange={(e) => setReason(e.target.value)} />}
                   </Field>
-                  <p className="text-[13px] text-ink-soft">A reserva de estoque volta para o disponível. Pedido pago precisa de devolução no Mercado Pago.</p>
+                  <p className="text-[13px] text-ink-soft">
+                    A reserva de estoque volta para o disponível. Pedido pago precisa de devolução no Mercado Pago.
+                    {live.length > 0 && ' As remessas abertas são canceladas; mercadoria já separada precisa voltar ao lugar antes.'}
+                  </p>
                   <div className="flex gap-2">
                     <Button type="submit" variant="danger" busy={busy === 'cancel'}>
                       Confirmar cancelamento
@@ -320,7 +338,7 @@ function Detail() {
                   </div>
                 </form>
               )}
-              {o.status === 'ready' && can('shipping.manage') && (
+              {!byShipment && o.status === 'ready' && can('shipping.manage') && (
                 <form onSubmit={dispatch} className="mt-4 border-t border-line pt-4">
                   <p className="mb-2 text-sm font-semibold">Despacho</p>
                   {o.allocation_required && o.logistics_status !== 'processing' && (
@@ -346,13 +364,15 @@ function Detail() {
               )}
             </Panel>
           )}
-          {o.status === 'shipped' && can('shipping.manage') && (
+          {o.status === 'shipped' && !byShipment && !live.length && can('shipping.manage') && (
             <Panel title="Entrega">
               <Button variant="primary" busy={busy === 'deliver'} onClick={() => act('deliver', 'deliver', {}, 'Entrega registrada.')}>
                 Marcar como entregue
               </Button>
             </Panel>
           )}
+
+          {can('logistics.view') && <OrderShipmentsPanel shipments={o.shipments ?? []} />}
 
           {can('logistics.view') && (o.allocation_required || o.logistics_status) && <AllocationPanel orderId={o.id} onChange={load} />}
 

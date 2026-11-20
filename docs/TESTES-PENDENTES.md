@@ -675,3 +675,61 @@ pagamento real.
 - [ ] **Decisões da empresa:**
   - limite de aprovação de produção (D6-3) e tolerância de preço (D6-12);
   - quem passa a receber no lugar do comprador (D6-1).
+
+## SGLog Fase 7 — abastecimento e fornecedores ([32-sglog-fase7.md](32-sglog-fase7.md))
+
+**Situação: implementada no local (branch `sglog/fase7`), ainda não implantada.** Roteiro de implantação em
+[33-sglog-fase7-implantacao.md](33-sglog-fase7-implantacao.md).
+
+Validação pelo painel HTTPS, depois da implantação. Use só compras de teste, do fornecedor de demonstração, com valores
+pequenos. Nada nesta fase movimenta estoque: anote o saldo do produto antes e confira que só o recebimento o muda.
+
+- [ ] **Compras antigas.** Em Logística → Abastecimento, as compras enviadas antes da implantação aparecem como
+  "Anterior ao acompanhamento". Não aparecem como confirmação atrasada nem como entrega atrasada.
+- [ ] **Documento com dado faltante.** Numa compra aprovada, o painel "Pedido ao fornecedor" mostra a prévia. Se faltar
+  razão social, CNPJ ou endereço de entrega, aparece a lista do que falta e o envio fica bloqueado. Complete em Empresa
+  ou Depósitos.
+- [ ] **Envio e versão imutável:**
+  1. "Copiar texto" copia o pedido.
+  2. "Abrir para imprimir" mostra o documento. "Imprimir ou salvar em PDF" gera o PDF pelo navegador.
+  3. Confira que não há nome, telefone ou e-mail de cliente.
+  4. "Registrar envio ao fornecedor" com canal (por exemplo "PDF") grava a versão 1, com autor, data e canal.
+  5. "Reenviar" grava a versão 2; a versão 1 continua igual, inclusive o código de conferência.
+  6. Nenhum e-mail sai sozinho.
+- [ ] **Prazo de confirmação.** A compra enviada fica "Aguardando confirmação". Em Compras → "Regras da compra", o
+  prazo mostra 2 dias. Não altere: um valor diferente de 2 impede desfazer a 0026.
+- [ ] **Confirmação total.** Registre a confirmação com tudo confirmado e uma data de entrega: fica "Entrega prevista".
+- [ ] **Confirmação parcial**, numa segunda compra de teste: um item com entrega parcial (parte numa data e o restante
+  sem data). A compra mostra "Entrega parcial ... restante sem previsão". Nada é cancelado, e as encomendas vinculadas
+  continuam vinculadas.
+- [ ] **Redução e recusa:**
+  - reduzir a quantidade de um item mostra "cancelada(s): quantidade reduzida pelo fornecedor";
+  - o pendente do recebimento diminui;
+  - se havia encomenda vinculada além do que sobrou, o vínculo é desfeito com pendência no pedido do cliente, sem
+    cancelar o pedido;
+  - recusar o pedido inteiro deixa a compra "Recusada pelo fornecedor", para cancelar.
+- [ ] **Aumento de preço** (precisa de MFA). Confirme um item com preço maior que o pedido:
+  1. A compra fica "Aumento de preço aguardando aprovação" e o recebimento some, com aviso.
+  2. Aprovar com o mesmo usuário que registrou deve recusar. O proprietário pode, com justificativa.
+  3. Depois de aprovar, o recebimento volta.
+  4. O custo médio do produto não muda com a confirmação, só com a nota no recebimento.
+- [ ] **Acompanhamento.** Registre uma cobrança com data de retorno: aparece no histórico e em "Próximo retorno".
+- [ ] **Recebimento pelo XML.** Numa compra com nota de entrada importada e ligada, "Preencher pela nota (XML)" preenche
+  as quantidades e os preços. Nada entra até clicar em receber. As conferências de preço e fiscal continuam pedindo
+  justificativa.
+- [ ] **Requisição manual.** Em Compras → Requisições, "Pedir compra" de um produto de demonstração cria a requisição
+  aberta. "Cancelar" pede o motivo e a remove das abertas.
+- [ ] **Gerar compra.** Marque uma requisição aberta e "Gerar compra":
+  - nasce um rascunho no mesmo depósito, com a requisição "Em compra";
+  - o rascunho segue aprovação e envio normais;
+  - cancele o rascunho no fim; a requisição volta a ficar aberta.
+- [ ] **Requisição automática.** Se houver encomenda ativa sem compra, ela aparece como requisição "Encomenda" com o
+  número do pedido, uma só, mesmo depois de "Atualizar encomendas" várias vezes.
+- [ ] **Abastecimento a 375 px.** Logística → Abastecimento, Compras → Requisições e o documento abrem sem rolagem
+  lateral. O início do painel mostra o resumo "Abastecimento".
+- [ ] **Reposição.** Um produto com requisição aberta mostra "em requisição" e a necessidade desconta essa quantidade.
+- [ ] **Bloco 5.1** do roteiro de implantação depois dos testes: `RESULTADO: OK`, C1–C13 sem divergência.
+- [ ] **Usuários por perfil** (precisa de outras contas), quando houver:
+  - logística pede compra, mas não gera compra;
+  - estoquista pede e gera;
+  - financeiro vê as requisições, mas não pede nem gera compra.

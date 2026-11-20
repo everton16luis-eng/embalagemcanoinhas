@@ -660,7 +660,8 @@ export async function adminOrderRoutes(app: FastifyInstance) {
       if (!o) throw notFound();
       if (o.version !== b.version) throw new AppError(409, 'VERSION_CONFLICT', 'O pedido foi alterado por outra pessoa. Recarregue a página.');
       // SGLog Fase 5 (D5-5): com remessa nova, separacao e "pronto" vem da remessa; botoes manuais so nos antigos.
-      if ((await db.query(`SELECT 1 FROM shipments WHERE order_id = $1 AND kind <> 'legacy' AND status <> 'canceled'`, [id])).rows[0]) {
+      // Pedido antigo (sem exigencia de alocacao) com a remessa ainda pendente continua com os botoes, como antes.
+      if ((await db.query(`SELECT 1 FROM shipments s JOIN orders o ON o.id = s.order_id WHERE s.order_id = $1 AND s.kind <> 'legacy' AND s.status <> 'canceled' AND (o.allocation_required OR s.status <> 'pending')`, [id])).rows[0]) {
         throw new AppError(409, 'SHIPMENT_DRIVEN', 'A situação deste pedido vem da remessa. Use a tela de Expedição para separar, conferir e embalar.');
       }
       if (!NEXT[o.status]?.includes(b.to)) throw new AppError(409, 'INVALID_TRANSITION', 'Esta mudança de situação não é permitida agora.');

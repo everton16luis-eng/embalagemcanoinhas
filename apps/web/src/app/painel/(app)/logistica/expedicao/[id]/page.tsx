@@ -380,7 +380,7 @@ function DispatchForm({ s, busy, run }: { s: Shipment; busy: string; run: (what:
     <Panel title={pickup ? 'Entrega ao cliente' : 'Despacho'} description={pickup ? 'O cliente retira na loja: ao entregar, o estoque da remessa é baixado.' : 'Baixa do estoque só o que está nesta remessa.'}>
       {!invoice && (
         <div className="mb-3">
-          <Notice tone="warn">A NF-e deste pedido ainda não foi autorizada. {pickup ? 'A entrega' : 'O despacho'} fica bloqueado até a autorização.</Notice>
+          <Notice tone="warn">A NF-e deste pedido ainda não foi autorizada. {pickup ? 'A entrega fica bloqueada' : 'O despacho fica bloqueado'} até a autorização.</Notice>
         </div>
       )}
       {analysis && (

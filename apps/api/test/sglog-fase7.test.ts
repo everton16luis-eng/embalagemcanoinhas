@@ -574,6 +574,25 @@ describe('requisições (D7-6, D7-7)', () => {
     expect(await reconcile()).toEqual([]);
   });
 
+  it('item da requisição retirado do rascunho: a requisição volta a ficar aberta, sem erro', async () => {
+    const a = await newProduct();
+    const b = await newProduct();
+    const sup = await newSupplier(a.purchase.id);
+    await addOffer(sup, b.purchase.id);
+    const manual = await (await loggedAs(app, 'stock')).post(RQ, { variantId: a.variantId, baseQty: String(a.purchase.base_qty), reason: 'Reforçar o estoque' });
+    expect(manual.statusCode, manual.body).toBe(201);
+    const draft = await createPO(sup, [{ packagingId: b.purchase.id, packs: '1' }]);
+    const conv = await boss.post(`${RQ}/convert`, { requestIds: [manual.json().request.id], purchaseOrderId: draft.id });
+    expect(conv.statusCode, conv.body).toBe(200);
+    expect((await get(draft.id)).items.length).toBe(2);
+    const edit = await boss.put(`${PO}/${draft.id}`, { supplierId: sup, items: [{ packagingId: b.purchase.id, packs: '1' }] });
+    expect(edit.statusCode, edit.body).toBe(200);
+    const after = (await boss.get(`${RQ}/${manual.json().request.id}`)).json().request;
+    expect(after).toMatchObject({ status: 'open', purchase_order_id: null });
+    expect(after.events.map((e: any) => e.kind)).toEqual(['created', 'in_purchase', 'returned']);
+    expect((await get(draft.id)).items.length).toBe(1);
+  });
+
   it('recusa pelo comprador com motivo; recusada não volta sozinha', async () => {
     const { purchase, pack50 } = await newProduct({ madeToOrder: true });
     await newSupplier(purchase.id);

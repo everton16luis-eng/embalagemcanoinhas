@@ -233,6 +233,13 @@ export async function saveItems(db: Db, orderId: string, supplierId: string, ite
   for (const [packagingId, row] of existing) {
     if (seen.has(packagingId)) continue;
     if (row.ever_linked) throw new AppError(409, 'ITEM_LINKED', 'Este item tem vínculo com encomenda de cliente e não pode ser removido. Reduza a quantidade ou cancele o vínculo.');
+    // Fase 7: requisicao manual que entrou por este item volta a ficar aberta (nao se perde nem trava a remocao).
+    await db.query(
+      `WITH r AS (UPDATE purchase_requests SET status = 'open', purchase_order_id = NULL, purchase_order_item_id = NULL, updated_at = now()
+                   WHERE purchase_order_item_id = $1 AND status = 'in_purchase' RETURNING id, $2::uuid AS po)
+       INSERT INTO purchase_request_events (request_id, kind, note, purchase_order_id) SELECT id, 'returned', 'Item retirado do rascunho da compra: a requisição voltou a ficar aberta', po FROM r`,
+      [row.id, orderId],
+    );
     await db.query('DELETE FROM purchase_order_items WHERE id = $1', [row.id]);
   }
   for (const it of items) {

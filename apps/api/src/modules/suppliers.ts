@@ -676,7 +676,7 @@ export async function supplierRoutes(app: FastifyInstance) {
            blocked_by = CASE WHEN $2 = 'blocked' THEN $4::uuid END WHERE id = $1`,
         [id, b.status, b.reason ?? null, auth.userId],
       );
-      const openOrders = (await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM purchase_orders WHERE supplier_id = $1 AND status IN ('draft', 'sent', 'partial')`, [id])).rows[0]!.n;
+      const openOrders = (await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM purchase_orders WHERE supplier_id = $1 AND status IN ('draft', 'pending_approval', 'approved', 'sent', 'partial')`, [id])).rows[0]!.n;
       const after = await load(db, id);
       await audit(db, {
         actorId: auth.userId,

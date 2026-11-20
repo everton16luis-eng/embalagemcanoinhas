@@ -87,6 +87,8 @@ export function useWarehouses() {
 
 export const PO_STATUS: Record<string, { label: string; tone: 'neutral' | 'act' | 'warn' | 'good' | 'bad' }> = {
   draft: { label: 'Rascunho', tone: 'neutral' },
+  pending_approval: { label: 'Aguardando aprovação', tone: 'warn' },
+  approved: { label: 'Aprovado', tone: 'act' },
   sent: { label: 'Enviado', tone: 'act' },
   partial: { label: 'Recebido em parte', tone: 'warn' },
   received: { label: 'Recebido', tone: 'good' },

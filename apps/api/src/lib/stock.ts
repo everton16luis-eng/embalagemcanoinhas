@@ -62,6 +62,12 @@ export type Movement = {
   transferId?: string | null;
   documentRef?: string | null;
   reversesId?: string | null;
+  /**
+   * Fase 6: a recusa no recebimento tira do disponivel o que acabou de entrar (entrada + bloqueio na mesma
+   * transacao, saldo liquido >= 0). Nao pode criar falta nova, entao nao procura falta (que travaria pedidos depois
+   * das variantes, ordem inversa da alocacao).
+   */
+  skipShortageCheck?: boolean;
 };
 
 const BUCKET_LABEL: Record<string, string> = {
@@ -168,7 +174,7 @@ export async function moveStock(db: Db, actorId: string | null, m: Movement): Pr
     );
     await db.query('RELEASE SAVEPOINT move_stock_location');
     // SGLog Fase 4: saida que nao e venda pode descobrir reserva de pedido ja alocado (inventario, perda, avaria).
-    if (onHand.startsWith('-') && m.kind !== 'sale') await flagShortage(db, m.variantId, m.warehouseId ?? null);
+    if (onHand.startsWith('-') && m.kind !== 'sale' && !m.skipShortageCheck) await flagShortage(db, m.variantId, m.warehouseId ?? null);
     return rows[0]!;
   } catch (err) {
     // O total comporta, mas o deposito da linha nao (mercadoria em outro deposito).

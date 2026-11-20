@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { pool } from '../src/db/pool.js';
 import { FakeProvider } from '../src/lib/payments.js';
 import { testDatabaseProblem, testEnvProblem, TEST_DB_MARK } from './env-guard.js';
-import { allocateOrder, appRole, shipOrder, loggedAs, makeApp, ORIGIN, owner, productPayload, randomIp, resetCatalog, uid } from './helpers.js';
+import { allocateOrder, appRole, shipOrder, loggedAs, makeApp, sendPurchase, ORIGIN, owner, productPayload, randomIp, resetCatalog, uid } from './helpers.js';
 
 // SGLog Fase 1 (docs/15-sglog-fase1.md): depositos, saldo por deposito, abertura, conferencia, papeis e travas.
 
@@ -315,9 +315,10 @@ describe('papéis novos (menor privilégio)', () => {
     // Fase 3 (D3-2): transferencia e ajuste com MFA (stock.adjust) para o gerente de logistica.
     // Fase 4 (D4-11): logistics.view para logistica e comprador; logistics.allocate so para a logistica. Financeiro sem.
     // Fase 5 (D5-8): separar/conferir (shipping.pick) e criar/dividir/cancelar remessa (logistics.manage).
-    logistics: ['catalog.view', 'logistics.allocate', 'logistics.manage', 'logistics.view', 'orders.view', 'purchases.view', 'shipping.manage', 'shipping.pick', 'stock.adjust', 'stock.manage', 'stock.transfer', 'stock.view', 'suppliers.view'],
+    // Fase 6 (D6-1/D6-5): logistica recebe compra (purchases.receive); financeiro informa pagamento (purchases.pay), sem aprovar.
+    logistics: ['catalog.view', 'logistics.allocate', 'logistics.manage', 'logistics.view', 'orders.view', 'purchases.receive', 'purchases.view', 'shipping.manage', 'shipping.pick', 'stock.adjust', 'stock.manage', 'stock.transfer', 'stock.view', 'suppliers.view'],
     buyer: ['catalog.view', 'logistics.view', 'purchases.manage', 'purchases.view', 'stock.view', 'suppliers.manage', 'suppliers.view'],
-    finance: ['orders.view', 'purchases.view', 'reports.view', 'suppliers.view'],
+    finance: ['orders.view', 'purchases.pay', 'purchases.view', 'reports.view', 'suppliers.view'],
   };
 
   it('o proprietário cria os três papéis; o gerente continua sem criar proprietário', async () => {
@@ -352,7 +353,7 @@ describe('papéis novos (menor privilégio)', () => {
     expect(await reconcile()).toEqual([]);
   });
 
-  it('comprador recebe mercadoria, mas não vê pedidos de clientes nem lança ajuste', async () => {
+  it('comprador compra, mas não recebe (D6-1), não vê pedidos de clientes nem lança ajuste; o estoquista recebe', async () => {
     const bu = await loggedAs(app, 'buyer');
     const { variantId, purchase } = await newProduct();
     expect((await bu.get('/api/v1/admin/orders')).statusCode).toBe(403);
@@ -362,8 +363,10 @@ describe('papéis novos (menor privilégio)', () => {
     const po = await bu.post('/api/v1/admin/purchase-orders', { supplierId: sup.json().supplier.id, items: [{ packagingId: purchase.id, packs: '2', packCostCents: 1500 }] });
     expect(po.statusCode, po.body).toBe(201);
     const order = po.json().order;
-    expect((await bu.post(`/api/v1/admin/purchase-orders/${order.id}/send`)).statusCode).toBe(200);
-    const rec = await bu.post(`/api/v1/admin/purchase-orders/${order.id}/receipts`, { requestKey: key(), items: [{ itemId: order.items[0].id, packs: '2' }] });
+    expect((await sendPurchase(app, bu, order.id)).statusCode).toBe(200);
+    expect((await bu.post(`/api/v1/admin/purchase-orders/${order.id}/receipts`, { requestKey: key(), items: [{ itemId: order.items[0].id, packs: '2' }] })).statusCode).toBe(403);
+    const st = await loggedAs(app, 'stock');
+    const rec = await st.post(`/api/v1/admin/purchase-orders/${order.id}/receipts`, { requestKey: key(), items: [{ itemId: order.items[0].id, packs: '2' }] });
     expect(rec.statusCode, rec.body).toBe(201);
     expect((await totals(variantId)).location).toEqual(['200.000', '0.000']);
     expect(await reconcile()).toEqual([]);

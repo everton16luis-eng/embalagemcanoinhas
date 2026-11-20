@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowLeftRight, BarChart3, Blocks, Building, Mail, MessageCircle, TrendingUp, Boxes, PackageCheck, Building2, ClipboardCheck, ClipboardList, FileText, FolderTree, History, LogOut, MapPinned, Menu, Package, ReceiptText, RefreshCw, Route, Search, Settings, ShoppingCart, Store, Truck, UserRound, Users, Warehouse, X } from 'lucide-react';
+import { ArrowLeftRight, BarChart3, Blocks, Building, Mail, MessageCircle, TrendingUp, Boxes, PackageCheck, Hourglass, Building2, ClipboardCheck, ClipboardList, FileText, FolderTree, History, LogOut, MapPinned, Menu, Package, ReceiptText, RefreshCw, Route, Search, Settings, ShoppingCart, Store, Truck, UserRound, Users, Warehouse, X } from 'lucide-react';
 import Link from '@/components/painel-link';
 import { usePathname, useRouter } from 'next/navigation';
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
@@ -30,6 +30,7 @@ const NAV = [
   // SGLog Fase 4: alocacao dos pedidos pagos (deposito ou fornecedor).
   { href: '/painel/logistica/alocacao', label: 'Alocação', icon: Route, perm: 'logistics.view', group: 'Logística' },
   { href: '/painel/logistica/expedicao', label: 'Expedição', icon: PackageCheck, perm: 'logistics.view', group: 'Logística' },
+  { href: '/painel/logistica/encomendas', label: 'Encomendas', icon: Hourglass, perm: 'logistics.view', group: 'Logística' },
   { href: '/painel/estoque', label: 'Estoque', icon: Warehouse, perm: 'stock.view', group: 'Logística' },
   { href: '/painel/inventario', label: 'Inventário', icon: ClipboardList, perm: 'stock.view', group: 'Logística' },
   { href: '/painel/transferencias', label: 'Transferências', icon: ArrowLeftRight, perm: 'stock.view', group: 'Logística' },

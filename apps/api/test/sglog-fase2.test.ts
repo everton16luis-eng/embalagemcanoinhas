@@ -4,7 +4,7 @@ import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { pool } from '../src/db/pool.js';
 import { conference } from '../src/modules/purchase-invoices.js';
-import { appRole, loggedAs, makeApp, owner, productPayload, resetCatalog, uid } from './helpers.js';
+import { appRole, loggedAs, makeApp, sendPurchase, owner, productPayload, resetCatalog, uid } from './helpers.js';
 
 let app: FastifyInstance;
 let boss: Awaited<ReturnType<typeof loggedAs>>;
@@ -315,7 +315,7 @@ describe('fornecedor bloqueado', () => {
     await boss.post(`${OFF}/${o.id}/primary`, { version: o.version });
     const draft = (await boss.post(PO, { supplierId: s.id, items: [{ packagingId: purchase.id, packs: '1' }] })).json().order;
     const sent = (await boss.post(PO, { supplierId: s.id, items: [{ packagingId: purchase.id, packs: '1' }] })).json().order;
-    expect((await boss.post(`${PO}/${sent.id}/send`)).statusCode).toBe(200);
+    expect((await sendPurchase(app, boss, sent.id)).statusCode).toBe(200);
 
     expect((await boss.post(`${SUP}/${s.id}/status`, { status: 'blocked', version: s.version })).json().error?.code).toBe('REASON_REQUIRED');
     const bl = await boss.post(`${SUP}/${s.id}/status`, { status: 'blocked', reason: 'Atraso recorrente', version: s.version });
@@ -326,7 +326,7 @@ describe('fornecedor bloqueado', () => {
     expect((await offerRow(o.id)).is_primary).toBe(false);
 
     expect((await boss.post(PO, { supplierId: s.id, items: [{ packagingId: purchase.id, packs: '1' }] })).json().error?.code).toBe('SUPPLIER_BLOCKED');
-    expect((await boss.post(`${PO}/${draft.id}/send`)).json().error?.code).toBe('SUPPLIER_BLOCKED');
+    expect((await sendPurchase(app, boss, draft.id)).json().error?.code).toBe('SUPPLIER_BLOCKED');
     const rec = await boss.post(`${PO}/${sent.id}/receipts`, { requestKey: key(), items: [{ itemId: sent.items[0].id, packs: '1' }] });
     expect(rec.statusCode, rec.body).toBe(201);
 

@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { pool, tx } from '../src/db/pool.js';
 import { expireReservations } from '../src/lib/stock.js';
-import { appRole, loggedAs, makeApp, owner, productPayload, resetCatalog, uid } from './helpers.js';
+import { appRole, loggedAs, makeApp, sendPurchase, owner, productPayload, resetCatalog, uid } from './helpers.js';
 
 let app: FastifyInstance;
 let boss: Awaited<ReturnType<typeof loggedAs>>;
@@ -45,7 +45,7 @@ async function sentOrder(supplierId: string, items: unknown[], extra: Record<str
   const res = await boss.post(PO, { supplierId, items, ...extra });
   expect(res.statusCode, res.body).toBe(201);
   const order = res.json().order;
-  expect((await boss.post(`${PO}/${order.id}/send`)).statusCode).toBe(200);
+  expect((await sendPurchase(app, boss, order.id)).statusCode).toBe(200);
   return order;
 }
 

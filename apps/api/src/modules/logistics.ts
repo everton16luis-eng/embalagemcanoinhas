@@ -641,6 +641,25 @@ export async function logisticsRoutes(app: FastifyInstance) {
         [id],
       )
     ).rows;
+    // Fase 6: compras vinculadas as encomendas e conversoes (D6-2, D6-8: vinculo cancelado com a encomenda ainda
+    // aguardando e a pendencia do pedido; nada e cancelado no pedido do cliente).
+    const purchaseLinks = (
+      await pool.query(
+        `SELECT l.id, l.purchase_order_id, po.number AS purchase_number, po.status AS purchase_status, l.base_qty, l.status, l.cancel_reason, l.closed_at, v.sku,
+                EXISTS (SELECT 1 FROM stock_reservations r WHERE r.allocation_id = l.allocation_id AND r.status = 'active' AND r.backorder) AS awaiting
+         FROM purchase_order_links l JOIN purchase_orders po ON po.id = l.purchase_order_id JOIN purchase_order_items i ON i.id = l.purchase_order_item_id
+         JOIN product_variants v ON v.id = i.variant_id WHERE l.order_id = $1 ORDER BY l.created_at`,
+        [id],
+      )
+    ).rows;
+    const conversions = (
+      await pool.query(
+        `SELECT c.id::text, v.sku, c.qty, c.rule, c.justification, c.created_at, po.number AS purchase_number, u.name AS actor_name
+         FROM reservation_conversions c JOIN product_variants v ON v.id = c.variant_id LEFT JOIN purchase_orders po ON po.id = c.purchase_order_id
+         LEFT JOIN users u ON u.id = c.actor_id WHERE c.order_id = $1 ORDER BY c.id`,
+        [id],
+      )
+    ).rows;
     const ls = (await pool.query('SELECT dropship_status FROM logistics_settings')).rows[0];
     const body = {
       order,
@@ -652,6 +671,8 @@ export async function logisticsRoutes(app: FastifyInstance) {
       fulfillments,
       reservations,
       decisions,
+      purchaseLinks,
+      conversions,
       dropshipStatus: ls.dropship_status,
       auto: config.ALLOCATION_AUTO,
     };

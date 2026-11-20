@@ -5,7 +5,7 @@
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { pool } from '../src/db/pool.js';
-import { appRole, loggedAs, makeApp, owner, productPayload, resetCatalog, uid } from './helpers.js';
+import { appRole, loggedAs, makeApp, sendPurchase, owner, productPayload, resetCatalog, uid } from './helpers.js';
 
 let app: FastifyInstance;
 let boss: Awaited<ReturnType<typeof loggedAs>>;
@@ -168,7 +168,7 @@ describe('reposição: equivalência com o comportamento anterior à Fase 2', ()
     // Pedidos existentes de B: enviado (entra como "a caminho", mesmo abaixo do minimo com justificativa) e rascunho (nao entra).
     const sent = await boss.post(PO, { supplierId: s1.id, items: [{ packagingId: B.p100.id, packs: '1', minExceptionReason: 'Reposição de teste' }] });
     expect(sent.statusCode, sent.body).toBe(201);
-    expect((await boss.post(`${PO}/${sent.json().order.id}/send`)).statusCode).toBe(200);
+    expect((await sendPurchase(app, boss, sent.json().order.id)).statusCode).toBe(200);
     expect((await boss.post(PO, { supplierId: s1.id, items: [{ packagingId: B.p100.id, packs: '2', minExceptionReason: 'Rascunho de teste' }] })).statusCode).toBe(201);
 
     const ids = [A.variantId, B.variantId];

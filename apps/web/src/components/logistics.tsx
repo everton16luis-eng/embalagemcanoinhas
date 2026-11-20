@@ -66,9 +66,16 @@ type Detail = {
   }[];
   reservations: { id: string; sku: string; qty: string; backorder: boolean; allocation_id: string | null; warehouse_name: string }[];
   decisions: { id: string; kind: string; justification: string | null; created_at: string; actor_name: string | null; recommended_label: string | null; analysis_reason: string | null }[];
+  /** Fase 6: compras vinculadas e encomendas atendidas (conversoes). */
+  purchaseLinks: PurchaseLink[];
+  conversions: Conversion[];
   dropshipStatus: string;
   auto: boolean;
 };
+
+type PurchaseLink = { id: string; purchase_order_id: string; purchase_number: number; purchase_status: string; base_qty: string; status: string; cancel_reason: string | null; sku: string; awaiting: boolean };
+type Conversion = { id: string; sku: string; qty: string; rule: string; justification: string | null; created_at: string; purchase_number: number | null };
+const CONVERSION_RULE: Record<string, string> = { linked: 'vinculada', queue: 'fila de pagamento', reprocess: 'reprocessamento', manual: 'antecipação manual' };
 
 export function LogisticsBadge({ status }: { status: string | null }) {
   if (!status) return null;
@@ -197,6 +204,32 @@ export function AllocationPanel({ orderId, onChange }: { orderId: string; onChan
                   .join(' · ')}
               </span>
             </div>
+          ))}
+        </div>
+      )}
+
+      {(d.purchaseLinks?.length > 0 || d.conversions?.length > 0) && (
+        <div className="mb-4 rounded-md border border-line px-3 py-2 text-[13px]" data-testid="order-purchases">
+          {d.purchaseLinks?.map((l: PurchaseLink) => (
+            <p key={l.id} className={l.status === 'canceled' && l.awaiting ? 'text-warn' : 'text-ink-soft'}>
+              {l.status === 'active' ? 'Encomenda vinculada à ' : 'Vínculo desfeito com a '}
+              {can('purchases.view') ? (
+                <Link href={`/painel/compras/${l.purchase_order_id}`} className="underline underline-offset-2">
+                  compra nº {l.purchase_number}
+                </Link>
+              ) : (
+                `compra nº ${l.purchase_number}`
+              )}{' '}
+              ({l.sku}: {qty(l.base_qty)})
+              {l.status === 'canceled' && `: ${l.cancel_reason}`}
+              {l.status === 'canceled' && l.awaiting && ' — pendente: a encomenda continua aguardando mercadoria, sem cancelamento do pedido.'}
+            </p>
+          ))}
+          {d.conversions?.map((c: Conversion) => (
+            <p key={c.id} className="text-good">
+              {c.sku}: {qty(c.qty)} atendido{c.purchase_number ? ` pela compra nº ${c.purchase_number}` : ''} ({CONVERSION_RULE[c.rule] ?? c.rule}) em {when(c.created_at)}
+              {c.justification && <span className="block text-ink-soft">Justificativa: {c.justification}</span>}
+            </p>
           ))}
         </div>
       )}

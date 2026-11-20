@@ -100,6 +100,27 @@ export function client(app: FastifyInstance, ip = randomIp()) {
   };
 }
 
+const approvers = new WeakMap<FastifyInstance, ReturnType<typeof client>>();
+
+/**
+ * Fase 6: compra do rascunho ao enviado. Envia para aprovacao com quem criou; aprova com outro usuario (gerente com
+ * MFA, D6-4) quando o total passa do limite (0 nos testes: sempre); marca como enviada. Devolve a resposta do envio.
+ */
+export async function sendPurchase(app: FastifyInstance, c: ReturnType<typeof client>, id: string) {
+  const sub = await c.post(`/api/v1/admin/purchase-orders/${id}/submit`);
+  if (sub.statusCode !== 200) return sub;
+  if (sub.json().order.status === 'pending_approval') {
+    let ap = approvers.get(app);
+    if (!ap) {
+      ap = await loggedAs(app, 'manager', { mfa: true });
+      approvers.set(app, ap);
+    }
+    const res = await ap.post(`/api/v1/admin/purchase-orders/${id}/approve`, {});
+    if (res.statusCode !== 200) return res;
+  }
+  return c.post(`/api/v1/admin/purchase-orders/${id}/send`);
+}
+
 /** Usuario do papel, ja logado. */
 export async function loggedAs(app: FastifyInstance, role: string, opts: { mfa?: boolean } = {}) {
   const user = await createUser(role, opts);
@@ -120,12 +141,13 @@ export async function resetCatalog() {
   // Tabelas fiscais e os historicos de fornecedor (0021) recusam TRUNCATE; so no banco de teste o dono desliga a trava para limpar.
   await owner.query('ALTER TABLE fiscal_documents DISABLE TRIGGER fiscal_documents_no_truncate; ALTER TABLE fiscal_files DISABLE TRIGGER fiscal_files_no_truncate; ALTER TABLE supplier_price_history DISABLE TRIGGER supplier_price_history_no_truncate; ALTER TABLE supplier_availability DISABLE TRIGGER supplier_availability_no_truncate');
   await owner.query(
-    'TRUNCATE product_import_rows, product_imports, shipment_events, shipment_checks, shipment_items, allocation_decisions, fulfillment_allocations, fulfillments, ai_calls, bot_security_events, bot_runs, bot_pending_documents, bot_verify_failures, bot_test_sessions,whatsapp_conversations, whatsapp_messages, whatsapp_inbound,whatsapp_optouts, whatsapp_templates, shipping_quote_cache, marketplace_notifications, marketplace_orders, marketplace_listings, marketplace_oauth_states, marketplace_accounts, quote_events, quote_items, quotes, purchase_invoices, fiscal_files, fiscal_document_events, fiscal_documents, fiscal_inutilizations, fiscal_webhook_notifications, fiscal_certificates, fiscal_rules_history, fiscal_rules, shipments, payment_notifications, payments, order_events, order_items, orders, cart_items, carts, customer_addresses, customer_sessions, customers, shipping_options, price_tiers, inventory_count_items, inventory_counts, purchase_receipt_items, purchase_receipts, purchase_order_items, purchase_orders, supplier_price_history, supplier_availability, supplier_products, supplier_contacts, suppliers, stock_adjustment_requests, stock_location_settings, stock_transfer_events, stock_transfer_items, stock_transfers, stock_reservations, stock_reconciliations, stock_opening_balances, stock_location_balances, stock_movements, stock_balances',
+    'TRUNCATE reservation_conversions, purchase_order_links, purchase_receipt_issues, purchase_order_events, product_import_rows, product_imports, shipment_events, shipment_checks, shipment_items, allocation_decisions, fulfillment_allocations, fulfillments, ai_calls, bot_security_events, bot_runs, bot_pending_documents, bot_verify_failures, bot_test_sessions,whatsapp_conversations, whatsapp_messages, whatsapp_inbound,whatsapp_optouts, whatsapp_templates, shipping_quote_cache, marketplace_notifications, marketplace_orders, marketplace_listings, marketplace_oauth_states, marketplace_accounts, quote_events, quote_items, quotes, purchase_invoices, fiscal_files, fiscal_document_events, fiscal_documents, fiscal_inutilizations, fiscal_webhook_notifications, fiscal_certificates, fiscal_rules_history, fiscal_rules, shipments, payment_notifications, payments, order_events, order_items, orders, cart_items, carts, customer_addresses, customer_sessions, customers, shipping_options, price_tiers, inventory_count_items, inventory_counts, purchase_receipt_items, purchase_receipts, purchase_order_items, purchase_orders, supplier_price_history, supplier_availability, supplier_products, supplier_contacts, suppliers, stock_adjustment_requests, stock_location_settings, stock_transfer_events, stock_transfer_items, stock_transfers, stock_reservations, stock_reconciliations, stock_opening_balances, stock_location_balances, stock_movements, stock_balances',
   );
   await owner.query('ALTER TABLE fiscal_documents ENABLE TRIGGER fiscal_documents_no_truncate; ALTER TABLE fiscal_files ENABLE TRIGGER fiscal_files_no_truncate; ALTER TABLE supplier_price_history ENABLE TRIGGER supplier_price_history_no_truncate; ALTER TABLE supplier_availability ENABLE TRIGGER supplier_availability_no_truncate');
   // Depositos criados pelos testes (SGLog Fase 3); o padrao vem da migration e fica.
   await owner.query(`UPDATE logistics_settings SET dropship_status = 'blocked', fiscal_validator_name = NULL, validated_by = NULL, validated_at = NULL, version = 0,
-    multi_shipment_status = 'blocked', multi_validator_name = NULL, multi_validated_by = NULL, multi_validated_at = NULL, distinct_checker = false`);
+    multi_shipment_status = 'blocked', multi_validator_name = NULL, multi_validated_by = NULL, multi_validated_at = NULL, distinct_checker = false,
+    purchase_approval_min_cents = 0, purchase_price_tolerance_pct = 0`);
   await owner.query('DELETE FROM warehouses WHERE NOT is_default');
   await owner.query(`UPDATE warehouses SET name = 'Depósito principal', allocation_priority = 100, cep = NULL, street = NULL, number = NULL, complement = NULL, district = NULL, city = NULL, uf = NULL WHERE is_default`);
   await owner.query(`UPDATE bot_settings SET audience = 'off', mode = 'menu', ai_plan = 'free', ai_monthly_limit_usd = 10, ai_daily_per_phone = 20, typebot_public_id = NULL, test_phones = '{}', hours = '{}', texts = '{}'`);

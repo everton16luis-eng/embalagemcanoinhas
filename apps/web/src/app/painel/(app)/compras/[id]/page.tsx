@@ -6,6 +6,7 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { Fragment, Suspense, useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Guard, useMe } from '@/components/shell';
 import { newKey, packLabel, PackagingPicker, PO_STATUS } from '@/components/stock';
+import { ApprovalPanel, EventsPanel, IssuesPanel, LinksPanel, PURPOSE, RULE, ShippingPanel, WarehouseSelect, type ApprovalInfo, type PoConversion, type PoEvent, type PoIssue, type PoLink } from '@/components/purchases';
 import { SupplierComparisonCompact } from '@/components/suppliers';
 import { Badge, Button, Field, Input, Notice, PageHeader, Panel, Select, Textarea } from '@/components/ui';
 import { api } from '@/lib/api';
@@ -20,6 +21,8 @@ type Item = {
   packs: string;
   pack_cost_cents: string;
   received_packs: string;
+  rejected_packs: string;
+  linked_qty: string;
   sku: string;
   product_name: string;
   base_unit: string;
@@ -28,8 +31,18 @@ type Item = {
   order_multiple_packs: string | null;
   min_exception_reason: string | null;
 };
-type Order = {
+type Order = ApprovalInfo & {
   id: string;
+  purpose: string;
+  warehouse_id: string;
+  warehouse_name: string;
+  created_by: string;
+  carrier: string | null;
+  tracking_code: string | null;
+  events: PoEvent[];
+  issues: PoIssue[];
+  links: PoLink[];
+  conversions: PoConversion[];
   number: number;
   supplier_id: string;
   supplier_name: string;
@@ -46,7 +59,14 @@ type Order = {
   goods_cents: string;
   created_by_name: string;
   items: Item[];
-  receipts: { id: string; invoice_ref: string | null; notes: string | null; received_at: string; received_by_name: string; items: { itemId: string; packs: string; baseQty: string; unitCostCents: string; allocatedExtraCents: string }[] }[];
+  receipts: {
+    id: string;
+    invoice_ref: string | null;
+    notes: string | null;
+    received_at: string;
+    received_by_name: string;
+    items: { itemId: string; packs: string; baseQty: string; unitCostCents: string; allocatedExtraCents: string; rejectedPacks: string; rejectedBaseQty: string; rejectedDestination: string | null; invoicedPackCostCents: string | null }[];
+  }[];
 };
 type Line = { packagingId: string; variantId: string; label: string; productName: string; sku: string; baseQty: string; baseUnit: string; packs: string; cost: string; reason: string };
 type OfferTerms = { cost: string; min: string | null; multiple: string | null };
@@ -77,6 +97,8 @@ function OrderForm({ order, onSaved }: { order: Order | null; onSaved: (o: Order
   const [other, setOther] = useState(order ? centsToInput(order.other_costs_cents) : '');
   const [expectedAt, setExpectedAt] = useState(order?.expected_at ?? '');
   const [notes, setNotes] = useState(order?.notes ?? '');
+  const [purpose, setPurpose] = useState(order?.purpose ?? 'replenishment');
+  const [warehouseId, setWarehouseId] = useState(order?.warehouse_id ?? '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   // Comparacao por linha (so informativa; exige suppliers.view, como no produto).
@@ -115,6 +137,8 @@ function OrderForm({ order, onSaved }: { order: Order | null; onSaved: (o: Order
     setBusy(true);
     const body = {
       supplierId,
+      purpose,
+      warehouseId: warehouseId || null,
       expectedAt: expectedAt || null,
       freightCents: parseMoney(freight) ?? 0,
       otherCostsCents: parseMoney(other) ?? 0,
@@ -153,7 +177,21 @@ function OrderForm({ order, onSaved }: { order: Order | null; onSaved: (o: Order
           )}
         </Field>
         <Field label="Previsão de entrega">{(id) => <Input id={id} type="date" value={expectedAt} onChange={(e) => setExpectedAt(e.target.value)} />}</Field>
+        <Field label="Finalidade">
+          {(id) => (
+            <Select id={id} value={purpose} onChange={(e) => setPurpose(e.target.value)} disabled={order?.status === 'sent'}>
+              {Object.entries(PURPOSE).map(([k, v]) => (
+                <option key={k} value={k}>
+                  {v}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
+        <WarehouseSelect value={warehouseId} onChange={setWarehouseId} disabled={order?.status === 'sent'} />
       </div>
+      {order && order.status !== 'draft' && order.status !== 'sent' && <Notice tone="warn">Salvar alterações devolve o pedido para rascunho: a aprovação anterior deixa de valer.</Notice>}
+      {order?.status === 'sent' && <Notice>Pedido enviado: só a previsão e as observações mudam. Para mudar itens ou valores, cancele e faça outro pedido.</Notice>}
 
       <div>
         <PackagingPicker
@@ -252,28 +290,57 @@ function OrderForm({ order, onSaved }: { order: Order | null; onSaved: (o: Order
   );
 }
 
-function ReceiveForm({ order, onDone }: { order: Order; onDone: (o: Order) => void }) {
+type Extra = { rejected: string; destination: string; reason: string; invoiced: string; justification: string; shortNote: string; open: boolean };
+const blankExtra: Extra = { rejected: '', destination: 'damaged', reason: '', invoiced: '', justification: '', shortNote: '', open: false };
+type ReceiptResult = { order: Order; conversions?: { variantId: string; converted: { orderNumber: number; qty: string; rule: string }[]; stoppedAt: { orderNumber: number; qty: string; free: string } | null }[] };
+
+function ReceiveForm({ order, onDone }: { order: Order; onDone: (o: Order, summary: string | null) => void }) {
   const pending = (i: Item) => Math.max(0, Number(i.packs) - Number(i.received_packs));
   const [packs, setPacks] = useState<Record<string, string>>(() => Object.fromEntries(order.items.map((i) => [i.id, pending(i) ? qtyToInput(String(pending(i))) : ''])));
+  const [extra, setExtra] = useState<Record<string, Extra>>({});
   // Vindo da conferencia da nota de compra (?nf=numero), o numero da NF ja vem preenchido.
   const nf = useSearchParams().get('nf') ?? '';
   const [invoiceRef, setInvoiceRef] = useState(nf.slice(0, 60));
   const [key, setKey] = useState(newKey);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const ex = (id: string) => extra[id] ?? blankExtra;
+  const setEx = (id: string, patch: Partial<Extra>) => setExtra({ ...extra, [id]: { ...ex(id), ...patch } });
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
-    const items = Object.entries(packs)
-      .map(([itemId, v]) => ({ itemId, packs: parseQty(v) }))
-      .filter((i) => i.packs && Number(i.packs) > 0);
+    const items = order.items
+      .map((i) => {
+        const x = ex(i.id);
+        const p = parseQty(packs[i.id] ?? '');
+        if (!p || Number(p) <= 0) return null;
+        const rejected = parseQty(x.rejected);
+        const invoiced = x.invoiced.trim() ? parseMoney(x.invoiced) : null;
+        return {
+          itemId: i.id,
+          packs: p,
+          ...(rejected && Number(rejected) > 0 ? { rejectedPacks: rejected, rejectedDestination: x.destination, rejectedReason: x.reason.trim() || null } : {}),
+          ...(invoiced !== null ? { invoicedPackCostCents: invoiced } : {}),
+          ...(x.justification.trim() ? { priceJustification: x.justification.trim() } : {}),
+        };
+      })
+      .filter(Boolean);
     if (!items.length) return setError('Informe o que chegou.');
+    const issues = order.items
+      .filter((i) => ex(i.id).shortNote.trim().length >= 3)
+      .map((i) => ({ itemId: i.id, kind: 'quantity', expected: pending(i), found: Number(parseQty(packs[i.id] ?? '') || 0), note: ex(i.id).shortNote.trim() }));
     setBusy(true);
     try {
-      const r = await api<{ order: Order }>(`/admin/purchase-orders/${order.id}/receipts`, { method: 'POST', body: { requestKey: key, invoiceRef: invoiceRef.trim() || null, items } });
+      const r = await api<ReceiptResult>(`/admin/purchase-orders/${order.id}/receipts`, { method: 'POST', body: { requestKey: key, invoiceRef: invoiceRef.trim() || null, items, issues } });
       setKey(newKey());
-      onDone(r.order);
+      const conv = (r.conversions ?? []).flatMap((c) => c.converted);
+      const stopped = (r.conversions ?? []).map((c) => c.stoppedAt).filter(Boolean) as { orderNumber: number; qty: string; free: string }[];
+      const parts = [
+        conv.length ? `Encomendas atendidas: ${conv.map((c) => `nº ${c.orderNumber} (${RULE[c.rule] ?? c.rule})`).join(', ')}.` : '',
+        stopped.length ? `Aguardando: ${stopped.map((s) => `nº ${s.orderNumber} precisa de ${qty(s.qty)}, livre ${qty(s.free)}`).join('; ')} (sem atendimento parcial).` : '',
+      ].filter(Boolean);
+      onDone(r.order, parts.length ? parts.join(' ') : null);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -283,18 +350,56 @@ function ReceiveForm({ order, onDone }: { order: Order; onDone: (o: Order) => vo
 
   return (
     <form onSubmit={submit} className="space-y-3">
+      <p className="text-xs text-ink-soft">
+        Destino: <span className="font-medium text-ink">{order.warehouse_name}</span>. O recebimento só entra neste depósito.
+      </p>
       <ul className="divide-y divide-line">
-        {order.items.map((i) => (
-          <li key={i.id} className="flex flex-wrap items-center justify-between gap-3 py-2">
-            <span className="min-w-0 text-sm">
-              <span className="block font-medium">{i.product_name}</span>
-              <span className="block text-xs text-ink-faint">
-                {i.packaging_label} · pendente {qty(pending(i))} de {qty(i.packs)}
-              </span>
-            </span>
-            <Input aria-label={`Recebido de ${i.product_name}`} className="w-24" inputMode="decimal" disabled={!pending(i)} value={packs[i.id] ?? ''} onChange={(e) => setPacks({ ...packs, [i.id]: e.target.value })} />
-          </li>
-        ))}
+        {order.items.map((i) => {
+          const x = ex(i.id);
+          return (
+            <li key={i.id} className="py-2">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <span className="min-w-0 text-sm">
+                  <span className="block font-medium">{i.product_name}</span>
+                  <span className="block text-xs text-ink-faint">
+                    {i.packaging_label} · pendente {qty(pending(i))} de {qty(i.packs)}
+                  </span>
+                </span>
+                <Input aria-label={`Recebido de ${i.product_name}`} className="w-24" inputMode="decimal" disabled={!pending(i)} value={packs[i.id] ?? ''} onChange={(e) => setPacks({ ...packs, [i.id]: e.target.value })} />
+              </div>
+              {pending(i) > 0 && (
+                <button type="button" className="mt-1 text-xs text-act hover:underline" aria-expanded={x.open} onClick={() => setEx(i.id, { open: !x.open })}>
+                  {x.open ? 'Fechar divergências' : 'Recusa, preço da nota ou falta'}
+                </button>
+              )}
+              {x.open && (
+                <div className="mt-2 grid gap-2 rounded-md bg-sunken/50 p-2 sm:grid-cols-2">
+                  <Field label="Recusadas (embalagens)" hint="Parte do que chegou. Não fica disponível para venda.">
+                    {(id) => <Input id={id} inputMode="decimal" value={x.rejected} onChange={(e) => setEx(i.id, { rejected: e.target.value })} />}
+                  </Field>
+                  <Field label="Destino do recusado">
+                    {(id) => (
+                      <Select id={id} value={x.destination} onChange={(e) => setEx(i.id, { destination: e.target.value })}>
+                        <option value="damaged">Avariado</option>
+                        <option value="blocked">Bloqueado (quarentena)</option>
+                      </Select>
+                    )}
+                  </Field>
+                  <Field label="Motivo da recusa">{(id) => <Input id={id} value={x.reason} maxLength={500} onChange={(e) => setEx(i.id, { reason: e.target.value })} />}</Field>
+                  <Field label="Custo da embalagem na nota (R$)" hint={`Pedido: ${money(i.pack_cost_cents)}.`}>
+                    {(id) => <Input id={id} inputMode="decimal" value={x.invoiced} onChange={(e) => setEx(i.id, { invoiced: e.target.value })} />}
+                  </Field>
+                  <Field label="Justificativa do preço" hint="Obrigatória acima da tolerância.">
+                    {(id) => <Input id={id} value={x.justification} maxLength={500} onChange={(e) => setEx(i.id, { justification: e.target.value })} />}
+                  </Field>
+                  <Field label="Falta frente à nota" hint="Descreva se chegou menos do que a nota diz.">
+                    {(id) => <Input id={id} value={x.shortNote} maxLength={500} onChange={(e) => setEx(i.id, { shortNote: e.target.value })} />}
+                  </Field>
+                </div>
+              )}
+            </li>
+          );
+        })}
       </ul>
       <Field label="Nota fiscal do fornecedor" hint="Número ou chave, para conferência.">
         {(id) => <Input id={id} value={invoiceRef} onChange={(e) => setInvoiceRef(e.target.value)} maxLength={60} />}
@@ -311,8 +416,9 @@ function OrderPage() {
   const { id } = useParams<{ id: string }>();
   const isNew = id === 'novo';
   const router = useRouter();
-  const { can } = useMe();
+  const { can, me } = useMe();
   const [order, setOrder] = useState<Order | null>(null);
+  const [summary, setSummary] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState('');
   const load = useCallback(() => {
@@ -333,16 +439,22 @@ function OrderPage() {
   if (!order) return error ? <Notice tone="bad">{error}</Notice> : <p className="text-sm text-ink-faint">Carregando…</p>;
 
   const manage = can('purchases.manage');
-  const action = async (path: string, needsReason?: string) => {
+  const approve = can('purchases.approve');
+  const receive = can('purchases.receive');
+  // D6-4: quem criou ou enviou para aprovacao nao aprova; o proprietario pode, com justificativa (o servidor confere).
+  const own = order.created_by === me.user.id;
+  const action = async (path: string, needsReason?: string, field: 'reason' | 'note' = 'reason') => {
     let reason: string | null = null;
     if (needsReason) {
       reason = window.prompt(needsReason);
       if (!reason) return;
     }
     setError('');
+    setSummary(null);
     try {
-      const r = await api(`/admin/purchase-orders/${order.id}/${path}`, { method: 'POST', body: reason ? { reason } : {} });
+      const r = await api(`/admin/purchase-orders/${order.id}/${path}`, { method: 'POST', body: reason ? { [field]: reason } : {} });
       setOrder(r.order);
+      if (r.pendingOrders?.length) setSummary(`Encomendas que continuam aguardando (vínculo desfeito, pedido não cancelado): ${r.pendingOrders.map((p: { order_number: number }) => `nº ${p.order_number}`).join(', ')}.`);
     } catch (err) {
       setError((err as Error).message);
     }
@@ -364,32 +476,53 @@ function OrderPage() {
           </>
         }
         actions={
-          manage && (
+          (manage || approve) && (
             <>
-              {['draft', 'sent'].includes(order.status) && !editing && <Button onClick={() => setEditing(true)}>Editar</Button>}
-              {order.status === 'draft' && (
+              {manage && ['draft', 'pending_approval', 'approved', 'sent'].includes(order.status) && !editing && <Button onClick={() => setEditing(true)}>Editar</Button>}
+              {manage && order.status === 'draft' && (
+                <Button variant="primary" onClick={() => action('submit')}>
+                  Enviar para aprovação
+                </Button>
+              )}
+              {approve && order.status === 'pending_approval' && (
+                <>
+                  <Button variant="primary" onClick={() => (own ? action('approve', 'Você criou esta compra. Justifique a aprovação (só o proprietário pode):', 'note') : action('approve'))}>
+                    Aprovar
+                  </Button>
+                  <Button onClick={() => action('reject-approval', 'Por que devolver sem aprovar?')}>Devolver</Button>
+                </>
+              )}
+              {manage && order.status === 'approved' && (
                 <Button variant="primary" onClick={() => action('send')}>
                   Marcar como enviado
                 </Button>
               )}
-              {['draft', 'sent'].includes(order.status) && (
+              {manage && ['draft', 'pending_approval', 'approved', 'sent'].includes(order.status) && (
                 <Button variant="danger" onClick={() => action('cancel', 'Motivo do cancelamento:')}>
                   Cancelar
                 </Button>
               )}
-              {order.status === 'partial' && <Button onClick={() => action('close', 'Por que encerrar sem receber o restante?')}>Encerrar saldo pendente</Button>}
+              {manage && order.status === 'partial' && <Button onClick={() => action('close', 'Por que encerrar sem receber o restante?')}>Encerrar saldo pendente</Button>}
             </>
           )
         }
       />
       <div className="mb-4 flex flex-wrap items-center gap-2 text-sm">
         <Badge tone={status.tone}>{status.label}</Badge>
+        <span className="text-ink-soft">
+          {PURPOSE[order.purpose] ?? order.purpose} · destino {order.warehouse_name}
+        </span>
         {order.expected_at && <span className="text-ink-soft">Previsão {new Date(`${order.expected_at}T12:00:00`).toLocaleDateString('pt-BR')}</span>}
         {order.cancel_reason && <span className="text-ink-soft">· {order.cancel_reason}</span>}
       </div>
       {error && (
         <div className="mb-4">
           <Notice tone="bad">{error}</Notice>
+        </div>
+      )}
+      {summary && (
+        <div className="mb-4" data-testid="po-summary">
+          <Notice tone="good">{summary}</Notice>
         </div>
       )}
 
@@ -428,7 +561,10 @@ function OrderPage() {
                           {i.min_exception_reason && <span className="block text-xs text-warn">Abaixo do mínimo ou fora do múltiplo do fornecedor: {i.min_exception_reason}</span>}
                         </td>
                         <td className="num py-2 pl-3 text-right">{qty(i.packs)}</td>
-                        <td className={`num py-2 pl-3 text-right ${Number(i.received_packs) >= Number(i.packs) ? 'text-good' : ''}`}>{qty(i.received_packs)}</td>
+                        <td className={`num py-2 pl-3 text-right ${Number(i.received_packs) >= Number(i.packs) ? 'text-good' : ''}`}>
+                          {qty(i.received_packs)}
+                          {Number(i.rejected_packs) > 0 && <span className="block text-xs text-warn">{qty(i.rejected_packs)} recusada(s)</span>}
+                        </td>
                         <td className="num py-2 pr-4 pl-3 text-right sm:pr-5">{money(Math.round(Number(i.packs) * Number(i.pack_cost_cents)))}</td>
                       </tr>
                     ))}
@@ -474,6 +610,11 @@ function OrderPage() {
                               <span className="num">
                                 {unitMoney(ri.unitCostCents)}/{it?.base_unit}
                               </span>
+                              {Number(ri.rejectedBaseQty) > 0 && (
+                                <span className="w-full text-xs text-warn">
+                                  Recusado: {qty(ri.rejectedBaseQty)} {it?.base_unit} para {ri.rejectedDestination === 'damaged' ? 'avariado' : 'bloqueado'}
+                                </span>
+                              )}
                             </li>
                           );
                         })}
@@ -484,16 +625,34 @@ function OrderPage() {
               )}
             </Panel>
           </div>
-          {manage && ['sent', 'partial'].includes(order.status) && (
-            <Panel title="Receber mercadoria" description="Confira com a nota. Quantidade em embalagens do pedido; pode receber em partes.">
-              <ReceiveForm key={order.version} order={order} onDone={setOrder} />
-            </Panel>
-          )}
-          {order.status === 'draft' && (
-            <div>
-              <Notice>Rascunho: marque como enviado depois de mandar o pedido ao fornecedor. Só então o recebimento fica disponível.</Notice>
-            </div>
-          )}
+          <div className="min-w-0 space-y-5">
+            {receive && ['sent', 'partial'].includes(order.status) && (
+              <Panel title="Receber mercadoria" description="Confira com a nota. Quantidade em embalagens do pedido; pode receber em partes.">
+                <ReceiveForm
+                  key={order.version}
+                  order={order}
+                  onDone={(o, s) => {
+                    setOrder(o);
+                    setSummary(s);
+                  }}
+                />
+              </Panel>
+            )}
+            {['draft', 'pending_approval', 'approved'].includes(order.status) && (
+              <Notice>
+                {order.status === 'draft'
+                  ? 'Rascunho: envie para aprovação. Depois de aprovado, marque como enviado ao mandar o pedido ao fornecedor; só então o recebimento fica disponível.'
+                  : order.status === 'pending_approval'
+                    ? 'Aguardando aprovação de outra pessoa com a permissão.'
+                    : 'Aprovado: marque como enviado depois de mandar o pedido ao fornecedor.'}
+              </Notice>
+            )}
+            <ApprovalPanel order={order} canPay={can('purchases.pay')} onChange={(o: Order) => setOrder(o)} />
+            <ShippingPanel order={order} canEdit={manage} onChange={(o: Order) => setOrder(o)} />
+            <LinksPanel order={order} canManage={manage} onChange={(o: Order) => setOrder(o)} />
+            <IssuesPanel issues={order.issues} items={order.items} />
+            <EventsPanel events={order.events} />
+          </div>
         </div>
       )}
     </>

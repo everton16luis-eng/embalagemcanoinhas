@@ -3,6 +3,7 @@
 import Link from '@/components/painel-link';
 import { useEffect, useState } from 'react';
 import { Guard, useMe } from '@/components/shell';
+import { PurchaseRules } from '@/components/purchases';
 import { PO_STATUS } from '@/components/stock';
 import { Badge, Button, Empty, Notice, PageHeader, Select } from '@/components/ui';
 import { api } from '@/lib/api';
@@ -46,6 +47,7 @@ function PurchaseList() {
           </>
         }
       />
+      <PurchaseRules canEdit={can('settings.manage')} />
       <Select aria-label="Situação" value={status} onChange={(e) => setStatus(e.target.value)} className="mb-4 w-auto">
         <option value="open">Em aberto</option>
         <option value="">Todos</option>

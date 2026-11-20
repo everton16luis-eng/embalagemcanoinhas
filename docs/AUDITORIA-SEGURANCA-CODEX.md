@@ -56,6 +56,10 @@ base legal e transparência ao titular: aviso na conversa e na política de priv
 
 A (b) é a mais limpa.
 
+**Contexto (20/11/2026).** A trava foi retirada a pedido do usuário, porque a IA não respondia nem aos números de
+teste. Enquanto o público do bot estiver em "teste", não há exposição de clientes reais. O risco vale a partir do
+momento em que o público passar para "todos" com o plano gratuito.
+
 ### 2. MÉDIA — "SAIR" deixou de desligar as notificações já consentidas
 
 **Onde.** `apps/api/src/modules/whatsapp.ts`: `STOP_WORDS` e `optinText`.
@@ -125,8 +129,9 @@ fica o registro.
 
 ### 7. PROCESSO
 
-- **Registro incompleto.** 5 dos 10 commits (bot, Gemini, WhatsApp) não estão em `ALTERACOES-CODEX.md`, que diz
-  registrar toda alteração.
+- **Registro incompleto.** 5 dos 10 commits (bot, Gemini, WhatsApp) não estavam em `ALTERACOES-CODEX.md`, que diz
+  registrar toda alteração. Em 20/11/2026 eles foram registrados retroativamente na cópia do ramo `sglog/fase4`,
+  ainda sem commit.
 - **Publicação direta.** Os commits foram direto para `origin/main`, fora do fluxo de ramo e revisão.
 - **Divergência.** A `main` local tem 6 commits de documentação que não estão no GitHub, e o GitHub tem os 10 do
   Codex. A integração da Fase 4 vai precisar juntar as duas, com merge, sem rebase e sem force push.

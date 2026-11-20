@@ -127,7 +127,7 @@ const c = new pg.Client({ host: process.env.DB_HOST, port: Number(process.env.DB
   if (neg) fail.push('saldo negativo em deposito');
   const lg = await q("SELECT status, coalesce(logistics_status, '-') AS logistica, allocation_required AS exige, count(*)::int AS n FROM orders GROUP BY 1, 2, 3 ORDER BY 1, 2");
   console.log('pedidos (comercial / logistica / exige alocacao): ' + JSON.stringify(lg));
-  if (lg.some((r) => ['paid', 'preparing', 'ready'].includes(r.status) && r.logistica !== 'awaiting' && r.logistica !== 'analysis')) fail.push('pedido em aberto sem situacao logistica');
+  if (lg.some((r) => ['paid', 'preparing', 'ready'].includes(r.status) && !['awaiting', 'analysis', 'processing'].includes(r.logistica))) fail.push('pedido em aberto sem situacao logistica');
   if (lg.some((r) => ['paid', 'preparing', 'ready'].includes(r.status) && r.exige)) fail.push('pedido anterior marcado como exigindo alocacao');
   const sem = (await q("SELECT count(*)::int AS n FROM stock_reservations WHERE status = 'active' AND warehouse_id IS NULL"))[0].n;
   console.log('reservas ativas sem deposito: ' + sem);

@@ -444,18 +444,40 @@ Depois dos testes:
 
 ## SGLog Fase 4 — alocação dos pedidos ([23-sglog-fase4.md](23-sglog-fase4.md))
 
-**Situação: implementada localmente no ramo `sglog/fase4`, sem push, merge ou implantação.** Roteiro da VPS em
+**Situação: implantada na VPS de testes em 20/11/2026, commit `7d2ae42`.** Roteiro em
 [24-sglog-fase4-implantacao.md](24-sglog-fase4-implantacao.md). A alocação automática fica desligada
 (`ALLOCATION_AUTO` ausente) até esta validação terminar.
 
+Implantação em 20/11/2026:
+
+- Backups `20261120-132859` e `20261120-133128`, ambos conferidos.
+- Ensaio da 0023 na cópia: 0 ms de espera pelos bloqueios e 80 ms de bloqueio. Mostrou 29 pedidos em aberto aguardando alocação, 399 encerrados com situação logística, 76 reservas no depósito padrão e 0 divergências.
+- Migração no banco real com os mesmos números, 174 ms de bloqueio.
+- Builds da API e da web sem erro, serviços `active`, `/ready` respondendo `{"ok":true}` e log sem erros.
+- Bloco 5.1 depois do reinício: `RESULTADO: OK`. C1–C9 sem divergência nas 204 variantes, 0 reservas ativas sem depósito e dropshipping `blocked`.
+
 Validação pelo painel HTTPS, depois da implantação:
 
-- [ ] **Fila.** Logística → Alocação abre a 375 px sem rolagem lateral. Mostra:
+- [x] **Fila.** Logística → Alocação abre a 375 px sem rolagem lateral. Mostra:
   - os contadores;
   - "Alocação automática desligada";
   - os pedidos que estavam em aberto como "Aguardando alocação" ou "Em análise", com o motivo.
-- [ ] **Pedido antigo.** Um pedido em aberto antes da atualização despacha como antes, sem pedir alocação.
+
+  Em 20/11/2026, no Chrome a 375 px: 0 em análise, 29 aguardando e 0 alocados, com a alocação automática desligada. O detalhe da alocação, a página do pedido e a busca da loja também abriram sem rolagem lateral.
+- [x] **Pedido antigo.** Um pedido em aberto antes da atualização despacha como antes, sem pedir alocação.
+  Em 20/11/2026, o pedido nº 1421 mostra o bloco "Alocação", sem o aviso de alocação obrigatória. O despacho está bloqueado só pela NF-e, como antes da atualização, porque o fiscal não está configurado.
 - [ ] **Pedido novo, caso simples.** Pagar um pedido de teste e abrir o bloco "Alocação". Conferir:
+
+  Parcial em 20/11/2026, feito no pedido de demonstração nº 1421, com pagamento simulado:
+  - a recomendada foi "Estoque próprio — Depósito principal", confirmada sem pedir motivo;
+  - o selo passou a "Alocado" e a reserva a "BIC-21: 3 no Depósito principal";
+  - o histórico ganhou um único registro;
+  - a fila passou a 28 aguardando e 1 alocado;
+  - o bloco 5.1 seguinte deu C1–C9 sem divergência, com 1 atendimento e 1 decisão.
+
+  Falta o pedido novo pago. O aviso e a liberação do despacho só podem ser vistos com a NF-e autorizada ou dispensada, porque a trava da alocação vem depois da trava da NF-e.
+
+  Conferir num pedido novo:
   - a recomendada é "Estoque próprio — Depósito principal";
   - o despacho fica bloqueado com o aviso antes de confirmar;
   - confirmar não pede motivo;
@@ -474,12 +496,13 @@ Validação pelo painel HTTPS, depois da implantação:
   no Mercado Pago continua manual, como antes.
 - [ ] **Falta descoberta.** Contar a menos, no inventário, um item reservado para pedido alocado. O pedido volta para
   "Em análise" com "Falta descoberta".
-- [ ] **Dropshipping.** Aparece "Bloqueado". Só o proprietário ou o gerente com MFA vê o campo para liberar. **Não
+- [x] **Dropshipping.** Aparece "Bloqueado". Só o proprietário ou o gerente com MFA vê o campo para liberar. **Não
   liberar** antes da validação fiscal.
 - [ ] **Permissões.**
   - Estoquista e comprador veem a fila e o detalhe, sem os botões.
   - Financeiro não vê o menu.
   - Vendas não vê custo de fornecedor.
-- [ ] **Banco.** O bloco 5.1 do roteiro, rodado de novo, dá `RESULTADO: OK`, com C1–C9 sem divergência.
+- [x] **Banco.** O bloco 5.1 do roteiro, rodado de novo, dá `RESULTADO: OK`, com C1–C9 sem divergência.
+  Em 20/11/2026, depois da alocação do pedido nº 1421: C1–C9 sem divergência nas 204 variantes, com 1 atendimento e 1 decisão. A versão daquele dia do script acusava `PARAR` para o pedido alocado (`processing`); o roteiro foi corrigido para aceitar essa situação.
 - [ ] **Depois de tudo aprovado.** Decidir se liga `ALLOCATION_AUTO=on` (D4-2). Ligada, a rotina passa a confirmar
   sozinha o caso simples.

@@ -7,6 +7,7 @@ import { marketplaceTick } from './modules/marketplaces.js';
 import { whatsappTick } from './modules/whatsapp.js';
 import { botTick } from './modules/bot.js';
 import { expireOrders } from './modules/orders.js';
+import { allocatePending } from './modules/logistics.js';
 
 // Recuperacao de senha pelo SMTP do .env (docs/EMAIL.md). Sem SMTP o link nao e entregue; o token nunca vai para o log.
 const app = await buildApp({});
@@ -24,6 +25,10 @@ const expiry = setInterval(() => {
   expireOrders(app.payments)
     .then((n) => n && app.log.info(`${n} pedido(s) sem pagamento cancelado(s)`))
     .catch((err) => app.log.error(err, 'falha ao cancelar pedidos vencidos'));
+  // SGLog Fase 4: pedidos pagos aguardando alocacao (fora do pagamento). ALLOCATION_AUTO=off so separa os de analise.
+  allocatePending({ auto: config.ALLOCATION_AUTO })
+    .then((r) => (r.allocated || r.analysis || r.failed) && app.log.info({ allocation: r }, 'rotina de alocação'))
+    .catch((err) => app.log.error(err, 'falha na rotina de alocação'));
   // NF-e em processamento: consulta o provedor; com politica "ao pagar", emite as notas devidas.
   fiscalTick(app.fiscal)
     .then((r) => (r.synced || r.emitted) && app.log.info(`fiscal: ${r.synced} nota(s) consultada(s), ${r.emitted} emitida(s)`))

@@ -167,6 +167,8 @@ export async function moveStock(db: Db, actorId: string | null, m: Movement): Pr
       ],
     );
     await db.query('RELEASE SAVEPOINT move_stock_location');
+    // SGLog Fase 4: saida que nao e venda pode descobrir reserva de pedido ja alocado (inventario, perda, avaria).
+    if (onHand.startsWith('-') && m.kind !== 'sale') await flagShortage(db, m.variantId, m.warehouseId ?? null);
     return rows[0]!;
   } catch (err) {
     // O total comporta, mas o deposito da linha nao (mercadoria em outro deposito).
@@ -174,6 +176,40 @@ export async function moveStock(db: Db, actorId: string | null, m: Movement): Pr
     await db.query('ROLLBACK TO SAVEPOINT move_stock_location');
     throw await bucketError(db, err.constraint, m, true);
   }
+}
+
+/**
+ * Falta descoberta depois da alocacao (D4, regra 13): se o fisico do deposito ficou abaixo das reservas firmes de
+ * pedidos em atendimento, esses pedidos voltam para analise com o motivo. Nada e cancelado nem liberado. Pedido
+ * travado por outra transacao (confirmacao em andamento) e pulado: ela confere a cobertura depois de travar a variante.
+ */
+async function flagShortage(db: Db, variantId: string, warehouseId: string | null) {
+  const { rows } = await db.query<{ order_id: string }>(
+    `WITH wh AS (SELECT id, name FROM warehouses WHERE id = coalesce($2::uuid, (SELECT id FROM warehouses WHERE is_default))),
+     firm AS (SELECT coalesce(sum(r.qty), 0) AS qty FROM stock_reservations r, wh
+              WHERE r.variant_id = $1 AND r.status = 'active' AND NOT r.backorder AND r.allocation_id IS NOT NULL AND r.warehouse_id = wh.id),
+     loc AS (SELECT coalesce((SELECT l.on_hand FROM stock_location_balances l, wh WHERE l.warehouse_id = wh.id AND l.variant_id = $1), 0) AS on_hand),
+     hit AS (
+       SELECT o.id FROM orders o
+        WHERE o.logistics_status = 'processing'
+          AND (SELECT on_hand FROM loc) < (SELECT qty FROM firm)
+          AND EXISTS (SELECT 1 FROM stock_reservations r, wh WHERE r.source_type = 'order' AND r.source_id = o.id::text AND r.variant_id = $1
+                        AND r.status = 'active' AND NOT r.backorder AND r.allocation_id IS NOT NULL AND r.warehouse_id = wh.id)
+        FOR UPDATE OF o SKIP LOCKED
+     ),
+     upd AS (
+       UPDATE orders o SET logistics_status = 'analysis', logistics_version = o.logistics_version + 1,
+              logistics_note = left(format('Falta descoberta: %s no depósito %s (físico %s, reservado para pedidos %s).',
+                (SELECT sku FROM product_variants WHERE id = $1), (SELECT name FROM wh), (SELECT on_hand FROM loc)::numeric, (SELECT qty FROM firm)::numeric), 500)
+         FROM hit WHERE o.id = hit.id
+       RETURNING o.id, o.logistics_note
+     )
+     INSERT INTO allocation_decisions (order_id, kind, chosen, actor_id)
+     SELECT upd.id, 'shortage', jsonb_build_object('variantId', $1::uuid, 'warehouseId', (SELECT id FROM wh), 'note', upd.logistics_note), app_user_id() FROM upd
+     RETURNING order_id`,
+    [variantId, warehouseId],
+  );
+  return rows.length;
 }
 
 /** Deposito padrao (PRINCIPAL). */
@@ -236,18 +272,34 @@ export type Reservation = {
   source_type: string;
   source_id: string;
   expires_at: string | null;
+  /** SGLog Fase 4: deposito da reserva (nulo = padrao, reservas anteriores a 0023) e alocacao do pedido. */
+  warehouse_id: string | null;
+  allocation_id: string | null;
 };
-const RES_COLS = 'id, variant_id, qty, status, backorder, source_type, source_id, expires_at';
+export const RES_COLS = 'id, variant_id, qty, status, backorder, source_type, source_id, expires_at, warehouse_id, allocation_id';
 
 /**
  * Reserva quantidade para um carrinho, pedido ou orcamento. O saldo da variacao fica bloqueado
  * durante a conferencia, entao duas reservas simultaneas nunca vendem a mesma unidade.
  * Produto sob encomenda pode reservar alem do disponivel (a diferenca vira compra).
+ *
+ * SGLog Fase 4: sem `warehouseId`, reserva no deposito padrao conferindo o total, como antes (checkout, orcamento,
+ * marketplace). Com `warehouseId` (alocacao), confere o livre daquele deposito; `allowBackorder` (encomenda ao
+ * fornecedor) aceita reservar alem do fisico do deposito, como o sob encomenda.
  */
 export async function reserve(
   db: Db,
   actorId: string | null,
-  r: { variantId: string; qty: string; sourceType: 'order' | 'cart' | 'quote' | 'manual'; sourceId: string; expiresAt?: Date | null },
+  r: {
+    variantId: string;
+    qty: string;
+    sourceType: 'order' | 'cart' | 'quote' | 'manual';
+    sourceId: string;
+    expiresAt?: Date | null;
+    warehouseId?: string | null;
+    allocationId?: string | null;
+    allowBackorder?: boolean;
+  },
 ): Promise<Reservation> {
   const info = await variantInfo(db, r.variantId);
   assertWhole(info, r.qty);
@@ -258,31 +310,53 @@ export async function reserve(
       [r.variantId, r.qty],
     )
   ).rows[0]!;
+  const warehouse = r.warehouseId ? await activeWarehouse(db, r.warehouseId) : null;
+  const warehouseId = warehouse?.id ?? (await defaultWarehouseId(db));
 
   const existing = (
-    await db.query<Reservation>(`SELECT ${RES_COLS} FROM stock_reservations WHERE source_type = $1 AND source_id = $2 AND variant_id = $3 AND status = 'active'`, [
-      r.sourceType,
-      r.sourceId,
-      r.variantId,
-    ])
+    await db.query<Reservation>(
+      `SELECT ${RES_COLS} FROM stock_reservations WHERE source_type = $1 AND source_id = $2 AND variant_id = $3 AND status = 'active'
+         AND allocation_id IS NOT DISTINCT FROM $4::uuid`,
+      [r.sourceType, r.sourceId, r.variantId, r.allocationId ?? null],
+    )
   ).rows[0];
   if (existing) {
     // Repeticao do mesmo pedido: devolve a reserva ja feita em vez de reservar duas vezes.
-    if (Number(existing.qty) === Number(r.qty)) return existing;
+    if (Number(existing.qty) === Number(r.qty) && (existing.warehouse_id ?? warehouseId) === warehouseId) return existing;
     throw new AppError(409, 'RESERVATION_EXISTS', 'Já existe reserva ativa desta origem para este item. Libere-a antes de reservar outra quantidade.');
   }
 
-  const backorder = !bal.enough;
-  if (backorder && info.availability_mode !== 'made_to_order') {
-    throw new AppError(409, 'INSUFFICIENT_STOCK', `${info.sku}: disponível ${bal.available}, pedido ${r.qty}.`, { available: bal.available, requested: r.qty });
+  let backorder: boolean;
+  if (warehouse) {
+    const free = (
+      await db.query<{ free: string; enough: boolean }>(
+        `SELECT (coalesce(l.on_hand, 0) - coalesce(l.reserved, 0))::text AS free, coalesce(l.on_hand, 0) - coalesce(l.reserved, 0) >= $3::numeric AS enough
+         FROM (SELECT 1) x LEFT JOIN stock_location_balances l ON l.warehouse_id = $1 AND l.variant_id = $2`,
+        [warehouse.id, r.variantId, r.qty],
+      )
+    ).rows[0]!;
+    backorder = !free.enough;
+    if (backorder && !r.allowBackorder) {
+      throw new AppError(409, 'INSUFFICIENT_STOCK', `${info.sku}: livre no depósito ${warehouse.name} ${Number(free.free)}, pedido ${Number(r.qty)}.`, {
+        available: free.free,
+        requested: r.qty,
+        warehouse: warehouse.name,
+      });
+    }
+  } else {
+    backorder = !bal.enough;
+    if (backorder && info.availability_mode !== 'made_to_order') {
+      throw new AppError(409, 'INSUFFICIENT_STOCK', `${info.sku}: disponível ${bal.available}, pedido ${r.qty}.`, { available: bal.available, requested: r.qty });
+    }
   }
   const { rows } = await db.query<Reservation>(
-    `INSERT INTO stock_reservations (variant_id, qty, backorder, source_type, source_id, expires_at, created_by)
-     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING ${RES_COLS}`,
-    [r.variantId, r.qty, backorder, r.sourceType, r.sourceId, r.expiresAt ?? null, actorId || null],
+    `INSERT INTO stock_reservations (variant_id, qty, backorder, source_type, source_id, expires_at, created_by, warehouse_id, allocation_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING ${RES_COLS}`,
+    [r.variantId, r.qty, backorder, r.sourceType, r.sourceId, r.expiresAt ?? null, actorId || null, warehouseId, r.allocationId ?? null],
   );
   const res = rows[0]!;
-  await moveStock(db, actorId, { variantId: r.variantId, kind: 'reserve', reservedDelta: r.qty, sourceType: 'reservation', sourceId: res.id });
+  // Movimento sem deposito explicito continua nulo (= padrao), como o codigo anterior gravava.
+  await moveStock(db, actorId, { variantId: r.variantId, kind: 'reserve', reservedDelta: r.qty, sourceType: 'reservation', sourceId: res.id, warehouseId: warehouse?.id ?? null });
   return res;
 }
 
@@ -293,17 +367,25 @@ async function lockReservation(db: Db, id: string) {
 }
 
 /** Libera a reserva (desistencia, pagamento recusado ou prazo vencido). Repetir nao tem efeito. */
-export async function releaseReservation(db: Db, actorId: string | null, id: string, status: 'released' | 'expired' = 'released') {
+export async function releaseReservation(db: Db, actorId: string | null, id: string, status: 'released' | 'expired' = 'released', reason: string | null = null) {
   const res = await lockReservation(db, id);
   if (res.status !== 'active') return { reservation: res, changed: false };
   await db.query(`UPDATE stock_reservations SET status = $2, closed_at = now() WHERE id = $1`, [id, status]);
-  await moveStock(db, actorId, { variantId: res.variant_id, kind: 'release', reservedDelta: neg(res.qty), sourceType: 'reservation', sourceId: id, reason: status === 'expired' ? 'Reserva vencida' : null });
+  await moveStock(db, actorId, {
+    variantId: res.variant_id,
+    kind: 'release',
+    reservedDelta: neg(res.qty),
+    sourceType: 'reservation',
+    sourceId: id,
+    reason: reason ?? (status === 'expired' ? 'Reserva vencida' : null),
+    warehouseId: res.warehouse_id,
+  });
   return { reservation: { ...res, status }, changed: true };
 }
 
 /**
- * Baixa a reserva como venda: sai do fisico e do reservado no mesmo movimento. Item sob
- * encomenda so baixa quando a mercadoria chegou (fisico suficiente).
+ * Baixa a reserva como venda: sai do fisico e do reservado no mesmo movimento, no deposito da reserva. Item sob
+ * encomenda so baixa quando a mercadoria chegou (fisico suficiente no deposito).
  */
 export async function consumeReservation(db: Db, actorId: string | null, id: string, source: { sourceType: SourceType; sourceId: string }) {
   const res = await lockReservation(db, id);
@@ -316,6 +398,7 @@ export async function consumeReservation(db: Db, actorId: string | null, id: str
     reservedDelta: neg(res.qty),
     sourceType: source.sourceType,
     sourceId: source.sourceId,
+    warehouseId: res.warehouse_id,
   });
   await db.query(`UPDATE stock_reservations SET status = 'consumed', closed_at = now() WHERE id = $1`, [id]);
   return { reservation: { ...res, status: 'consumed' as const }, changed: true, movement };

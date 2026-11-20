@@ -6,7 +6,7 @@ import { pool } from '../src/db/pool.js';
 import { FakeProvider, MercadoPagoProvider } from '../src/lib/payments.js';
 import { unitPrice } from '../src/lib/pricing.js';
 import { expireOrders, mulQty } from '../src/modules/orders.js';
-import { appRole, loggedAs, makeApp, ORIGIN, owner, productPayload, randomIp, resetCatalog, uid } from './helpers.js';
+import { allocateOrder, appRole, loggedAs, makeApp, ORIGIN, owner, productPayload, randomIp, resetCatalog, uid } from './helpers.js';
 
 let app: FastifyInstance;
 let fake: FakeProvider;
@@ -400,6 +400,10 @@ describe('painel de pedidos e despacho', () => {
 
     // Fase 5 grava a autorizacao da NF-e; aqui o teste simula.
     await owner.query(`UPDATE orders SET invoice_status = 'authorized' WHERE id = $1`, [o.id]);
+    // SGLog Fase 4: com a NF-e autorizada, ainda falta a alocacao.
+    const noAlloc = await boss.post(`${A}/dispatch`, { version: order.version, carrier: 'Próprio' });
+    expect(noAlloc.json().error.code).toBe('ALLOCATION_REQUIRED');
+    await allocateOrder(boss, o.id);
     const sent = await boss.post(`${A}/dispatch`, { version: order.version, carrier: 'Próprio', volumes: 1 });
     expect(sent.statusCode, sent.body).toBe(200);
     expect(sent.json().order).toMatchObject({ status: 'shipped', shipment: { carrier: 'Próprio', volumes: 1 } });

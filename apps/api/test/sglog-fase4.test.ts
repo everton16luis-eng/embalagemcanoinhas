@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { pool } from '../src/db/pool.js';
 import { FakeProvider } from '../src/lib/payments.js';
 import { allocatePending } from '../src/modules/logistics.js';
-import { appRole, loggedAs, makeApp, ORIGIN, owner, productPayload, randomIp, resetCatalog, uid } from './helpers.js';
+import { appRole, loggedAs, packOrder, shipOrder, makeApp, ORIGIN, owner, productPayload, randomIp, resetCatalog, uid } from './helpers.js';
 
 // SGLog Fase 4 (docs/23-sglog-fase4.md): alocacao dos pedidos pagos em deposito ou fornecedor, reservas por deposito,
 // concorrencia, cancelamentos, encomenda, trava do dropshipping, falta descoberta, permissoes e conciliacao C1-C9.
@@ -153,6 +153,12 @@ async function toReady(id: string) {
   return v as number;
 }
 
+/** SGLog Fase 5: pedido alocado sai pela remessa (separar, conferir, embalar e despachar), com a NF-e autorizada. */
+async function ship(id: string) {
+  await owner.query(`UPDATE orders SET invoice_status = 'authorized' WHERE id = $1`, [id]);
+  return shipOrder(boss, id, { carrier: 'Próprio' });
+}
+
 describe('elegibilidade e compatibilidade', () => {
   it('pagamento só torna o pedido elegível; pedido antigo despacha como antes, o novo só com alocação', async () => {
     const { variantId, pack50 } = await newProduct('500');
@@ -200,10 +206,9 @@ describe('alocação manual e reserva por depósito', () => {
     expect(dec[0].output.warehouses[0]).toMatchObject({ id: principal, coversAll: true });
     expect(await reconcile()).toEqual([]);
 
-    const v = await toReady(id);
-    const sent = await boss.post(`/api/v1/admin/orders/${id}/dispatch`, { version: v, carrier: 'Próprio', volumes: 1 });
-    expect(sent.statusCode, sent.body).toBe(200);
-    expect(await orderRow(id)).toMatchObject({ status: 'shipped', logistics_status: 'shipped' });
+    await ship(id);
+    // Retirada na loja: entregue ao cliente de uma vez (Fase 5).
+    expect(await orderRow(id)).toMatchObject({ status: 'delivered', logistics_status: 'completed' });
     expect((await owner.query(`SELECT status FROM fulfillments WHERE order_id = $1`, [id])).rows).toEqual([{ status: 'done' }]);
     expect((await decisions(id)).map((x) => x.kind)).toEqual(['manual', 'shipped']);
     expect(await total(variantId)).toMatchObject({ on_hand: '350.000', reserved: '0.000' });
@@ -233,8 +238,7 @@ describe('alocação manual e reserva por depósito', () => {
     ]);
     expect(await reconcile()).toEqual([]);
     // Despacho baixa do deposito da reserva.
-    const v = await toReady(id);
-    expect((await boss.post(`/api/v1/admin/orders/${id}/dispatch`, { version: v, carrier: 'Próprio' })).statusCode).toBe(200);
+    await ship(id);
     expect(await loc(g, variantId)).toMatchObject({ on_hand: '50.000', reserved: '0.000' });
     expect(await reconcile()).toEqual([]);
   });
@@ -400,15 +404,13 @@ describe('encomenda ao fornecedor e dropshipping', () => {
       { source_kind: 'own', mode: 'stock', supplier_id: null },
     ]);
     expect(await reconcile()).toEqual([]);
-    // Sem a mercadoria: o despacho nao baixa estoque que nao existe.
-    const v = await toReady(id);
-    const early = await boss.post(`/api/v1/admin/orders/${id}/dispatch`, { version: v, carrier: 'Próprio' });
-    expect(early.statusCode).toBe(409);
+    // Sem a mercadoria: a encomenda nao pode nem ser separada (Fase 5) e nada sai do estoque.
+    const early = await packOrder(boss, id).catch((e: Error) => e);
+    expect(String((early as Error).message)).toContain('AWAITING_GOODS');
     expect(await total(variantId)).toMatchObject({ on_hand: '60.000' });
-    // Chegou (entrada no padrao): despacha.
+    // Chegou (entrada no padrao): separa, confere e despacha.
     await move(variantId, 'adjustment', '90');
-    const sent = await boss.post(`/api/v1/admin/orders/${id}/dispatch`, { version: v, carrier: 'Próprio' });
-    expect(sent.statusCode, sent.body).toBe(200);
+    await ship(id);
     expect(await total(variantId)).toMatchObject({ on_hand: '0.000', reserved: '0.000' });
     expect(await reconcile()).toEqual([]);
   });

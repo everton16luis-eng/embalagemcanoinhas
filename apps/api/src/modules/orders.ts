@@ -11,6 +11,7 @@ import { idParams, likePattern, pageQuery } from '../lib/http.js';
 import type { PaymentProvider, ProviderPayment } from '../lib/payments.js';
 import { consumeReservation, releaseReservation, reserve } from '../lib/stock.js';
 import { currentOptinText, queueOrderMessage } from './whatsapp.js';
+import { closePendingShipments, orderShipments } from './shipments.js';
 import { carrierProvider, originCep } from '../lib/carriers.js';
 import { requirePermission } from './auth.js';
 import { addressSchema, documentFor, personSchema, requireCustomer } from './customers.js';
@@ -74,8 +75,17 @@ export async function orderView(db: Db | typeof pool, orderId: string, opts: { s
       [orderId],
     )
   ).rows;
-  const shipment = (await db.query('SELECT carrier, tracking_code, tracking_url, volumes, weight_g, shipped_at, delivered_at FROM shipments WHERE order_id = $1', [orderId])).rows[0] ?? null;
-  return { ...o, items, payments, events, shipment, invoice: await invoiceSummary(db, orderId) };
+  // SGLog Fase 5: varias remessas. `shipment` continua (telas e integracoes antigas): a despachada mais recente.
+  const shipment =
+    (
+      await db.query(
+        `SELECT carrier, tracking_code, tracking_url, volumes, weight_g, shipped_at, delivered_at FROM shipments
+         WHERE order_id = $1 AND status NOT IN ('pending', 'picking', 'checking', 'packed', 'canceled') ORDER BY seq DESC LIMIT 1`,
+        [orderId],
+      )
+    ).rows[0] ?? null;
+  const shipments = await orderShipments(db, orderId, { staff: opts.staff });
+  return { ...o, items, payments, events, shipment, shipments, invoice: await invoiceSummary(db, orderId) };
 }
 
 async function orderByToken(db: Db | typeof pool, token: string) {
@@ -649,6 +659,10 @@ export async function adminOrderRoutes(app: FastifyInstance) {
       const o = (await db.query<{ status: string; version: number }>('SELECT status, version FROM orders WHERE id = $1 FOR UPDATE', [id])).rows[0];
       if (!o) throw notFound();
       if (o.version !== b.version) throw new AppError(409, 'VERSION_CONFLICT', 'O pedido foi alterado por outra pessoa. Recarregue a página.');
+      // SGLog Fase 5 (D5-5): com remessa nova, separacao e "pronto" vem da remessa; botoes manuais so nos antigos.
+      if ((await db.query(`SELECT 1 FROM shipments WHERE order_id = $1 AND kind <> 'legacy' AND status <> 'canceled'`, [id])).rows[0]) {
+        throw new AppError(409, 'SHIPMENT_DRIVEN', 'A situação deste pedido vem da remessa. Use a tela de Expedição para separar, conferir e embalar.');
+      }
       if (!NEXT[o.status]?.includes(b.to)) throw new AppError(409, 'INVALID_TRANSITION', 'Esta mudança de situação não é permitida agora.');
       await db.query('UPDATE orders SET status = $2, updated_at = now(), version = version + 1 WHERE id = $1', [id, b.to]);
       await addEvent(db, id, b.to, b.note || null, auth.userId);
@@ -674,6 +688,16 @@ export async function adminOrderRoutes(app: FastifyInstance) {
       if (o.invoice_status === 'authorized' || o.invoice_status === 'processing') {
         throw new AppError(409, 'INVOICE_ACTIVE', 'O pedido tem NF-e autorizada ou em processamento. Cancele a nota antes de cancelar o pedido.');
       }
+      // SGLog Fase 5: mercadoria separada volta ao lugar antes (registro na remessa); as remessas abertas sao
+      // canceladas pelo gatilho junto com o pedido.
+      const held = (
+        await db.query<{ seq: number }>(
+          `SELECT s.seq FROM shipments s JOIN shipment_items i ON i.shipment_id = s.id
+           WHERE s.order_id = $1 AND s.status IN ('pending', 'picking', 'checking', 'packed') AND i.picked_qty > 0 LIMIT 1`,
+          [id],
+        )
+      ).rows[0];
+      if (held) throw new AppError(409, 'GOODS_PICKED', `A remessa nº ${held.seq} tem mercadoria separada. Devolva ao lugar na tela de Expedição antes de cancelar o pedido.`);
       const wasPaid = o.status !== 'pending_payment';
       await db.query(`UPDATE orders SET status = 'canceled', canceled_at = now(), cancel_reason = $2, updated_at = now(), version = version + 1 WHERE id = $1`, [id, b.reason]);
       await db.query(`UPDATE payments SET status = 'canceled', updated_at = now() WHERE order_id = $1 AND status IN ('created', 'pending')`, [id]);
@@ -715,10 +739,24 @@ export async function adminOrderRoutes(app: FastifyInstance) {
       if (o.allocation_required && o.logistics_status !== 'processing') {
         throw new AppError(409, 'ALLOCATION_REQUIRED', 'Confirme a alocação do pedido (depósito ou fornecedor) antes de despachar.');
       }
+      // SGLog Fase 5: pedido novo com mercadoria propria (estoque ou encomenda) sai pela remessa, com separacao e
+      // conferencia. Pedido antigo segue por aqui; a remessa pendente criada para ele e cancelada.
+      if (o.allocation_required) {
+        const own = (
+          await db.query(
+            `SELECT 1 FROM fulfillments f JOIN fulfillment_allocations a ON a.fulfillment_id = f.id
+             WHERE f.order_id = $1 AND f.status = 'confirmed' AND f.mode IN ('stock', 'purchase_to_order') AND a.status = 'active' LIMIT 1`,
+            [id],
+          )
+        ).rows[0];
+        if (own) throw new AppError(409, 'USE_SHIPMENT', 'Este pedido sai pela remessa: separe, confira e embale na tela de Expedição para despachar.');
+      }
+      await closePendingShipments(db, auth.userId, id, 'Despachado pelo fluxo anterior (pedido antigo)');
       const res = (await db.query<{ id: string }>(`SELECT id FROM stock_reservations WHERE source_type = 'order' AND source_id = $1 AND status = 'active'`, [id])).rows;
       for (const r of res) await consumeReservation(db, auth.userId, r.id, { sourceType: 'order', sourceId: id });
       await db.query(
-        `INSERT INTO shipments (order_id, carrier, tracking_code, tracking_url, volumes, weight_g, shipped_at, shipped_by) VALUES ($1, $2, $3, $4, $5, $6, now(), $7)`,
+        `INSERT INTO shipments (order_id, seq, carrier, tracking_code, tracking_url, volumes, weight_g, shipped_at, shipped_by)
+         VALUES ($1, (SELECT coalesce(max(seq), 0) + 1 FROM shipments WHERE order_id = $1), $2, $3, $4, $5, $6, now(), $7)`,
         [id, b.carrier || null, b.trackingCode || null, b.trackingUrl || null, b.volumes ?? null, b.weightG ?? null, auth.userId],
       );
       await db.query(`UPDATE orders SET status = 'shipped', updated_at = now(), version = version + 1 WHERE id = $1`, [id]);
@@ -738,6 +776,9 @@ export async function adminOrderRoutes(app: FastifyInstance) {
       if (!o) throw notFound();
       if (o.version !== version) throw new AppError(409, 'VERSION_CONFLICT', 'O pedido foi alterado por outra pessoa. Recarregue a página.');
       if (o.status !== 'shipped') throw new AppError(409, 'INVALID_TRANSITION', 'Só pedidos despachados podem ser marcados como entregues.');
+      if ((await db.query(`SELECT 1 FROM shipments WHERE order_id = $1 AND kind <> 'legacy' AND status <> 'canceled'`, [id])).rows[0]) {
+        throw new AppError(409, 'SHIPMENT_DRIVEN', 'Marque a entrega em cada remessa, na tela de Expedição.');
+      }
       // Remessa antiga (despacho antigo): a situacao acompanha a data de entrega.
       await db.query(`UPDATE shipments SET delivered_at = now(), status = 'delivered', updated_at = now() WHERE order_id = $1 AND kind = 'legacy' AND status = 'shipped'`, [id]);
       await db.query(`UPDATE orders SET status = 'delivered', updated_at = now(), version = version + 1 WHERE id = $1`, [id]);

@@ -8,7 +8,7 @@ import { FakeCarrier, MelhorEnvioProvider, type Fetcher } from '../src/lib/carri
 import { FakeProvider } from '../src/lib/payments.js';
 import { CloudApiProvider, FakeWhatsApp, toWhatsAppNumber } from '../src/lib/whatsapp.js';
 import { whatsappTick } from '../src/modules/whatsapp.js';
-import { allocateOrder, appRole, loggedAs, makeApp, ORIGIN, owner, productPayload, randomIp, resetCatalog, uid } from './helpers.js';
+import { allocateOrder, appRole, shipOrder, loggedAs, makeApp, ORIGIN, owner, productPayload, randomIp, resetCatalog, uid } from './helpers.js';
 
 let app: FastifyInstance;
 let boss: Awaited<ReturnType<typeof loggedAs>>;
@@ -139,15 +139,14 @@ describe('WhatsApp: avisos do pedido', () => {
       v = r.json().order.version;
     }
     await allocateOrder(boss, o.id);
-    const d = await boss.post(`/api/v1/admin/orders/${o.id}/dispatch`, { version: v, carrier: 'Correios', trackingCode: 'AB123456789BR' });
-    expect(d.statusCode, d.body).toBe(200);
-    // Repetir o evento nao duplica.
-    await pool.query(`SELECT 1`);
+    // SGLog Fase 5: pedido novo sai pela remessa (separar, conferir, embalar, despachar).
+    await shipOrder(boss, o.id, { carrier: 'Correios', trackingCode: 'AB123456789BR' });
+    // Retirada: entregar ao cliente nao manda "despachado" (o aviso foi o de pronto). O aviso de despacho por
+    // remessa, com o rastreio, esta em sglog-fase5.test.ts.
     await whatsappTick(wa);
     const msgs = (await owner.query('SELECT event, status, params FROM whatsapp_messages WHERE order_id = $1 ORDER BY created_at', [o.id])).rows;
-    expect(msgs.map((m) => m.event)).toEqual(['order_paid', 'order_ready', 'order_shipped']);
+    expect(msgs.map((m) => m.event)).toEqual(['order_paid', 'order_ready']);
     expect(msgs.every((m) => m.status === 'sent')).toBe(true);
-    expect(msgs[2].params).toMatchObject({ rastreio: 'AB123456789BR' });
   });
 
   it('recusa definitiva marca falha; falha temporária tenta de novo', async () => {

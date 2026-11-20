@@ -170,3 +170,55 @@ export async function allocateOrder(c: ReturnType<typeof client>, orderId: strin
   if (r.statusCode !== 200) throw new Error(`alocacao: ${r.body}`);
   return r.json();
 }
+
+/**
+ * SGLog Fase 5: leva a remessa pendente do pedido ate embalada (separa e confere tudo pelo SKU). Devolve a remessa.
+ * `c` precisa de shipping.pick.
+ */
+export async function packOrder(c: ReturnType<typeof client>, orderId: string, packages = [{ weightG: 1000 }]) {
+  const key = () => `test-${randomBytes(6).toString('hex')}`;
+  const o = (await c.get(`/api/v1/admin/orders/${orderId}`)).json().order;
+  const open = (o.shipments as { id: string; status: string }[]).find((s) => ['pending', 'picking', 'checking', 'packed'].includes(s.status));
+  if (!open) throw new Error(`pedido sem remessa aberta: ${JSON.stringify(o.shipments)}`);
+  const S = `/api/v1/admin/shipments/${open.id}`;
+  const step = async (path: string, body: Record<string, unknown>) => {
+    const r = await c.post(`${S}${path}`, { requestKey: key(), ...body });
+    if (r.statusCode !== 200) throw new Error(`${path}: ${r.body}`);
+    return r.json().shipment;
+  };
+  const g = await c.get(S);
+  if (g.statusCode !== 200) throw new Error(`remessa: ${g.body}`);
+  let s = g.json().shipment;
+  if (s.status === 'pending') s = await step('/start', { version: s.version });
+  if (s.status === 'picking') {
+    for (const it of s.items.filter((i: { status: string }) => i.status === 'active')) {
+      const rest = Number(it.base_qty) - Number(it.picked_qty);
+      if (rest > 0) s = await step('/pick', { itemId: it.id, qty: String(rest) });
+    }
+    s = await step('/finish-picking', { version: s.version });
+  }
+  if (s.status === 'checking') {
+    for (const it of s.items.filter((i: { status: string }) => i.status === 'active')) {
+      const rest = Number(it.picked_qty) - Number(it.checked_qty);
+      if (rest > 0) s = await step('/check', { sku: it.sku, qty: String(rest) });
+    }
+    s = await step('/pack', { version: s.version, packages });
+  }
+  return s;
+}
+
+/** Embala (se preciso) e despacha a remessa do pedido. `c` precisa de shipping.pick e shipping.manage. */
+export async function shipOrder(c: ReturnType<typeof client>, orderId: string, b: { carrier?: string; trackingCode?: string; trackingUrl?: string } = {}) {
+  const s = await packOrder(c, orderId);
+  const r = await c.post(`/api/v1/admin/shipments/${s.id}/dispatch`, { version: s.version, requestKey: `test-${randomBytes(6).toString('hex')}`, ...b });
+  if (r.statusCode !== 200) throw new Error(`despacho: ${r.body}`);
+  return { shipment: r.json().shipment, order: (await c.get(`/api/v1/admin/orders/${orderId}`)).json().order };
+}
+
+/** Marca a remessa despachada como entregue. */
+export async function deliverShipment(c: ReturnType<typeof client>, shipmentId: string) {
+  const s = (await c.get(`/api/v1/admin/shipments/${shipmentId}`)).json().shipment;
+  const r = await c.post(`/api/v1/admin/shipments/${shipmentId}/deliver`, { version: s.version, requestKey: `test-${randomBytes(6).toString('hex')}` });
+  if (r.statusCode !== 200) throw new Error(`entrega: ${r.body}`);
+  return r.json().shipment;
+}

@@ -234,8 +234,9 @@ async function projectOrder(db: Db, order: OrderRow, actorId: string, note: stri
        logistics_version = CASE WHEN $3 IS DISTINCT FROM logistics_status THEN logistics_version + 1 ELSE logistics_version END WHERE id = $1`,
     [order.id, status, logistics],
   );
-  if (status === 'shipped' && order.status === 'shipped' && !open.length) {
-    // Ultima remessa de um pedido ja 'shipped' (despacho parcial antes): o gatilho nao roda, encerra aqui.
+  if ((status === 'shipped' || status === 'delivered') && !open.length) {
+    // Nada mais a sair: encerra os atendimentos. O gatilho cobre a passagem para 'shipped'; aqui ficam a ultima
+    // remessa de um pedido ja 'shipped' (despacho parcial antes) e a retirada, que vai direto para 'delivered'.
     const n =
       (await db.query(`UPDATE fulfillments SET status = 'done', closed_at = now() WHERE order_id = $1 AND status = 'confirmed'`, [order.id])).rowCount ?? 0;
     if (n) await db.query(`INSERT INTO allocation_decisions (order_id, kind, chosen, actor_id) VALUES ($1, 'shipped', $2, $3)`, [order.id, JSON.stringify({ fulfillments: n }), actorId]);
@@ -412,7 +413,7 @@ export async function shipmentView(db: Db | typeof pool, id: string, auth?: Auth
               l.bin, coalesce(r.backorder, false) AS backorder, r.qty AS reserved_qty, p.base_unit
        FROM shipment_items i JOIN product_variants v ON v.id = i.variant_id JOIN products p ON p.id = v.product_id JOIN order_items oi ON oi.id = i.order_item_id
        JOIN shipments x ON x.id = i.shipment_id
-       LEFT JOIN stock_location_balances l ON l.warehouse_id = x.warehouse_id AND l.variant_id = i.variant_id
+       LEFT JOIN stock_location_settings l ON l.warehouse_id = x.warehouse_id AND l.variant_id = i.variant_id
        LEFT JOIN stock_reservations r ON r.allocation_id = i.allocation_id AND r.status = 'active'
        WHERE i.shipment_id = $1 ORDER BY i.status, l.bin NULLS LAST, v.sku, i.id`,
       [id],

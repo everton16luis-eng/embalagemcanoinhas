@@ -18,6 +18,7 @@ import { idParams, isUniqueViolation, pageQuery } from '../lib/http.js';
 import { defaultWarehouseId, lockVariants, releaseReservation, reserve, RES_COLS, type Reservation } from '../lib/stock.js';
 import { requireAnyPermission, requirePermission, type Auth } from './auth.js';
 import { mulQty } from './orders.js';
+import { closePendingShipments, createShipmentsForOrder } from './shipments.js';
 import { offerInputs, offerRows, settings as supplierSettings } from './suppliers.js';
 
 export const OPEN_ORDER = ['paid', 'preparing', 'ready'];
@@ -332,8 +333,10 @@ async function applyAllocation(
 ) {
   // Pedido que voltou para analise (falta descoberta) ainda tem o atendimento anterior confirmado: a nova alocacao o
   // substitui. Sem isso, a trava do teto por item recusa a nova alocacao.
-  if (meta.kind === 'change') await closeFulfillments(db, order.id, meta.justification!);
-  else await closeFulfillments(db, order.id, `Nova alocação do pedido em análise${order.logistics_note ? `: ${order.logistics_note}` : ''}`.slice(0, 500));
+  // SGLog Fase 5: remessa com mercadoria em manuseio recusa a troca; a pendente e cancelada e nasce outra abaixo.
+  const reason = meta.kind === 'change' ? meta.justification! : `Nova alocação do pedido em análise${order.logistics_note ? `: ${order.logistics_note}` : ''}`.slice(0, 500);
+  await closePendingShipments(db, actorId, order.id, reason);
+  await closeFulfillments(db, order.id, reason);
   const decisionId = await decision(db, {
     orderId: order.id,
     kind: meta.kind,
@@ -376,6 +379,7 @@ async function applyAllocation(
     }
   }
   await swapReservations(db, actorId, order, targets, items.map((i) => i.variant_id));
+  await createShipmentsForOrder(db, actorId, order.id, meta.kind === 'auto' ? 'Remessa criada na alocação automática' : null);
   await db.query(
     `UPDATE orders SET logistics_status = 'processing', logistics_note = NULL, logistics_version = logistics_version + 1, logistics_checked_at = now() WHERE id = $1`,
     [order.id],
@@ -452,6 +456,7 @@ export async function cancelAllocation(auth: Auth, orderId: string, b: z.infer<t
       if (order.logistics_version !== b.logisticsVersion) throw new AppError(409, 'VERSION_CONFLICT', 'A alocação do pedido mudou. Recarregue a página.');
       if (order.logistics_status !== 'processing' || !OPEN_ORDER.includes(order.status)) throw new AppError(409, 'NOT_ALLOCATED', 'O pedido não tem alocação confirmada em aberto.');
       const items = await orderItems(db, orderId);
+      await closePendingShipments(db, auth.userId, orderId, `Alocação desfeita: ${b.reason}`);
       await lockVariants(db, items.map((i) => i.variant_id));
       await closeFulfillments(db, orderId, b.reason);
       for (const variantId of [...new Set(items.map((i) => i.variant_id))].sort()) {

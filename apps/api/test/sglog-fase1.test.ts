@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { pool } from '../src/db/pool.js';
 import { FakeProvider } from '../src/lib/payments.js';
 import { testDatabaseProblem, testEnvProblem, TEST_DB_MARK } from './env-guard.js';
-import { allocateOrder, appRole, loggedAs, makeApp, ORIGIN, owner, productPayload, randomIp, resetCatalog, uid } from './helpers.js';
+import { allocateOrder, appRole, shipOrder, loggedAs, makeApp, ORIGIN, owner, productPayload, randomIp, resetCatalog, uid } from './helpers.js';
 
 // SGLog Fase 1 (docs/15-sglog-fase1.md): depositos, saldo por deposito, abertura, conferencia, papeis e travas.
 
@@ -140,8 +140,7 @@ describe('saldo por depósito acompanha o saldo total', () => {
     const o = await readyOrder(3);
     expect((await totals(o.variantId)).location).toEqual(['500.000', '150.000']);
     await allocateOrder(boss, o.id);
-    const sent = await boss.post(`/api/v1/admin/orders/${o.id}/dispatch`, { version: o.version, carrier: 'Próprio', volumes: 1 });
-    expect(sent.statusCode, sent.body).toBe(200);
+    await shipOrder(boss, o.id, { carrier: 'Próprio' });
     const t = await totals(o.variantId);
     expect(t.total).toEqual(['350.000', '0.000']);
     expect(t.location).toEqual(t.total);
@@ -315,7 +314,8 @@ describe('papéis novos (menor privilégio)', () => {
   const expected = {
     // Fase 3 (D3-2): transferencia e ajuste com MFA (stock.adjust) para o gerente de logistica.
     // Fase 4 (D4-11): logistics.view para logistica e comprador; logistics.allocate so para a logistica. Financeiro sem.
-    logistics: ['catalog.view', 'logistics.allocate', 'logistics.view', 'orders.view', 'purchases.view', 'shipping.manage', 'stock.adjust', 'stock.manage', 'stock.transfer', 'stock.view', 'suppliers.view'],
+    // Fase 5 (D5-8): separar/conferir (shipping.pick) e criar/dividir/cancelar remessa (logistics.manage).
+    logistics: ['catalog.view', 'logistics.allocate', 'logistics.manage', 'logistics.view', 'orders.view', 'purchases.view', 'shipping.manage', 'shipping.pick', 'stock.adjust', 'stock.manage', 'stock.transfer', 'stock.view', 'suppliers.view'],
     buyer: ['catalog.view', 'logistics.view', 'purchases.manage', 'purchases.view', 'stock.view', 'suppliers.manage', 'suppliers.view'],
     finance: ['orders.view', 'purchases.view', 'reports.view', 'suppliers.view'],
   };
@@ -348,8 +348,7 @@ describe('papéis novos (menor privilégio)', () => {
     expect((await lg.post('/api/v1/admin/suppliers', { name: `Fornecedor ${uid()}` })).statusCode).toBe(403);
     expect((await lg.get('/api/v1/admin/users')).statusCode).toBe(403);
     await allocateOrder(lg, o.id);
-    const sent = await lg.post(`${A}/dispatch`, { version: o.version, carrier: 'Próprio', volumes: 1 });
-    expect(sent.statusCode, sent.body).toBe(200);
+    await shipOrder(lg, o.id, { carrier: 'Próprio' });
     expect(await reconcile()).toEqual([]);
   });
 

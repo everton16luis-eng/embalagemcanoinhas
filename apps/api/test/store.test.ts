@@ -6,7 +6,7 @@ import { pool } from '../src/db/pool.js';
 import { FakeProvider, MercadoPagoProvider } from '../src/lib/payments.js';
 import { unitPrice } from '../src/lib/pricing.js';
 import { expireOrders, mulQty } from '../src/modules/orders.js';
-import { allocateOrder, appRole, loggedAs, makeApp, ORIGIN, owner, productPayload, randomIp, resetCatalog, uid } from './helpers.js';
+import { allocateOrder, appRole, shipOrder, loggedAs, makeApp, ORIGIN, owner, productPayload, randomIp, resetCatalog, uid } from './helpers.js';
 
 let app: FastifyInstance;
 let fake: FakeProvider;
@@ -404,14 +404,16 @@ describe('painel de pedidos e despacho', () => {
     const noAlloc = await boss.post(`${A}/dispatch`, { version: order.version, carrier: 'Próprio' });
     expect(noAlloc.json().error.code).toBe('ALLOCATION_REQUIRED');
     await allocateOrder(boss, o.id);
-    const sent = await boss.post(`${A}/dispatch`, { version: order.version, carrier: 'Próprio', volumes: 1 });
-    expect(sent.statusCode, sent.body).toBe(200);
-    expect(sent.json().order).toMatchObject({ status: 'shipped', shipment: { carrier: 'Próprio', volumes: 1 } });
+    // SGLog Fase 5 (D5-5): pedido novo sai pela remessa; o despacho antigo recusa e os botoes manuais tambem.
+    expect((await boss.post(`${A}/dispatch`, { version: order.version, carrier: 'Próprio' })).json().error.code).toBe('USE_SHIPMENT');
+    // Retirada na loja: entregar ao cliente fecha a remessa como entregue de uma vez (planejamento §3.7).
+    const sent = await shipOrder(boss, o.id, { carrier: 'Próprio' });
+    expect(sent.shipment).toMatchObject({ kind: 'pickup', status: 'delivered', volumes: 1 });
+    expect(sent.order).toMatchObject({ status: 'delivered', logistics_status: 'completed' });
     const b = await balance(o.variantId);
     expect([b.on_hand, b.reserved]).toEqual(['400.000', '0.000']);
-    expect((await boss.post(`${A}/cancel`, { reason: 'Desistiu', version: sent.json().order.version })).json().error.code).toBe('INVALID_TRANSITION');
-    const done = await boss.post(`${A}/deliver`, { version: sent.json().order.version });
-    expect(done.json().order.status).toBe('delivered');
+    expect((await boss.post(`${A}/cancel`, { reason: 'Desistiu', version: sent.order.version })).json().error.code).toBe('INVALID_TRANSITION');
+    expect((await boss.post(`${A}/deliver`, { version: sent.order.version })).json().error.code).toBe('INVALID_TRANSITION');
   });
 
   it('cancelar pedido pago libera a reserva e avisa da devolução', async () => {

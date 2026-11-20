@@ -621,3 +621,50 @@ Validação pelo painel HTTPS, depois da implantação:
   liberar "Remessas múltiplas" em Expedição → Regras, com o nome de quem validou.
 - [ ] **Usuários por perfil.** Quando houver: estoquista separa e confere, mas não despacha nem cancela remessa;
   financeiro não vê a expedição.
+
+## SGLog Fase 6 — compras, recebimento e encomendas ([29-sglog-fase6.md](29-sglog-fase6.md))
+
+**Situação: implementada só no local, branch `sglog/fase6`. Não implantada.** O roteiro de implantação está em
+[30-sglog-fase6-implantacao.md](30-sglog-fase6-implantacao.md); execute-o só depois do merge e do push autorizados.
+Continuam assim:
+- `ALLOCATION_AUTO` desligado;
+- dropshipping e remessas múltiplas bloqueados;
+- limite de aprovação R$ 0.
+
+Validação pelo painel HTTPS, depois da implantação. Use só compras de teste, com valores pequenos, e não informe
+pagamento real.
+
+- [ ] **Regras.** Compras mostra "Regras da compra: Toda compra passa por aprovação" e tolerância 0%. Não altere.
+- [ ] **Aprovação.**
+  1. Crie um rascunho de compra de teste e clique "Enviar para aprovação": a compra fica "Aguardando aprovação".
+  2. Com o mesmo usuário, "Aprovar" deve recusar. Sem MFA, a recusa pede para ativar a verificação. Com MFA, quem
+     criou só aprova se for o proprietário, com justificativa, e a compra mostra "Aprovado pelo próprio proprietário".
+  3. Se houver um segundo usuário gerente com MFA, aprove com ele.
+- [ ] **Edição depois de aprovada** volta para rascunho, com "Voltou para rascunho" no histórico.
+- [ ] **Pagamento informado.** Com o Financeiro, ou com você: informar data e valor fictícios mostra "Informação
+  administrativa: não confirma o pagamento no banco". Nada muda em Pagamentos e Vendas.
+- [ ] **Recebimento.** Marque como enviado e receba em parte, por exemplo 1 embalagem com outra recusada como
+  "Avariado":
+  1. Anote o saldo antes.
+  2. Depois, o disponível sobe só o aceito e o avariado sobe o recusado.
+  3. A divergência aparece em "Divergências do recebimento".
+- [ ] **Preço da nota.** Informe um custo de nota diferente sem justificativa: deve recusar. Com justificativa, entra e
+  registra divergência de preço.
+- [ ] **Encomenda.** Se houver um pedido pago de produto sob encomenda alocado como "comprar para atender":
+  1. vincule-o à compra em "Encomendas de clientes" e receba;
+  2. o pedido aparece em "Atendidas na chegada desta compra";
+  3. no detalhe logístico do pedido aparece "atendido pela compra nº ...";
+  4. o pedido não muda de situação nem despacha sozinho.
+- [ ] **Encerrar com falta** uma compra com vínculo ainda aguardando:
+  - a tela lista as encomendas pendentes;
+  - o pedido do cliente mostra "Vínculo desfeito ... pendente" e não é cancelado.
+- [ ] **Logística → Encomendas** abre a 375 px sem rolagem lateral. "Reprocessar encomendas" mostra só a prévia;
+  aplique só se a prévia fizer sentido.
+- [ ] **Bloco 5.1** do roteiro de implantação depois dos testes: `RESULTADO: OK`, C1–C13 sem divergência.
+- [ ] **Usuários por perfil**, quando houver:
+  - comprador cria e envia para aprovação, mas não recebe;
+  - estoquista recebe, mas não aprova;
+  - financeiro informa pagamento, mas não aprova.
+- [ ] **Decisões da empresa:**
+  - limite de aprovação de produção (D6-3) e tolerância de preço (D6-12);
+  - quem passa a receber no lugar do comprador (D6-1).

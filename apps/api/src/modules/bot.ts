@@ -9,7 +9,7 @@ import type { AiContent, AiProvider } from '../lib/gemini.js';
 import { TypebotSessionGone, type TbTurn, type TypebotProvider } from '../lib/typebot.js';
 import { interactiveSummary, toWhatsAppNumber, type Interactive, type WhatsAppProvider } from '../lib/whatsapp.js';
 import { requirePermission } from './auth.js';
-import { aiTurn, historyFor, SAFE_REPLY, securitySummary } from './bot-ai.js';
+import { aiTurn, clearAiCooldown, historyFor, SAFE_REPLY, securitySummary } from './bot-ai.js';
 
 /**
  * Bot de atendimento (docs/10-bot-atendimento-proposta.md): etapa 1, menu com regras fixas; etapa 2, IA (Gemini)
@@ -93,7 +93,6 @@ const MAX_VERIFY_FAILS_PHONE = 3;
 const MAX_VERIFY_FAILS_ORDER = 5;
 const STALE_MS = 3_600_000; // mensagem com mais de 1 h nao recebe resposta automatica
 const AGENT_IDLE_MS = 24 * 3_600_000; // conversa com atendente parada ha 24 h volta ao bot
-const phoneHash = (phone: string) => keyedHash(`wa-optout:${phone}`);
 
 const norm = (s: string) =>
   s
@@ -170,11 +169,12 @@ type Ctx = {
   who: string;
   settings: BotSettings;
   now: Date;
-  /** IA liberada para esta conversa (plano pago, ou chat/numero de teste no plano gratuito). */
+  /** IA habilitada para o modo de atendimento configurado. */
   aiAllowed?: boolean;
   channel?: 'whatsapp' | 'teste';
   inboundId?: string | null;
   history?: AiContent[];
+  onAiProcessing?: () => void;
 };
 
 const storeName = async (ctx: Ctx) => (await ctx.db.query<{ store_name: string | null }>('SELECT store_name FROM store_settings')).rows[0]?.store_name || 'loja';
@@ -335,7 +335,7 @@ const AI_BURST_TEXT = 'Recebi várias mensagens seguidas. Me dá um minutinho e 
 
 /**
  * Quem responde: menu ou IA. Botoes, opcoes digitadas e os passos de pedido/documento ficam sempre com o menu.
- * Modo ai: a IA responde o texto livre. Modo menu_ai: o menu abre a conversa e a IA entra no lugar do "Nao entendi".
+ * Nos modos com IA, texto livre é atendido desde a primeira mensagem. O menu continua acessível por comando.
  * IA fora do ar ou limite do mes: o menu responde. Limite diario de quem conversa: passa para atendente.
  */
 export async function respond(ctx: Ctx, state: BotState, input: BotInput): Promise<Out> {
@@ -346,13 +346,25 @@ export async function respond(ctx: Ctx, state: BotState, input: BotInput): Promi
     const ours = choiceOf(input, state.step) !== null || state.step === 'await_order' || state.step === 'await_document' || (input.replyId !== null && !input.replyId.startsWith('tb:'));
     return ours ? menuBot(ctx, state, input) : typebotBot(ctx, state, input);
   }
-  const freeText = !input.replyId && Boolean(input.text?.trim()) && choiceOf(input, state.step) === null && state.step !== 'await_order' && state.step !== 'await_document';
-  const useAi = aiProvider && ctx.aiAllowed && freeText && (mode === 'ai' || (mode === 'menu_ai' && state.step !== null));
-  if (!useAi) return { ...(await menuBot(ctx, state, input)), route: choiceOf(input, state.step) ? `menu:${choiceOf(input, state.step)}` : 'menu' };
+  const choice = choiceOf(input, state.step);
+  const freeText = !input.replyId && Boolean(input.text?.trim()) && choice === null && state.step !== 'await_order' && state.step !== 'await_document';
+  const opening = isAiMode(mode) && state.step === null && choice === null && !input.replyId;
+  const openingText = (body: string, route: string): Out => ({
+    replies: [{ kind: 'text', body }], state: { step: AI_STEP, context: {} }, handoff: false, route,
+  });
+  const greeting = /^(?:oi+e?|ol[aá]|bom dia|boa tarde|boa noite)(?:[\s,.!?]+(?:tudo bem|tudo bom))?[\s,.!?]*$/i;
+  if (opening && (!input.text?.trim() || greeting.test(input.text.trim()))) {
+    return openingText('Oi! 😊 Como posso te ajudar hoje?', 'saudacao');
+  }
+  if (!aiProvider || !ctx.aiAllowed || !freeText || !isAiMode(mode)) {
+    if (opening) return openingText(AI_RETRY_TEXT, 'ia_indisponivel');
+    return { ...(await menuBot(ctx, state, input)), route: choice ? `menu:${choice}` : 'menu' };
+  }
   const inAi = state.step === AI_STEP;
   const menuChoice = async (replyId: string, route: string) => ({ ...(await menuBot(ctx, state, { ...input, text: null, replyId })), route });
   // Falha da IA no meio da conversa: resposta natural e o cliente continua; na segunda seguida, atendente.
   const aiFailed = async (route: string): Promise<Out> => {
+    if (opening) return openingText(AI_RETRY_TEXT, route);
     if (!inAi) return { ...(await menuBot(ctx, state, input)), route };
     const fails = Number(state.context.aiFails ?? 0) + 1;
     if (fails >= 2) return menuChoice('atendente', `${route}:atendente`);
@@ -375,6 +387,7 @@ export async function respond(ctx: Ctx, state: BotState, input: BotInput): Promi
       sameOwner: (p) => samePhone(p, ctx.phone),
       limits: { monthlyUsd: ctx.settings.ai_monthly_limit_usd, dailyPerWho: ctx.settings.ai_daily_per_phone },
       history: ctx.history ?? [],
+      onProcessing: ctx.onAiProcessing,
     },
     input.text!,
   );
@@ -391,11 +404,13 @@ export async function respond(ctx: Ctx, state: BotState, input: BotInput): Promi
         : menuChoice('pedido', 'ia:pedido');
     case 'limit':
       if (r.reason === 'daily') return menuChoice('atendente', 'limite_dia:atendente');
+      if (opening) return openingText(r.reason === 'burst' ? AI_BURST_TEXT : AI_RETRY_TEXT, `limite_${r.reason}`);
       // Verba do mes acabou no meio da conversa: um atendente continua, com o historico.
       if (r.reason === 'monthly') return inAi ? menuChoice('atendente', 'limite_mes:atendente') : { ...(await menuBot(ctx, state, input)), route: 'limite_mes' };
       if (r.reason === 'burst' && inAi) return { replies: [{ kind: 'text', body: AI_BURST_TEXT }], state, handoff: false, route: 'limite_rajada' };
       return { ...(await menuBot(ctx, state, input)), route: `limite_${r.reason}` };
     case 'refused':
+      if (opening) return { ...openingText(SAFE_REPLY, `barrado_${r.reason}`), guarded: true };
       // Barrado pela protecao: resposta padrao da loja, sem detalhe tecnico, com os botoes de sempre.
       return { replies: [AFTER(SAFE_REPLY)], state: { step: 'menu', context: {} }, handoff: false, guarded: true, route: `barrado_${r.reason}` };
     default:
@@ -472,13 +487,11 @@ async function typebotBot(ctx: Ctx, state: BotState, input: BotInput): Promise<O
   };
 }
 
-/** No plano gratuito a IA so atende o chat de teste e os numeros de teste. */
 const isAiMode = (m: BotMode) => m === 'ai' || m === 'menu_ai';
-const aiAllowedFor = (settings: BotSettings, phone: string) => isAiMode(settings.mode) && (settings.ai_plan === 'paid' || settings.test_phones.some((p) => samePhone(p, phone)));
 
 // ---------------- processamento das mensagens recebidas ----------------
 
-type InboundRow = { id: string; from_phone: string; profile_name: string | null; type: string; body: string | null; reply_id: string | null; sent_at: Date };
+type InboundRow = { id: string; wamid: string; from_phone: string; profile_name: string | null; type: string; body: string | null; reply_id: string | null; sent_at: Date };
 type ConvRow = { state: 'bot' | 'agent' | 'closed'; step: string | null; context: Record<string, unknown>; updated_at: Date };
 
 let current: Promise<{ handled: number }> | null = null;
@@ -509,7 +522,11 @@ async function takeDocument(inboundId: string) {
 async function handleOne(provider: WhatsAppProvider, settings: BotSettings, m: InboundRow, now: Date) {
   const claim = async (outcome: string) => ((await pool.query('INSERT INTO bot_runs (inbound_id, outcome) VALUES ($1, $2) ON CONFLICT DO NOTHING', [m.id, outcome])).rowCount ?? 0) > 0;
   if (now.getTime() - m.sent_at.getTime() > STALE_MS) return claim('stale');
-  if ((await pool.query('SELECT 1 FROM whatsapp_optouts WHERE phone_hash = $1', [phoneHash(m.from_phone)])).rows[0]) return claim('opted_out');
+  if ((await pool.query(
+    `SELECT 1 FROM whatsapp_inbound i JOIN bot_runs r ON r.inbound_id = i.id
+     WHERE i.from_phone = $1 AND i.id > $2 AND r.outcome = 'closed_by_customer' LIMIT 1`,
+    [m.from_phone, m.id],
+  )).rowCount) return claim('superseded');
   if (settings.audience === 'test' && !settings.test_phones.some((p) => samePhone(p, m.from_phone))) return claim('not_audience');
 
   const conv = (await pool.query<ConvRow>('SELECT state, step, context, updated_at FROM whatsapp_conversations WHERE phone = $1', [m.from_phone])).rows[0];
@@ -517,9 +534,10 @@ async function handleOne(provider: WhatsAppProvider, settings: BotSettings, m: I
   if (!(await claim('replied'))) return false;
 
   const state: BotState = conv?.state === 'bot' ? { step: conv.step, context: conv.context } : { step: null, context: {} };
-  const aiAllowed = aiAllowedFor(settings, m.from_phone);
+  const aiAllowed = isAiMode(settings.mode);
   const history = aiAllowed && aiProvider ? await historyFor(pool, m.from_phone, m.id) : [];
-  const out = await respond({ db: pool, phone: m.from_phone, who: m.from_phone, settings, now, aiAllowed, history, channel: 'whatsapp', inboundId: m.id }, state, {
+  const onAiProcessing = () => { void provider.showTyping?.(m.wamid).catch(() => {}); };
+  const out = await respond({ db: pool, phone: m.from_phone, who: m.from_phone, settings, now, aiAllowed, history, channel: 'whatsapp', inboundId: m.id, onAiProcessing }, state, {
     text: m.body,
     replyId: m.reply_id,
     type: m.type,
@@ -531,8 +549,9 @@ async function handleOne(provider: WhatsAppProvider, settings: BotSettings, m: I
   await pool.query(
     `INSERT INTO whatsapp_conversations (phone, state, step, context, agent_since, updated_at) VALUES ($1, $2, $3, $4, $5, now())
      ON CONFLICT (phone) DO UPDATE SET state = EXCLUDED.state, step = EXCLUDED.step, context = EXCLUDED.context,
-       agent_since = EXCLUDED.agent_since, assigned_to = CASE WHEN EXCLUDED.state = 'agent' THEN whatsapp_conversations.assigned_to END, updated_at = now()`,
-    [m.from_phone, out.handoff ? 'agent' : 'bot', out.state.step, JSON.stringify(out.state.context), out.handoff ? now : null],
+       agent_since = EXCLUDED.agent_since, assigned_to = CASE WHEN EXCLUDED.state = 'agent' THEN whatsapp_conversations.assigned_to END, updated_at = now()
+     WHERE whatsapp_conversations.state <> 'closed' OR whatsapp_conversations.updated_at <= (SELECT received_at FROM whatsapp_inbound WHERE id = $6)`,
+    [m.from_phone, out.handoff ? 'agent' : 'bot', out.state.step, JSON.stringify(out.state.context), out.handoff ? now : null, m.id],
   );
   return true;
 }
@@ -572,7 +591,7 @@ async function runBot(provider: WhatsAppProvider, now: () => Date) {
       break;
     }
     const { rows } = await pool.query<InboundRow>(
-      `SELECT i.id, i.from_phone, i.profile_name, i.type, i.body, i.reply_id, i.sent_at FROM whatsapp_inbound i
+      `SELECT i.id, i.wamid, i.from_phone, i.profile_name, i.type, i.body, i.reply_id, i.sent_at FROM whatsapp_inbound i
        WHERE i.received_at > now() - interval '2 hours' AND NOT EXISTS (SELECT 1 FROM bot_runs r WHERE r.inbound_id = i.id)
        ORDER BY i.id LIMIT 50`,
     );
@@ -728,6 +747,24 @@ export async function botAdminRoutes(app: FastifyInstance) {
   app.get('/security', async (req) => {
     requirePermission(req, 'bot.manage');
     return securitySummary(pool);
+  });
+
+  app.post('/security/unblock', { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (req) => {
+    const auth = requirePermission(req, 'bot.manage');
+    const { phone } = z.strictObject({ phone: z.string().trim().regex(/^\+?\d{10,15}$/) }).parse(req.body);
+    return tx(auth.userId, async (db) => {
+      const hash = await clearAiCooldown(db, phone.replace(/^\+/, ''));
+      if (hash) {
+        await audit(db, {
+          actorId: auth.userId,
+          action: 'whatsapp.bot_cooldown_cleared',
+          entity: 'bot_security_events',
+          after: { whoHash: hash },
+          ip: auth.ip,
+        });
+      }
+      return { cleared: hash !== null };
+    });
   });
 
   app.delete('/test', async (req) => {

@@ -119,7 +119,8 @@ describe('peças do bot', () => {
     const calls: { url: string; body: any }[] = [];
     const fetcher: Fetcher = async (url, init) => {
       calls.push({ url, body: JSON.parse(init.body!) });
-      return { status: 200, text: async () => JSON.stringify({ messages: [{ id: 'wamid.I1' }] }) };
+      const response = calls.at(-1)?.body.status === 'read' ? { success: true } : { messages: [{ id: 'wamid.I1' }] };
+      return { status: 200, text: async () => JSON.stringify(response) };
     };
     const p = new CloudApiProvider({ phoneNumberId: '123456', accessToken: 'x'.repeat(30), appSecret: 'y'.repeat(20), verifyToken: 'z'.repeat(20), version: 'v27.0' }, fetcher);
     expect(await p.sendInteractive('5547999990000', { type: 'button', body: 'Oi', buttons: [{ id: 'menu', title: 'Menu' }] })).toEqual({ wamid: 'wamid.I1' });
@@ -130,6 +131,8 @@ describe('peças do bot', () => {
       type: 'interactive',
       interactive: { type: 'button', body: { text: 'Oi' }, action: { buttons: [{ type: 'reply', reply: { id: 'menu', title: 'Menu' } }] } },
     });
+    await expect(p.showTyping('wamid.incoming')).resolves.toBeUndefined();
+    expect(calls[1]!.body).toEqual({ messaging_product: 'whatsapp', status: 'read', message_id: 'wamid.incoming', typing_indicator: { type: 'text' } });
   });
 });
 
@@ -247,7 +250,7 @@ describe('bot de menu no WhatsApp', () => {
     expect(view.messages.filter((m: any) => m.source === 'agent')).toHaveLength(1);
   });
 
-  it('não responde duas vezes, nem a quem pediu SAIR, nem mensagem antiga', async () => {
+  it('SAIR encerra sem resposta e a próxima mensagem abre uma nova conversa', async () => {
     await setBot({});
     const dup = say(OTHER_PHONE, 'oi', 'wamid.DUP1');
     await send(dup);
@@ -255,14 +258,17 @@ describe('bot de menu no WhatsApp', () => {
     expect(await botMessages(OTHER_PHONE)).toHaveLength(1);
 
     await send(say(OTHER_PHONE, 'sair'));
-    await send(say(OTHER_PHONE, 'menu'));
     expect(await botMessages(OTHER_PHONE)).toHaveLength(1);
+    const closed = (await boss.post('/api/v1/admin/whatsapp/conversations/view', { phone: OTHER_PHONE })).json();
+    expect(closed).toMatchObject({ state: 'closed', optedOut: false });
+    await send(say(OTHER_PHONE, 'oi'));
+    expect(await botMessages(OTHER_PHONE)).toHaveLength(2);
 
     const old = '5547977776666';
     await send(say(old, 'oi', `wamid.${uid()}`, String(Math.floor(Date.now() / 1000) - 3 * 3600)));
     expect(await botMessages(old)).toHaveLength(0);
     const outcomes = (await owner.query('SELECT outcome, count(*)::int AS n FROM bot_runs GROUP BY outcome')).rows;
-    expect(outcomes).toEqual(expect.arrayContaining([{ outcome: 'opted_out', n: 2 }, { outcome: 'replied', n: 1 }]));
+    expect(outcomes).toEqual(expect.arrayContaining([{ outcome: 'closed_by_customer', n: 1 }, { outcome: 'replied', n: 2 }, { outcome: 'stale', n: 1 }]));
   });
 
   it('texto alterado no painel substitui o padrão; não entendeu volta ao menu', async () => {

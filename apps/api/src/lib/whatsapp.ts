@@ -60,14 +60,15 @@ export interface WhatsAppProvider {
   sendTemplate(m: TemplateSend): Promise<SendResult>;
   sendText(to: string, body: string): Promise<SendResult>;
   sendInteractive(to: string, i: Interactive): Promise<SendResult>;
+  showTyping?(messageId: string): Promise<void>;
   /** X-Hub-Signature-256 = "sha256=" + HMAC-SHA256(app secret, corpo cru). */
   verifySignature(rawBody: string, header: string | undefined): boolean;
   /** Verificacao do webhook (GET): devolve o challenge se o token confere. */
   verifyChallenge(q: Record<string, unknown>): string | null;
 }
 
-export type Fetcher = (url: string, init: { method: string; headers: Record<string, string>; body?: string }) => Promise<{ status: number; text(): Promise<string> }>;
-const defaultFetch: Fetcher = (url, init) => fetch(url, { ...init, signal: AbortSignal.timeout(15_000) });
+export type Fetcher = (url: string, init: { method: string; headers: Record<string, string>; body?: string; signal?: AbortSignal }) => Promise<{ status: number; text(): Promise<string> }>;
+const defaultFetch: Fetcher = (url, init) => fetch(url, { ...init, signal: init.signal ?? AbortSignal.timeout(15_000) });
 
 /** Telefone do cadastro (DDD + numero) no formato internacional sem sinais. Sem DDD valido: null. */
 export function toWhatsAppNumber(phone: string | null | undefined) {
@@ -99,13 +100,14 @@ export class CloudApiProvider implements WhatsAppProvider {
     private readonly fetcher: Fetcher = defaultFetch,
   ) {}
 
-  private async post(payload: Record<string, unknown>): Promise<SendResult> {
+  private async post(payload: Record<string, unknown>, signal?: AbortSignal) {
     let res;
     try {
       res = await this.fetcher(`https://graph.facebook.com/${this.c.version}/${this.c.phoneNumberId}/messages`, {
         method: 'POST',
         headers: { authorization: `Bearer ${this.c.accessToken}`, 'content-type': 'application/json' },
-        body: JSON.stringify({ messaging_product: 'whatsapp', recipient_type: 'individual', ...payload }),
+        body: JSON.stringify({ messaging_product: 'whatsapp', ...payload }),
+        signal,
       });
     } catch (err) {
       throw new WhatsAppTransient(`falha de comunicacao: ${(err as Error).message}`);
@@ -121,6 +123,11 @@ export class CloudApiProvider implements WhatsAppProvider {
     if (res.status === 429 || res.status >= 500) throw new WhatsAppTransient(msg);
     if (res.status === 401) throw new WhatsAppTransient(`token recusado: ${msg}`); // credencial e problema nosso: espera corrigir
     if (res.status < 200 || res.status >= 300) throw new WhatsAppRejected(msg);
+    return body;
+  }
+
+  private async send(payload: Record<string, unknown>): Promise<SendResult> {
+    const body = await this.post({ recipient_type: 'individual', ...payload });
     const wamid = body?.messages?.[0]?.id;
     if (typeof wamid !== 'string') throw new WhatsAppTransient('resposta sem id da mensagem');
     return { wamid };
@@ -128,7 +135,7 @@ export class CloudApiProvider implements WhatsAppProvider {
 
   sendTemplate(m: TemplateSend) {
     const parameters = Object.entries(m.params).map(([parameter_name, text]) => ({ type: 'text', parameter_name, text }));
-    return this.post({
+    return this.send({
       to: m.to,
       type: 'template',
       template: { name: m.name, language: { code: m.language }, ...(parameters.length ? { components: [{ type: 'body', parameters }] } : {}) },
@@ -136,11 +143,15 @@ export class CloudApiProvider implements WhatsAppProvider {
   }
 
   sendText(to: string, body: string) {
-    return this.post({ to, type: 'text', text: { preview_url: false, body } });
+    return this.send({ to, type: 'text', text: { preview_url: false, body } });
   }
 
   sendInteractive(to: string, i: Interactive) {
-    return this.post({ to, type: 'interactive', interactive: interactivePayload(i) });
+    return this.send({ to, type: 'interactive', interactive: interactivePayload(i) });
+  }
+
+  async showTyping(messageId: string) {
+    await this.post({ status: 'read', message_id: messageId, typing_indicator: { type: 'text' } }, AbortSignal.timeout(2_000));
   }
 
   verifySignature(raw: string, header: string | undefined) {

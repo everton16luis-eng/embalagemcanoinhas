@@ -80,9 +80,11 @@ export class MercadoPagoProvider implements PaymentProvider {
     const data = (await res.json().catch(() => null)) as Record<string, any> | null;
     if (!res.ok || !data) {
       // Mensagem do provedor fica no log do servidor, nao vai para o cliente.
-      const err = new Error(`Mercado Pago ${res.status}: ${data?.message ?? 'sem resposta'}`) as Error & { providerStatus?: number; providerCause?: unknown };
+      const err = new Error(`Mercado Pago ${res.status}: ${data?.message ?? 'sem resposta'}`) as Error & { providerStatus?: number; providerCause?: unknown; providerRequestId?: string };
       err.providerStatus = res.status;
       err.providerCause = data?.cause;
+      const requestId = res.headers.get('x-request-id');
+      if (requestId) err.providerRequestId = requestId.slice(0, 128);
       throw err;
     }
     return data;
@@ -97,7 +99,15 @@ export class MercadoPagoProvider implements PaymentProvider {
       amountCents: cents(d.transaction_amount),
       externalReference: d.external_reference ?? null,
       ...(tx?.qr_code ? { pix: { qrCode: tx.qr_code, qrBase64: tx.qr_code_base64 ?? '', expiresAt: d.date_of_expiration ?? null } } : {}),
-      ...(d.card ? { card: { lastFour: d.card.last_four_digits ?? null, brand: d.payment_method_id ?? null, installments: d.installments ?? null } } : {}),
+      ...(d.card ? {
+        card: {
+          lastFour: typeof d.card.last_four_digits === 'string' && /^[0-9]{4}$/.test(d.card.last_four_digits)
+            ? d.card.last_four_digits
+            : null,
+          brand: d.payment_method_id ?? null,
+          installments: d.installments ?? null,
+        },
+      } : {}),
     };
   }
 
@@ -110,7 +120,7 @@ export class MercadoPagoProvider implements PaymentProvider {
         description: i.description,
         payment_method_id: 'pix',
         external_reference: i.externalReference,
-        date_of_expiration: i.expiresAt.toISOString().replace('Z', '+00:00'),
+        date_of_expiration: i.expiresAt.toISOString(),
         ...(this.notificationUrl ? { notification_url: this.notificationUrl } : {}),
         payer: {
           email: i.payer.email,

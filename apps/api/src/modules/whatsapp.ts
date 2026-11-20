@@ -23,11 +23,11 @@ export const WA_EVENT_LABEL: Record<WaEvent, string> = {
 };
 const WINDOW_MS = 24 * 3_600_000;
 const MAX_ATTEMPTS = 8;
-const STOP_WORDS = new Set(['sair', 'parar', 'pare', 'stop', 'cancelar']);
+const STOP_WORDS = new Set(['parar notificacoes', 'parar', 'pare', 'stop', 'cancelar']);
 const phoneHash = (phone: string) => keyedHash(`wa-optout:${phone}`);
 
 /** Texto do consentimento. Sem nome da loja nao ha opt-in valido (a Meta exige o nome da empresa). */
-export const optinText = (storeName: string) => `Quero receber atualizações deste pedido pelo WhatsApp da ${storeName}. Para parar, responda SAIR.`;
+export const optinText = (storeName: string) => `Quero receber atualizações deste pedido pelo WhatsApp da ${storeName}. Para parar as notificações, responda PARAR NOTIFICAÇÕES.`;
 
 export async function currentOptinText(db: Db | typeof pool) {
   const name = (await db.query<{ store_name: string | null }>('SELECT store_name FROM store_settings')).rows[0]?.store_name;
@@ -120,16 +120,27 @@ async function applyWebhook(body: any) {
               ? choice.title.slice(0, 4096)
               : null;
         const replyId = typeof choice?.id === 'string' ? choice.id.slice(0, 256) : null;
+        const command = m.type === 'text' ? text?.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '') : null;
         const ts = Number(m.timestamp);
         // Resposta ao pedido de CPF/CNPJ do bot: o documento nao fica gravado na conversa.
         const hide = Boolean(text && /\d/.test(text) && (await awaitingDocument(from)));
         const inserted = await pool.query<{ id: string }>(
-          `INSERT INTO whatsapp_inbound (wamid, from_phone, profile_name, type, body, reply_id, sent_at) VALUES ($1, $2, $3, $4, $5, $6, to_timestamp($7)) ON CONFLICT (wamid) DO NOTHING RETURNING id`,
-          [m.id.slice(0, 200), from, names.get(from) || null, String(m.type ?? 'unknown').slice(0, 40), hide ? HIDDEN_DOCUMENT : text, replyId, Number.isFinite(ts) && ts > 0 ? ts : Date.now() / 1000],
+          `WITH incoming AS (
+             INSERT INTO whatsapp_inbound (wamid, from_phone, profile_name, type, body, reply_id, sent_at)
+             VALUES ($1, $2, $3, $4, $5, $6, to_timestamp($7)) ON CONFLICT (wamid) DO NOTHING RETURNING id
+           ), ended AS (
+             INSERT INTO bot_runs (inbound_id, outcome) SELECT id, 'closed_by_customer' FROM incoming WHERE $8::boolean
+             RETURNING inbound_id
+           ), closed AS (
+             INSERT INTO whatsapp_conversations (phone, state) SELECT $2, 'closed' FROM ended
+             ON CONFLICT (phone) DO UPDATE SET state = 'closed', assigned_to = NULL, agent_since = NULL,
+               step = NULL, context = '{}', updated_at = now()
+           ) SELECT id FROM incoming`,
+          [m.id.slice(0, 200), from, names.get(from) || null, String(m.type ?? 'unknown').slice(0, 40), hide ? HIDDEN_DOCUMENT : text, replyId, Number.isFinite(ts) && ts > 0 ? ts : Date.now() / 1000, command === 'sair'],
         );
         if (hide && inserted.rows[0]) await keepDocument(inserted.rows[0].id, text!);
-        // Pedido de saida: bloqueia o numero e cancela o que estava na fila.
-        if (inserted.rowCount && text && STOP_WORDS.has(text.trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''))) {
+        // O opt-out vale para notificações automáticas de pedido.
+        if (inserted.rowCount && command && STOP_WORDS.has(command)) {
           await pool.query('INSERT INTO whatsapp_optouts (phone_hash) VALUES ($1) ON CONFLICT DO NOTHING', [phoneHash(from)]);
           await pool.query(`UPDATE whatsapp_messages SET status = 'canceled', error = 'Cliente pediu para não receber mais', updated_at = now() WHERE to_phone = $1 AND status = 'queued'`, [from]);
         }
@@ -288,9 +299,6 @@ export async function whatsappAdminRoutes(app: FastifyInstance) {
     const b = phoneBody.extend({ text: z.string().trim().min(1).max(4096) }).parse(req.body);
     const provider = app.whatsapp;
     if (!provider) throw new AppError(503, 'WHATSAPP_UNAVAILABLE', 'WhatsApp não configurado neste servidor.');
-    if ((await pool.query('SELECT 1 FROM whatsapp_optouts WHERE phone_hash = $1', [phoneHash(b.phone)])).rows[0]) {
-      throw new AppError(409, 'OPTED_OUT', 'O cliente pediu para não receber mensagens.');
-    }
     const w = await windowFor(b.phone);
     if (!w.windowOpenUntil) throw new AppError(409, 'WINDOW_CLOSED', 'Passaram 24 h desde a última mensagem do cliente: só modelos aprovados podem ser enviados.');
     let wamid: string | null = null;

@@ -42,7 +42,7 @@ export const AUDIENCE: Record<Audience, { label: string; tone: 'good' | 'warn' |
 };
 const MODES: Record<Mode, { label: string; hint: string }> = {
   menu: { label: 'Só menu', hint: 'Respostas fixas: o cliente escolhe uma opção. Sem custo e sem IA.' },
-  menu_ai: { label: 'Menu e IA', hint: 'O menu abre a conversa; quando o cliente escreve algo que o menu não entende, a IA responde.' },
+  menu_ai: { label: 'Menu e IA', hint: 'A conversa começa em texto. O cliente pode digitar “menu” para ver as opções.' },
   ai: { label: 'IA', hint: 'A IA responde o que o cliente escrever. Os botões, a consulta de pedido e a confirmação por CPF/CNPJ continuam com o menu.' },
   typebot: { label: 'Typebot', hint: 'Um fluxo montado no editor do Typebot conduz a conversa. Pedido e atendente continuam com a loja (valores reservados nos botões).' },
 };
@@ -180,10 +180,10 @@ function Settings({ data, reload }: { data: BotData; reload: () => void }) {
                 <label key={p} className="flex min-h-9 items-start gap-2 text-sm">
                   <input type="radio" name="aiPlan" className="mt-1" checked={aiPlan === p} onChange={() => setAiPlan(p)} />
                   <span>
-                    {p === 'free' ? 'Plano gratuito (testes)' : 'Plano pago'}
+                    {p === 'free' ? 'Plano gratuito' : 'Plano pago'}
                     <span className="block text-[13px] text-ink-faint">
                       {p === 'free'
-                        ? 'A IA só atende o chat de teste e os números de teste. No plano gratuito o Google pode usar as conversas para melhorar os produtos dele, por isso clientes não falam com a IA.'
+                        ? 'A IA atende conforme o público do bot. No plano gratuito, o Google pode usar as conversas para melhorar seus produtos.'
                         : 'A IA atende todos os clientes. Só use depois de ativar o faturamento na conta do Google com a chave do servidor: cada resposta é cobrada.'}
                     </span>
                   </span>
@@ -201,8 +201,8 @@ function Settings({ data, reload }: { data: BotData; reload: () => void }) {
           </fieldset>
         )}
 
-        {(audience === 'test' || ((mode === 'ai' || mode === 'menu_ai') && aiPlan === 'free')) && (
-          <Field label="Números de teste" hint="Um por linha, com 55 e DDD, por exemplo 5547999998888. Até 20. No plano gratuito, só eles falam com a IA.">
+        {audience === 'test' && (
+          <Field label="Números de teste" hint="Um por linha, com 55 e DDD, por exemplo 5547999998888. Até 20.">
             {(id) => <Textarea id={id} disabled={!edit} value={phones} onChange={(e) => setPhones(e.target.value)} className="font-mono" />}
           </Field>
         )}
@@ -401,6 +401,7 @@ const OUTCOME: Record<string, { label: string; tone: 'bad' | 'warn' | 'neutral' 
   limited: { label: 'limitado', tone: 'neutral' },
 };
 const CATEGORY: Record<string, string> = {
+  manual_reset: 'liberação manual',
   override: 'ignorar instruções',
   prompt_extraction: 'pedir instruções internas',
   identity: 'troca de identidade',
@@ -442,11 +443,34 @@ function OutcomeBadge({ outcome }: { outcome: string }) {
 
 function SecurityPanel() {
   const [data, setData] = useState<Security | null>(null);
+  const [phone, setPhone] = useState('');
+  const [unblocking, setUnblocking] = useState(false);
+  const [feedback, setFeedback] = useState('');
   const [error, setError] = useState('');
   const load = useCallback(() => api<Security>('/admin/whatsapp/bot/security').then(setData, (e) => setError(e.message)), []);
   useEffect(() => {
     load();
   }, [load]);
+  async function unblock(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError('');
+    setFeedback('');
+    setUnblocking(true);
+    try {
+      const { cleared } = await api<{ cleared: boolean }>('/admin/whatsapp/bot/security/unblock', {
+        method: 'POST',
+        body: { phone: phone.replace(/\D/g, '') },
+      });
+      setFeedback(cleared ? 'IA desbloqueada para este número.' : 'Este número não está com a IA pausada por 24 h.');
+      if (cleared) setPhone('');
+      await load();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setUnblocking(false);
+    }
+  }
+
   const empty = data !== null && data.byKind.length === 0 && data.recent.length === 0;
   return (
     <Panel
@@ -460,6 +484,15 @@ function SecurityPanel() {
     >
       <div className="space-y-4">
         {error && <Notice tone="bad">{error}</Notice>}
+        <form onSubmit={unblock} className="flex flex-wrap items-end gap-2">
+          <Field label="Número do WhatsApp" hint="Inclua o código do país e o DDD, como 5547999998888.">
+            {(id) => <Input id={id} type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} required />}
+          </Field>
+          <Button type="submit" disabled={unblocking || !/^\d{10,15}$/.test(phone.replace(/\D/g, ''))}>
+            {unblocking ? 'Desbloqueando…' : 'Desbloquear IA'}
+          </Button>
+        </form>
+        {feedback && <p role="status" className="text-sm">{feedback}</p>}
         {!data && !error && <p className="text-sm text-ink-faint">Carregando…</p>}
         {empty && <p className="text-sm text-ink-soft">Nenhum evento registrado.</p>}
         {data && !empty && (

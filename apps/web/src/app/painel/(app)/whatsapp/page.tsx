@@ -189,12 +189,12 @@ function ThreadView({ phone, onSent }: { phone: string; onSent: () => void }) {
   }
 
   if (!thread) return error ? <Notice tone="bad">{error}</Notice> : <p className="text-sm text-ink-faint">Carregando…</p>;
-  const canReply = !thread.optedOut && Boolean(thread.windowOpenUntil);
+  const canReply = Boolean(thread.windowOpenUntil);
   return (
     <div>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md bg-sunken px-3 py-2 text-sm">
         <span>
-          {thread.state === 'agent' ? `Com atendente${thread.assignedName ? `: ${thread.assignedName}` : ''}. O bot não responde.` : 'Com o bot (quando ligado).'}
+          {thread.state === 'agent' ? `Com atendente${thread.assignedName ? `: ${thread.assignedName}` : ''}. O bot não responde.` : thread.state === 'closed' ? 'Conversa encerrada. Uma nova mensagem reabre o atendimento.' : 'Com o bot (quando ligado).'}
         </span>
         {thread.state === 'agent' ? (
           <Button busy={busy} onClick={() => handover('release')}>
@@ -223,9 +223,8 @@ function ThreadView({ phone, onSent }: { phone: string; onSent: () => void }) {
         ))}
       </ol>
       <div className="mt-3">
-        {thread.optedOut ? (
-          <Notice tone="warn">O cliente pediu para não receber mensagens (respondeu SAIR). Nada é enviado para este número.</Notice>
-        ) : !thread.windowOpenUntil ? (
+        {thread.optedOut && <Notice tone="warn">Notificações automáticas de pedido desativadas para este número.</Notice>}
+        {!thread.windowOpenUntil ? (
           <Notice>
             Passaram 24 h desde a última mensagem do cliente: o WhatsApp só aceita modelos aprovados. Resposta livre volta a ser possível quando o cliente escrever de
             novo.

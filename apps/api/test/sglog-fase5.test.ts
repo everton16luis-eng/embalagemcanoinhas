@@ -213,15 +213,19 @@ describe('conferência, embalagem e despacho', () => {
     expect(await total(prod.variantId)).toMatchObject({ on_hand: '500.000', reserved: '150.000' });
     await authorize(id);
     // Dois despachos simultaneos com chaves diferentes: um passa, o outro recusa (versao/situacao).
-    const k = key();
+    const [ka, kb] = [key(), key()];
     const [a, b] = await Promise.all([
-      boss.post(`${SH}/${s.id}/dispatch`, { version: s.version, carrier: 'Correios', trackingCode: 'AA111BR', requestKey: k }),
-      boss.post(`${SH}/${s.id}/dispatch`, { version: s.version, carrier: 'Correios', trackingCode: 'AA111BR', requestKey: key() }),
+      boss.post(`${SH}/${s.id}/dispatch`, { version: s.version, carrier: 'Correios', trackingCode: 'AA111BR', requestKey: ka }),
+      boss.post(`${SH}/${s.id}/dispatch`, { version: s.version, carrier: 'Correios', trackingCode: 'AA111BR', requestKey: kb }),
     ]);
     expect([a.statusCode, b.statusCode].sort()).toEqual([200, 409]);
+    // Qualquer um dos dois pode ganhar a corrida: a chave que repete e a de quem passou.
+    const [won, lost] = a.statusCode === 200 ? [ka, kb] : [kb, ka];
     // Repetir com a mesma chave devolve a remessa sem baixar de novo.
-    const again = await boss.post(`${SH}/${s.id}/dispatch`, { version: s.version, carrier: 'Correios', requestKey: k });
+    const again = await boss.post(`${SH}/${s.id}/dispatch`, { version: s.version, carrier: 'Correios', requestKey: won });
     expect(again.statusCode).toBe(200);
+    // A chave recusada nao despachou nada; repetir continua recusando, sem baixar.
+    expect((await boss.post(`${SH}/${s.id}/dispatch`, { version: s.version, carrier: 'Correios', requestKey: lost })).statusCode).toBe(409);
     expect(await total(prod.variantId)).toMatchObject({ on_hand: '350.000', reserved: '0.000' });
     const sale = (await owner.query(`SELECT on_hand_delta, document_ref FROM stock_movements WHERE variant_id = $1 AND kind = 'sale'`, [prod.variantId])).rows;
     expect(sale).toEqual([{ on_hand_delta: '-150.000', document_ref: s.id }]);
@@ -438,8 +442,19 @@ describe('pedido antigo e permissões', () => {
     s = await ok(st, s.id, '/check', { sku: prod.sku, qty: '50' });
     s = await ok(st, s.id, '/pack', { version: s.version, packages: [{ weightG: 900 }] });
     await authorize(id);
+    // D5-8: despachar, entregar, liberar e dividir exigem permissao especifica, inclusive pelas rotas antigas do pedido.
     expect((await post(st, s.id, '/dispatch', { version: s.version })).statusCode).toBe(403);
-    expect((await post(ship, s.id, '/dispatch', { version: s.version })).statusCode).toBe(200);
+    expect((await post(st, s.id, '/release', { version: s.version })).statusCode).toBe(403);
+    expect((await post(st, s.id, '/split', { version: s.version, items: [{ itemId: s.items[0].id, qty: '10' }] })).statusCode).toBe(403);
+    const ov = (await boss.get(`/api/v1/admin/orders/${id}`)).json().order;
+    expect((await st.post(`/api/v1/admin/orders/${id}/dispatch`, { version: ov.version, carrier: 'X' })).statusCode).toBe(403);
+    expect((await st.post(`/api/v1/admin/orders/${id}/deliver`, { version: ov.version })).statusCode).toBe(403);
+    expect((await st.post(`/api/v1/admin/orders/${id}/status`, { version: ov.version, status: 'shipped' })).statusCode).toBe(403);
+    // Retirada: o despacho e a entrega no balcao (vai direto a entregue). A permissao e checada antes da situacao.
+    expect((await post(st, s.id, '/deliver', { version: s.version })).statusCode).toBe(403);
+    s = await ok(ship, s.id, '/dispatch', { version: s.version });
+    expect(s.status).toBe('delivered');
+    expect((await post(st, s.id, '/deliver', { version: s.version })).statusCode).toBe(403);
     expect((await fin.get(`${SH}`)).statusCode).toBe(403);
     expect((await sales.get(`${SH}`)).statusCode).toBe(200);
     expect((await st.get(`${SH}`)).statusCode).toBe(200);

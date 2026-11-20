@@ -502,6 +502,49 @@ describe('falta descoberta e rotina', () => {
     expect(await reconcile()).toEqual([]);
   });
 
+  it('depois da falta, a nova alocação (estoque + encomenda) substitui o atendimento anterior', async () => {
+    const { variantId, pack50, purchase } = await newProduct('100');
+    const sup = await newSupplier();
+    const offer = await newOffer(sup, purchase.id, { costCents: 1500 });
+    const id = await paidOrder([{ pack: pack50, packs: 2 }]);
+    await confirmRecommended(id);
+    const I = '/api/v1/admin/inventory-counts';
+    const inv = await boss.post(I, { variantIds: [variantId], warehouseId: principal });
+    expect(inv.statusCode, inv.body).toBe(201);
+    await boss.put(`${I}/${inv.json().count.id}/items`, [{ variantId, countedQty: '60' }]);
+    expect((await boss.post(`${I}/${inv.json().count.id}/close`)).statusCode).toBe(200);
+    expect(await orderRow(id)).toMatchObject({ logistics_status: 'analysis' });
+
+    const d = await detail(id);
+    expect(d.proposal.recommended.key).toBe(`order:${principal}:${offer}`);
+    expect(d.proposal.recommended.lines.map((l: { mode: string; qty: number }) => [l.mode, l.qty])).toEqual([
+      ['stock', 60],
+      ['purchase_to_order', 40],
+    ]);
+    const r = await confirm(id, { logisticsVersion: d.order.logistics_version, planKey: d.proposal.recommended.key });
+    expect(r.statusCode, r.body).toBe(200);
+    expect(await orderRow(id)).toMatchObject({ logistics_status: 'processing', logistics_note: null });
+    expect((await decisions(id)).map((x) => x.kind)).toEqual(['manual', 'shortage', 'manual']);
+    // O atendimento anterior fica encerrado com o motivo; valem os dois novos.
+    const f = (await owner.query('SELECT mode, status, cancel_reason FROM fulfillments WHERE order_id = $1 ORDER BY created_at, mode', [id])).rows;
+    expect(f).toHaveLength(3);
+    expect(f[0]).toMatchObject({ mode: 'stock', status: 'canceled' });
+    expect(f[0].cancel_reason).toContain('Falta descoberta');
+    expect(f.slice(1).map((x) => [x.mode, x.status]).sort()).toEqual([
+      ['purchase_to_order', 'confirmed'],
+      ['stock', 'confirmed'],
+    ]);
+    const act = (await owner.query(`SELECT count(*)::int AS n FROM fulfillment_allocations WHERE order_id = $1 AND status = 'active'`, [id])).rows[0].n;
+    expect(act).toBe(2);
+    const res = await active(id);
+    expect(res.map((x) => [x.qty, x.backorder]).sort((p, q) => Number(p[1]) - Number(q[1]))).toEqual([
+      ['60.000', false],
+      ['40.000', true],
+    ]);
+    expect(await loc(principal, variantId)).toMatchObject({ on_hand: '60.000', reserved: '100.000' });
+    expect(await reconcile()).toEqual([]);
+  });
+
   it('rotina: desligada só separa os de análise; ligada confirma o caso simples; erro não mexe no pagamento', async () => {
     const simple = await newProduct('500');
     const none = await newProduct('0');

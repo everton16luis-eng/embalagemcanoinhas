@@ -330,7 +330,10 @@ async function applyAllocation(
   lines: PlanLine[],
   meta: { kind: 'auto' | 'manual' | 'change'; justification: string | null; requestKey: string | null; planKey: string | null },
 ) {
+  // Pedido que voltou para analise (falta descoberta) ainda tem o atendimento anterior confirmado: a nova alocacao o
+  // substitui. Sem isso, a trava do teto por item recusa a nova alocacao.
   if (meta.kind === 'change') await closeFulfillments(db, order.id, meta.justification!);
+  else await closeFulfillments(db, order.id, `Nova alocação do pedido em análise${order.logistics_note ? `: ${order.logistics_note}` : ''}`.slice(0, 500));
   const decisionId = await decision(db, {
     orderId: order.id,
     kind: meta.kind,

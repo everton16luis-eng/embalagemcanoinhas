@@ -551,5 +551,10 @@ Validação pelo painel HTTPS, depois da implantação:
   Reproduzido no teste local, com o caso "perda que descobre a reserva" seguido de uma nova confirmação: 500
   `INTERNAL_ERROR`. Precisa de correção no código antes de ligar `ALLOCATION_AUTO`. Até lá, não usar a alocação nos
   pedidos que voltarem com "Falta descoberta".
+
+  Corrigido no ramo `correcao/realocar-apos-falta` (ainda não implantado). A nova confirmação encerra o atendimento
+  anterior com o motivo da análise e grava o novo. Teste automatizado "depois da falta, a nova alocação (estoque +
+  encomenda) substitui o atendimento anterior": dava 500 sem a correção e passa com ela. Suíte da API: 413 testes
+  passando. Depois da implantação, refazer o cenário "Encomenda" no painel e marcar este item.
 - [ ] **Depois de tudo aprovado.** Decidir se liga `ALLOCATION_AUTO=on` (D4-2). Ligada, a rotina passa a confirmar
   sozinha o caso simples.

@@ -842,6 +842,23 @@ describe('segurança, compatibilidade e migração', () => {
     expect((await boss.get(`${F}/shipments?view=stale&pageSize=100`)).json().items.some((i: any) => i.id === o.shipment)).toBe(false);
   });
 
+  it('despacho anterior: a expedição recusa marcar entregue (a tela esconde o botão); a entrega vem pelo pedido', async () => {
+    const o = await ready();
+    await dispatch(o.shipment);
+    await owner.query(`UPDATE shipments SET kind = 'legacy' WHERE id = $1`, [o.shipment]);
+    const s = (await boss.get(`${SH}/${o.shipment}`)).json().shipment;
+    expect(s.kind).toBe('legacy');
+    const r = await boss.post(`${SH}/${o.shipment}/deliver`, { version: s.version, requestKey: key() });
+    expect(r.statusCode).toBe(409);
+    expect(r.json().error.code).toBe('LEGACY_SHIPMENT');
+    expect((await shipmentRow(o.shipment)).status).toBe('shipped');
+    const order = (await boss.get(`/api/v1/admin/orders/${o.orderId}`)).json().order;
+    expect(order.status).toBe('shipped');
+    const d = await boss.post(`/api/v1/admin/orders/${o.orderId}/deliver`, { version: order.version });
+    expect(d.statusCode, d.body).toBe(200);
+    expect((await shipmentRow(o.shipment)).status).toBe('delivered');
+  });
+
   it('a aplicação não altera cotação, log nem histórico da etiqueta (imutáveis)', async () => {
     expect((await pgError(appRole.query('DELETE FROM integration_logs'))).message).toMatch(/permission denied|imutavel|imutável/i);
     expect((await pgError(appRole.query('UPDATE shipping_label_events SET note = NULL'))).message).toMatch(/permission denied/);

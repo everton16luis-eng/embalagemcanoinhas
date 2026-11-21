@@ -585,7 +585,18 @@ function ShipmentScreen() {
               {s.carrier && ` · ${s.carrier}`}
               {s.tracking_code && ` · ${s.tracking_code}`}
             </p>
-            {can('shipping.manage') && (
+            {/* Mesma regra da API (POST /shipments/:id/deliver recusa o despacho anterior com LEGACY_SHIPMENT): a entrega
+                da remessa antiga e registrada no pedido, que atualiza a remessa junto. */}
+            {can('shipping.manage') && s.kind === 'legacy' && (
+              <p className="text-sm text-ink-soft" data-testid="deliver-legacy">
+                Remessa do despacho anterior: a entrega é registrada na{' '}
+                <Link href={`/painel/pedidos/${s.order_id}`} className="font-medium text-act hover:underline">
+                  tela do pedido
+                </Link>
+                , que atualiza esta remessa junto.
+              </p>
+            )}
+            {can('shipping.manage') && s.kind !== 'legacy' && (
               <Confirm label="Marcar como entregue" confirmLabel="Confirmar entrega" warning="Confirme que o cliente recebeu esta remessa." busy={busy === 'deliver'} onConfirm={() => void run('deliver', 'deliver', { version: s.version }, 'Entrega registrada.')} />
             )}
           </Panel>

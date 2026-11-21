@@ -58,6 +58,28 @@ test.describe('fretes (Fase 8)', () => {
     expect(erros).toEqual([]);
   });
 
+  test('despacho anterior em transporte: sem "Marcar como entregue" (a API recusa) e com o caminho pelo pedido', async ({ page }, info) => {
+    const erros = errosDoConsole(page);
+    const items = (await api(page, '/admin/freight/shipments?view=tracking&pageSize=100')).items as { id: string; kind: string }[];
+    const legacy = items.find((i) => i.kind === 'legacy');
+    test.skip(!legacy, 'nenhuma remessa de despacho anterior em transporte no banco local');
+    await page.goto(`/painel/logistica/expedicao/${legacy!.id}`);
+    await expect(page.getByRole('heading', { name: 'Entrega' })).toBeVisible();
+    await expect(page.getByTestId('deliver-legacy')).toContainText('a entrega é registrada na tela do pedido');
+    await expect(page.getByRole('button', { name: 'Marcar como entregue' })).toHaveCount(0);
+    await expect(page.getByTestId('deliver-legacy').getByRole('link', { name: 'tela do pedido' })).toHaveAttribute('href', /\/painel\/pedidos\//);
+    await semRolagemLateral(page);
+    await page.screenshot({ path: info.outputPath('entrega-despacho-anterior.png'), fullPage: true });
+    // Remessa nova em transporte, se houver, continua com o botão.
+    const nova = items.find((i) => i.kind === 'delivery');
+    if (nova) {
+      await page.goto(`/painel/logistica/expedicao/${nova.id}`);
+      await expect(page.getByRole('button', { name: 'Marcar como entregue' })).toBeVisible();
+      await expect(page.getByTestId('deliver-legacy')).toHaveCount(0);
+    }
+    expect(erros).toEqual([]);
+  });
+
   test('remessa: cobrado, cotado e pago separados; etiqueta bloqueada; custo desconhecido não vira zero', async ({ page }, info) => {
     const erros = errosDoConsole(page);
     let row: { id: string } | undefined;

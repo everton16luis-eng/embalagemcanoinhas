@@ -67,6 +67,21 @@ export const SUPPLIER_RETURN_STATUS: Record<string, { label: string; tone: Tone 
   canceled: { label: 'Cancelada', tone: 'neutral' },
 };
 export const BUCKET: Record<string, string> = { on_hand: 'Livre', blocked: 'Bloqueado', damaged: 'Avariado' };
+export const RETURN_ACTION: Record<string, string> = {
+  authorize: 'Autorizada',
+  transit: 'Voltando',
+  receive: 'Recebida',
+  inspect: 'Conferência',
+  inspect_reverse: 'Estorno da conferência',
+  quarantine: 'Quarentena',
+  complete: 'Encerrada',
+  cancel: 'Cancelada',
+  note: 'Anotação',
+  fiscal: 'Documento fiscal',
+  exchange: 'Reposição',
+  refund: 'Reembolso',
+};
+export const SUPPLIER_RETURN_ACTION: Record<string, string> = { create: 'Rascunho', send: 'Enviada', accept: 'Aceita', refuse: 'Recusada', cancel: 'Cancelada', note: 'Anotação' };
 
 export function OccurrenceBadge({ status }: { status: string }) {
   const s = OCCURRENCE_STATUS[status] ?? { label: status, tone: 'neutral' as Tone };

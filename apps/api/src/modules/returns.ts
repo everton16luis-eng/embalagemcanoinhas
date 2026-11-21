@@ -44,12 +44,17 @@ type ItemRow = { id: string; order_item_id: string; variant_id: string; qty: str
 // ---------------------------------------------------------------------------------------------------------------
 // Leitura
 
-/** Data de entrega do pedido (para os prazos de referencia): remessas novas entregues ou o evento do pedido. */
+/**
+ * Data de entrega do pedido (para os prazos de referencia): remessas novas entregues, a do despacho anterior ou o
+ * primeiro evento de entrega. Eventos internos (Fase 9: ocorrencia, devolucao, reembolso) repetem a situacao do pedido
+ * e nao contam: a data nao pode andar quando alguem registra algo no pedido entregue.
+ */
 async function deliveredAt(db: Db | typeof pool, orderId: string): Promise<string | null> {
   const r = (
     await db.query<{ at: string | null }>(
       `SELECT coalesce((SELECT max(delivered_at) FROM shipments WHERE order_id = $1 AND kind <> 'legacy' AND status = 'delivered'),
-                       (SELECT max(created_at) FROM order_events WHERE order_id = $1 AND status = 'delivered')) AS at`,
+                       (SELECT max(delivered_at) FROM shipments WHERE order_id = $1 AND kind = 'legacy' AND status = 'delivered'),
+                       (SELECT min(created_at) FROM order_events WHERE order_id = $1 AND status = 'delivered' AND NOT internal)) AS at`,
       [orderId],
     )
   ).rows[0];
@@ -409,9 +414,11 @@ export async function returnRoutes(app: FastifyInstance) {
     const [returns, conditions, occurrences, refunds, supplier, pending] = await Promise.all([
       pool.query(`SELECT kind, reason, status, count(*)::int AS n FROM customer_returns WHERE ${range('created_at')} GROUP BY kind, reason, status ORDER BY kind, reason, status`, p),
       pool.query(
-        `SELECT condition, sum(CASE WHEN reverses_id IS NULL THEN qty ELSE -qty END)::text AS qty,
-                round(sum(CASE WHEN reverses_id IS NULL THEN 1 ELSE -1 END * qty * coalesce(unit_cost_cents, 0)))::bigint AS cost_cents
-         FROM return_inspections WHERE ${range('created_at')} GROUP BY condition ORDER BY condition`,
+        // O estorno nao grava custo: desconta pelo custo da linha que ele estorna.
+        `SELECT i.condition, sum(CASE WHEN i.reverses_id IS NULL THEN i.qty ELSE -i.qty END)::text AS qty,
+                round(sum(CASE WHEN i.reverses_id IS NULL THEN 1 ELSE -1 END * i.qty * coalesce(i.unit_cost_cents, o.unit_cost_cents, 0)))::bigint AS cost_cents
+         FROM return_inspections i LEFT JOIN return_inspections o ON o.id = i.reverses_id
+         WHERE ${range('i.created_at')} GROUP BY i.condition ORDER BY i.condition`,
         p,
       ),
       pool.query(`SELECT kind, responsibility, status, count(*)::int AS n FROM logistic_occurrences WHERE ${range('created_at')} GROUP BY kind, responsibility, status ORDER BY kind`, p),

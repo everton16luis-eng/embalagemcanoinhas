@@ -945,8 +945,44 @@ Pendentes, fora do HTTPS de testes:
 
 ## SGLog Fase 9 — ocorrências, devoluções e logística reversa ([38-sglog-fase9.md](38-sglog-fase9.md))
 
-**Situação: implementada no local, não implantada.** Branch `sglog/fase9` (`d454b30` 9a, `8bd11c7` 9b), migração
-0028. Roteiro de implantação em [39-sglog-fase9-implantacao.md](39-sglog-fase9-implantacao.md).
+**Situação: implantada na VPS (`b7f7749`, migração 0028) e testada pelo HTTPS em 21/11/2026, com 3 defeitos
+corrigidos só no local (sem push).** Roteiro de implantação em
+[39-sglog-fase9-implantacao.md](39-sglog-fase9-implantacao.md).
+
+Testes pelo HTTPS em 21/11/2026 (Chrome, proprietário), no pedido de demonstração nº 1428 (loja, entregue, nota "não
+exigida", logística concluída pelo despacho anterior), variante BIC-1A (antes: físico 3, reservado 2, bloqueado 0,
+avariado 0, médio R$ 8,6175):
+- **Ocorrência nº 1** (avaria, responsável "a definir", segura a conclusão): em andamento; resolver sem responsável
+  recusado ("Defina o responsável…"); resolvida com "Transportadora", conclusão "Liberada". O pedido seguiu
+  `completed` (a ocorrência nova não reabre pedido concluído). Não há na VPS pedido entregue sem conclusão para ver o
+  `on_hold`; isso fica coberto pela suíte.
+- **Devolução nº 1** (avaria no transporte, cliente traz na loja, ligada à ocorrência): 6 unidades recusadas pela API
+  ("entregue e ainda sem devolução 5 UN; pedido 6"); 3 autorizadas. Autorizar, marcar como voltando e receber **não
+  mudaram o estoque**.
+- **Conferência:** 1 boa, 1 quarentena, 1 avariada → físico 4, bloqueado 1, avariado 1; entradas pelo custo da venda
+  (R$ 8,6175), médio igual. Estorno da avariada com motivo → avariado 0 (linha "estornada" e linha de estorno). A
+  unidade foi reconferida como avariada; a quarentena foi liberada (`unblock`) → físico 5, bloqueado 0, avariado 1.
+  Devolução encerrada.
+- **Reembolso (só registro):** nº 1 de R$ 1,00 Pix: solicitado → realizado (`TESTE-F9-1`) → confirmado. Acima do
+  total: `409 REFUND_EXCEEDS_TOTAL`. Mesmo envio repetido: mesmo registro (201, depois 200). Mesma operação (Pix +
+  `TESTE-F9-1`): `409 REFUND_DUPLICATE`. Um registro de R$ 0,01 em dinheiro ficou cancelado. Pagamento `approved`,
+  pedido `delivered` e nota `not_required` sem mudança.
+- **Devolução ao fornecedor nº 1** (Utensílios Exemplo Delta, demonstração; 1 BIC-1A avariado): rascunho sem
+  estoque; envio com documento `TESTE-F9-DOC-1` → avariado 0 (`damage_release` + `supplier_return`); recusada → volta
+  ao avariado (estornos). Saldo final: físico 5, reservado 2, bloqueado 0, avariado 1, médio R$ 8,6175.
+- **Relatório** do dia: devolução, condições, ocorrência, reembolsos e devolução ao fornecedor contados.
+- **Defeitos achados** (corrigidos só no local, com testes; não implantados):
+  1. a **data de entrega** dos prazos andava a cada registro no pedido (ocorrência, devolução): o evento interno da
+     Fase 9 repete a situação "entregue" e a data usava o último. Agora usa a remessa (nova ou do despacho anterior)
+     ou o primeiro evento de entrega não interno. Só afetava os prazos informativos;
+  2. o **relatório** somava o valor da conferência estornada ("Avariada 1 — R$ 17,24" em vez de R$ 8,62): o estorno
+     não grava custo. Agora desconta pelo custo da linha estornada;
+  3. o **histórico** da devolução mostrava eventos sem nota só com data e autor. Agora cada evento tem o rótulo
+     (autorizada, voltando, encerrada…), também na devolução ao fornecedor.
+- **Não testado pelo HTTPS:** a página do cliente (precisa da conta do cliente), as permissões por perfil, documento
+  fiscal (não há pedido de teste com NF-e autorizada) e a troca (a emissão e o despacho da reposição seguem
+  bloqueados).
+- **Falta:** o bloco 5.1 do doc 39 na VPS (C1–C21) depois destes testes.
 
 No local (21/11/2026):
 - suíte da API 524/524; typecheck, build da API e `next build` do painel sem erro;

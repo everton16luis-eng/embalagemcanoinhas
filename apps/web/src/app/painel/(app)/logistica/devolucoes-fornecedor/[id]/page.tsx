@@ -4,7 +4,7 @@
 // recusada = a mercadoria voltou (estorno no saldo de origem); aceita encerra sem credito automatico.
 import { useParams } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
-import { BUCKET, SUPPLIER_RETURN_STATUS } from '@/components/returns';
+import { BUCKET, SUPPLIER_RETURN_ACTION, SUPPLIER_RETURN_STATUS } from '@/components/returns';
 import { Guard, useMe } from '@/components/shell';
 import { newKey } from '@/components/stock';
 import { Badge, Button, Field, Input, Notice, PageHeader, Panel } from '@/components/ui';
@@ -168,7 +168,7 @@ function Page() {
             {v.events.map((e) => (
               <li key={e.id} className="border-l-2 border-line pl-3">
                 <span className="text-ink-faint">
-                  {when(e.created_at)}
+                  <Badge>{SUPPLIER_RETURN_ACTION[e.action] ?? e.action}</Badge> {when(e.created_at)}
                   {e.actor_name ? ` · ${e.actor_name}` : ''}
                 </span>
                 {e.note && <p>{e.note}</p>}

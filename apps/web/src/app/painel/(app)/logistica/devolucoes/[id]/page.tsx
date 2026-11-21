@@ -5,7 +5,7 @@
 import Link from '@/components/painel-link';
 import { useParams } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
-import { CONDITION, Deadlines, RETURN_KIND, RETURN_METHOD, RETURN_REASON, ReturnBadge, type Deadline } from '@/components/returns';
+import { CONDITION, Deadlines, RETURN_ACTION, RETURN_KIND, RETURN_METHOD, RETURN_REASON, ReturnBadge, type Deadline } from '@/components/returns';
 import { OrderRefundsPanel } from '@/components/refunds';
 import { Guard, useMe } from '@/components/shell';
 import { newKey, useWarehouses } from '@/components/stock';
@@ -446,7 +446,7 @@ function Page() {
             {v.events.map((e) => (
               <li key={e.id} className="border-l-2 border-line pl-3">
                 <span className="text-ink-faint">
-                  {when(e.created_at)}
+                  <Badge>{RETURN_ACTION[e.action] ?? e.action}</Badge> {when(e.created_at)}
                   {e.actor_name ? ` · ${e.actor_name}` : ''}
                 </span>
                 {e.note && <p>{e.note}</p>}

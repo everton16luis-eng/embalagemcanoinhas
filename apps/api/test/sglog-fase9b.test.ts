@@ -396,6 +396,42 @@ describe('conferência e relatório', () => {
     expect((await ship.get(`${R}/report?from=2020-01-01&to=${today}`)).statusCode).toBe(403);
   });
 
+  it('relatório: o estorno da conferência desconta quantidade e valor (pelo custo da linha estornada)', async () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const damaged = async () => {
+      const row = (await boss.get(`${R}/report?from=2020-01-01&to=${today}`)).json().conditions.find((c: any) => c.condition === 'damaged');
+      return { qty: Number(row?.qty ?? 0), cost: Number(row?.cost_cents ?? 0) };
+    };
+    const before = await damaged();
+    // Custo medio conhecido antes da venda: a volta entra pelo custo da venda e o valor aparece no relatorio.
+    const p = await newProduct();
+    await owner.query('UPDATE stock_balances SET avg_cost_cents = 500 WHERE variant_id = $1', [p.variantId]);
+    const o = await shippedOrder({ product: p });
+    const r = await okReturn(o.orderId, [{ orderItemId: o.item, qty: '1' }]);
+    await receive(r.return.id);
+    const ins = await inspect(r.return.id, [{ condition: 'damaged', qty: '1', reason: 'Amassado' }]);
+    expect(ins.statusCode, ins.body).toBe(200);
+    const mid = await damaged();
+    expect(mid.qty).toBe(before.qty + 1);
+    expect(mid.cost).toBeGreaterThan(before.cost);
+    const line = ins.json().inspections.find((i: any) => i.condition === 'damaged' && !i.reverses_id);
+    const rev = await boss.post(`${R}/${r.return.id}/inspections/${line.id}/reverse`, { reason: 'Conferido errado', requestKey: key() });
+    expect(rev.statusCode, rev.body).toBe(200);
+    expect(await damaged()).toEqual(before);
+  });
+
+  it('data de entrega dos prazos: eventos internos da Fase 9 não a movem', async () => {
+    const o = await shippedOrder({ deliver: false });
+    await owner.query(`INSERT INTO order_events (order_id, status, note, created_at) VALUES ($1, 'delivered', 'entregue', now() - interval '10 days')`, [o.orderId]);
+    await owner.query(`UPDATE orders SET status = 'delivered' WHERE id = $1`, [o.orderId]);
+    const at = async () => (await boss.get(`${R}/orders/${o.orderId}`)).json().deliveredAt as string;
+    const before = await at();
+    expect(Date.now() - new Date(before).getTime()).toBeGreaterThan(9 * 86400_000);
+    expect((await boss.post(OC, { orderId: o.orderId, kind: 'late', description: 'Teste da data de entrega', requestKey: key() })).statusCode).toBe(201);
+    expect((await owner.query(`SELECT count(*)::int AS n FROM order_events WHERE order_id = $1 AND internal`, [o.orderId])).rows[0].n).toBeGreaterThan(0);
+    expect(await at()).toBe(before);
+  });
+
   it('página do cliente: situação da devolução, sem notas internas', async () => {
     const s = shopper();
     const p = await newProduct();

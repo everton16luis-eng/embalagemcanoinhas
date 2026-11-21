@@ -1151,6 +1151,15 @@ Resultado no Chrome, HTTPS (21/11/2026, dono com MFA, versão 51139e8; só leitu
 - [ ] **Permissões com outros perfis:** não testadas no HTTPS (exigiria entrar com outra conta); cobertas nos testes
   locais.
 
+Depois da implantação de 82deb8b (21/11/2026, Chrome):
+- [x] **Desempenho:** JIT confirmado na VPS (PostgreSQL 16.15, `jit` on, disponível). Consultas de período caíram de
+  ~4–5 s para 24–54 ms (resumo 12 meses 44 ms, rentabilidade 40 ms, por produto 54 ms, conferência 47 ms).
+- [x] **Estorno de conferência:** pedido 1428 sem componente desconhecido de devolução; o estorno entra como efetivo
+  (−R$ 8,62) e devoluções passam de R$ 33,48 para R$ 24,86 (a margem antes ficava maior que a real).
+- [x] **Demonstração:** "Excluir" mostra 6 pedidos (139 − 133), com o 1463 do Mercado Livre.
+- [x] **Filtro guardado:** Fornecedores com "Excluir" fica sem os de demonstração; nenhum erro no console.
+- [x] **Conferência C22–C24:** nenhuma divergência (299 pedidos).
+
 Pendentes, fora do HTTPS de testes:
 - [ ] **Contador:** alíquota estimada por regime e base (total ou mercadoria), validada no painel com
   `fiscal.validate`.

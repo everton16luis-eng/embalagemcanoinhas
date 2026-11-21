@@ -14,7 +14,7 @@ import { pool, tx, type Db } from '../db/pool.js';
 import { audit } from '../lib/audit.js';
 import { AppError, notFound } from '../lib/errors.js';
 import { idParams, isUniqueViolation, pageQuery } from '../lib/http.js';
-import { CHANNELS, LINES_SQL, ordCte, orderMargin } from '../lib/costs.js';
+import { CHANNELS, LINES_SQL, analyticQuery, ordCte, orderMargin } from '../lib/costs.js';
 import { requireAnyPermission, requirePermission } from './auth.js';
 
 const key = z.string().min(8).max(100);
@@ -239,7 +239,8 @@ const importBody = z.strictObject({ fileName: z.string().trim().min(1).max(200),
 export async function marginReconcile(db: Db | typeof pool, sample = 300) {
   const params: unknown[] = [];
   const ord = ordCte({ from: '2000-01-01', to: '2999-12-31', basis: 'paid', demo: 'include', latest: sample }, params);
-  const { rows } = await db.query(
+  const { rows } = await analyticQuery(
+    db,
     `WITH ${ord},${LINES_SQL},
      chk AS (
        SELECT l.order_id, coalesce(sum(l.amount) FILTER (WHERE l.nature IN ('effective', 'estimated')), 0) AS lines_sum,

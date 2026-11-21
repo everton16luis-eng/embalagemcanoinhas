@@ -179,6 +179,15 @@ describe('painel Gestão: resumo', () => {
     const only = await get(`${M}/summary?${q({ ...T(), demo: 'only' })}`);
     expect([ex.totals.orders, ex.totals.demoOrders, only.totals.orders, only.totals.demoOrders]).toEqual([2, 0, 1, 1]);
     expect(ex.totals.marginCents + only.totals.marginCents).toBe(s.totals.marginCents);
+    // Pedido sem e-mail do comprador (marketplace): nao e demonstracao e continua no "Excluir" (nao vira NULL).
+    const buyer = (await owner.query(`SELECT buyer FROM orders WHERE id = $1`, [o3.orderId])).rows[0].buyer;
+    await owner.query(`UPDATE orders SET buyer = buyer - 'email' WHERE id = $1`, [o3.orderId]);
+    try {
+      expect((await get(`${M}/summary?${q({ ...T(), demo: 'exclude' })}`)).totals.orders).toBe(2);
+      expect((await get(`${M}/orders?${q(T())}`)).items.find((i: any) => i.id === o3.orderId).demo).toBe(false);
+    } finally {
+      await owner.query(`UPDATE orders SET buyer = $2 WHERE id = $1`, [o3.orderId, buyer]);
+    }
     // Canal e UF filtram.
     expect((await get(`${M}/summary?${q({ ...T(), channel: 'shopee' })}`)).totals.orders).toBe(0);
     expect((await get(`${M}/summary?${q({ ...T(), uf: 'sp' })}`)).totals.orders).toBe(3);

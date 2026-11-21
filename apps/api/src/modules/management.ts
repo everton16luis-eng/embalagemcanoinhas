@@ -14,7 +14,7 @@ import { z } from 'zod';
 import { pool } from '../db/pool.js';
 import { AppError } from '../lib/errors.js';
 import { pageQuery } from '../lib/http.js';
-import { BASIS_LABEL, CHANNELS, COMPONENT_LABEL, LINES_SQL, STORE_CARRIER, TZ, basisDateSql, demoSql, ordCte, type Basis, type DemoMode, type OrderFilter } from '../lib/costs.js';
+import { BASIS_LABEL, CHANNELS, COMPONENT_LABEL, LINES_SQL, STORE_CARRIER, TZ, analyticQuery, basisDateSql, demoSql, ordCte, type Basis, type DemoMode, type OrderFilter } from '../lib/costs.js';
 import { requireAnyPermission, requirePermission, type Auth } from './auth.js';
 
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -125,25 +125,11 @@ function sendCsv(reply: FastifyReply, name: string, head: string[], rows: unknow
 const CHANNEL_NAME: Record<string, string> = { store: 'Loja virtual', sales_desk: 'Balcão', mercadolivre: 'Mercado Livre', shopee: 'Shopee' };
 
 /**
- * Consulta gerencial: transacao so de leitura e sem laco aninhado (enable_nestloop = off). As CTEs agregadas nao tem
- * estatistica; com estimativa baixa o planejador escolheria laco aninhado entre elas (10 mil x 10 mil). Com o laco
- * desligado ele usa hash; os LATERAL das configuracoes continuam funcionando (so ficam mais caros no custo estimado).
+ * Consulta gerencial: transacao so de leitura, sem JIT e sem laco aninhado (enable_nestloop = off). As CTEs agregadas
+ * nao tem estatistica; com estimativa baixa o planejador escolheria laco aninhado entre elas (10 mil x 10 mil). Com o
+ * laco desligado ele usa hash; os LATERAL das configuracoes continuam funcionando (so ficam mais caros no custo estimado).
  */
-async function q2(sql: string, params: unknown[]) {
-  const c = await pool.connect();
-  try {
-    await c.query('BEGIN READ ONLY');
-    await c.query('SET LOCAL enable_nestloop = off');
-    const r = await c.query(sql, params);
-    await c.query('COMMIT');
-    return r;
-  } catch (err) {
-    await c.query('ROLLBACK').catch(() => undefined);
-    throw err;
-  } finally {
-    c.release();
-  }
-}
+const q2 = (sql: string, params: unknown[]) => analyticQuery(pool, sql, params, { noNestloop: true });
 
 const has = (a: Auth, p: Parameters<Auth['permissions']['has']>[0]) => a.permissions.has(p);
 

@@ -392,6 +392,18 @@ describe('devoluções e reembolsos (Fase 9) na margem', () => {
     expect(line(m, 'return_credit').every((l: any) => l.nature === 'effective' && l.source.table === 'return_inspections')).toBe(true);
     // Sem frete de volta (entregue na loja): nada desconhecido novo.
     expect(line(m, 'return_freight')).toHaveLength(0);
+    // Estorno da linha boa: o estorno nao grava custo; usa o da conferencia original (nao vira desconhecido).
+    const good = (await owner.query(`SELECT id FROM return_inspections WHERE return_id = $1 AND condition = 'good'`, [r.return.id])).rows[0].id;
+    const rv = await boss.post(`${R}/${r.return.id}/inspections/${good}/reverse`, { reason: 'Conferência errada', requestKey: key() });
+    expect(rv.statusCode, rv.body).toBe(200);
+    const mr = await margin(o.orderId);
+    expect(sumOf(mr, 'return_credit')).toBe(50);
+    expect(line(mr, 'return_credit').every((l: any) => l.nature === 'effective')).toBe(true);
+    expect(mr.margin.missing).not.toContain('return_credit');
+    // Confere de novo como boa (o resto do cenario segue igual).
+    const v3 = (await boss.get(`${R}/${r.return.id}`)).json();
+    expect((await boss.post(`${R}/${r.return.id}/inspect`, { version: v3.return.version, requestKey: key(), lines: [{ itemId: v3.items[0].id, condition: 'good', qty: '50' }] })).statusCode).toBe(200);
+    expect(sumOf(await margin(o.orderId), 'return_credit')).toBe(300);
     // Quarentena descartada: perda de 10 un.
     const q = (await boss.get(`${R}/quarantine`)).json().items.find((i: any) => i.return_id === r.return.id);
     expect((await boss.post(`${R}/quarantine/${q.inspection_id}/decide`, { decision: 'discard', qty: '10', reason: 'Sem condição de venda', requestKey: key() })).statusCode).toBe(200);

@@ -15,6 +15,7 @@
 // baixou naquela saida. Ele vale como efetivo quando a media nao foi formada com saldo que entrou sem custo (entrada
 // sem custo com media zero antes da venda: estimado) e e desconhecido quando a media era zero. Pedido sem baixa
 // (nao despachado) usa o custo medio atual como estimativa. Estornos da baixa sao descontados.
+import type pg from 'pg';
 import type { Db } from '../db/pool.js';
 import { pool } from '../db/pool.js';
 
@@ -23,9 +24,12 @@ export const PAID_SQL = `('paid', 'preparing', 'ready', 'shipped', 'delivered')`
 export const MARKETPLACE_SQL = `('mercadolivre', 'shopee')`;
 export const CHANNELS = ['store', 'sales_desk', 'mercadolivre', 'shopee'] as const;
 
-/** Pedido de demonstracao: comprador @demo.invalid ou conta de marketplace da demonstracao (DEMO-*). */
+/**
+ * Pedido de demonstracao: comprador @demo.invalid ou conta de marketplace da demonstracao (DEMO-*). Sempre true/false:
+ * pedido de marketplace nao tem e-mail do comprador, e NULL sumiria tanto do "Excluir" quanto da contagem de demonstracao.
+ */
 export const demoSql = (o = 'o') =>
-  `(${o}.buyer->>'email' LIKE '%@demo.invalid' OR EXISTS (SELECT 1 FROM marketplace_orders dm JOIN marketplace_accounts da ON da.id = dm.account_id
+  `(coalesce(${o}.buyer->>'email' LIKE '%@demo.invalid', false) OR EXISTS (SELECT 1 FROM marketplace_orders dm JOIN marketplace_accounts da ON da.id = dm.account_id
      WHERE dm.order_id = ${o}.id AND da.external_id LIKE 'DEMO-%'))`;
 
 export type Basis = 'paid' | 'order' | 'dispatch';
@@ -279,14 +283,18 @@ lines AS (
   -- da conferencia; o descarte na conferencia nao devolve nada (o CMV fica); o descarte decidido na quarentena desfaz a
   -- devolucao do CMV. A avaria baixada depois e perda do estoque (relatorio de custos logisticos), nao do pedido.
   UNION ALL
+  -- O estorno da conferencia nao grava custo: usa o custo e a origem da conferencia original (reverses_id).
   SELECT r.order_id, 'return_credit', 'returns',
-         CASE WHEN i.unit_cost_cents IS NULL THEN 'unknown' WHEN i.cost_source = 'sale' THEN 'effective' ELSE 'estimated' END,
-         CASE WHEN i.unit_cost_cents IS NOT NULL THEN (CASE WHEN i.reverses_id IS NULL THEN 1 ELSE -1 END) * round(i.qty * i.unit_cost_cents)::bigint END,
+         CASE WHEN coalesce(i.unit_cost_cents, oi.unit_cost_cents) IS NULL THEN 'unknown'
+              WHEN coalesce(i.cost_source, oi.cost_source) = 'sale' THEN 'effective' ELSE 'estimated' END,
+         CASE WHEN coalesce(i.unit_cost_cents, oi.unit_cost_cents) IS NOT NULL
+              THEN (CASE WHEN i.reverses_id IS NULL THEN 1 ELSE -1 END) * round(i.qty * coalesce(i.unit_cost_cents, oi.unit_cost_cents))::bigint END,
          'return_inspections', i.id::text, r.id::text, ri.variant_id,
          'devolução nº ' || r.number || ': ' || CASE i.condition WHEN 'good' THEN 'boa' WHEN 'quarantine' THEN 'quarentena' ELSE 'avariada' END
            || CASE WHEN i.reverses_id IS NOT NULL THEN ' (estorno da conferência)' ELSE '' END
-           || CASE WHEN i.cost_source = 'current_avg' THEN ', custo médio atual' ELSE ', custo da venda' END
+           || CASE WHEN coalesce(i.cost_source, oi.cost_source) = 'current_avg' THEN ', custo médio atual' ELSE ', custo da venda' END
   FROM rets r JOIN return_inspections i ON i.return_id = r.id JOIN customer_return_items ri ON ri.id = i.return_item_id
+  LEFT JOIN return_inspections oi ON oi.id = i.reverses_id
   WHERE i.condition IN ('good', 'quarantine', 'damaged')
   UNION ALL
   SELECT r.order_id, 'return_loss', 'returns',
@@ -398,13 +406,38 @@ export const marginView = (r: OrderMarginRow) => {
   };
 };
 
+/**
+ * Consulta analitica de gestao: transacao somente leitura e sem compilacao JIT. O custo estimado das consultas de margem
+ * passa de jit_above_cost e, onde o PostgreSQL tem LLVM, a compilacao custa segundos a cada chamada (execucao: ms).
+ * noNestloop evita lacos aninhados entre CTEs com estimativa ruim nas agregacoes de periodo.
+ * Dentro de um cliente ja aberto (testes, transacoes), so executa a consulta.
+ */
+export async function analyticQuery<R extends pg.QueryResultRow = any>(db: Db | typeof pool, sql: string, params: unknown[], opts: { noNestloop?: boolean } = {}) {
+  if (db !== pool) return db.query<R>(sql, params);
+  const c = await pool.connect();
+  try {
+    await c.query('BEGIN READ ONLY');
+    await c.query('SET LOCAL jit = off');
+    if (opts.noNestloop) await c.query('SET LOCAL enable_nestloop = off');
+    const r = await c.query<R>(sql, params);
+    await c.query('COMMIT');
+    return r;
+  } catch (err) {
+    await c.query('ROLLBACK').catch(() => undefined);
+    throw err;
+  } finally {
+    c.release();
+  }
+}
+
 /** Margem de um pedido com o detalhe de cada componente (rastreabilidade). Pedido fora do recorte: null. */
 export async function orderMargin(db: Db | typeof pool, orderId: string) {
   const q = marginBase({ from: '2000-01-01', to: '2000-01-01', basis: 'paid', demo: 'include', orderId });
-  const per = (await db.query<OrderMarginRow>(`${q.sql} SELECT * FROM per`, q.params)).rows[0];
+  const per = (await analyticQuery<OrderMarginRow>(db, `${q.sql} SELECT * FROM per`, q.params)).rows[0];
   if (!per) return null;
   const lines = (
-    await db.query(
+    await analyticQuery(
+      db,
       `${q.sql}
        SELECT l.comp, l.grp, l.nature, l.amount, l.src, l.src_id, l.ref_id, l.variant_id, v.sku, l.detail
        FROM lines l LEFT JOIN product_variants v ON v.id = l.variant_id

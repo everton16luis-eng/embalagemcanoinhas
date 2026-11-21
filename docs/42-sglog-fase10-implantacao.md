@@ -6,12 +6,15 @@ executa.**
 Segue o roteiro da Fase 9 ([39-sglog-fase9-implantacao.md](39-sglog-fase9-implantacao.md)). A 0029 é aditiva e
 compatível com o código anterior, inclusive na escrita: a API **não** precisa ficar parada.
 
-**Ainda não publicado.** O ramo local `sglog/fase10` tem:
-- o planejamento (`29b771f`);
-- a 10a (`3a2f9a5`);
-- a 10b e esta documentação (commits seguintes).
+**Publicado:** a `main` avançou por fast-forward para `sglog/fase10` (push autorizado em 21/11/2026). Na VPS, em
+uso: `8c66097`. A `main` publicada tem, depois de `8c66097`:
+- `d0f7a9b`, testes pendentes da Fase 9;
+- `29b771f`, planejamento da Fase 10;
+- `3a2f9a5`, a 10a;
+- `15f8527`, a 10b e esta documentação;
+- o commit desta nota de publicação.
 
-O push e o avanço da `main` dependem da sua autorização. Abaixo, `<versao>` é o commit publicado.
+O código da Fase 10 é o de `15f8527`. A etapa 3 confere, com `git log -1`, que a VPS ficou no último commit da `main`.
 
 - **Usuários:**
   - os comandos do projeto rodam como `loja`, na pasta `/srv/loja-embalagens`. Para entrar como esse usuário:

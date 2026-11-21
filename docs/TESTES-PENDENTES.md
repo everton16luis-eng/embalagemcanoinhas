@@ -1130,6 +1130,27 @@ Validação pelo painel HTTPS, como proprietário, depois da implantação:
   - pedidos, pagamentos, notas, movimentos e remessas iguais aos da etapa 1;
   - as travas continuam `blocked`.
 
+Resultado no Chrome, HTTPS (21/11/2026, dono com MFA, versão 51139e8; só leitura, sem lançar nem configurar custo):
+- [x] **Painel Gestão:** abre sem erro no console; resultado parcial avisado ("não entram como zero"), cobertura 0%,
+  "não é lucro líquido", custos que faltam por componente, por canal, por mês, indicadores de operação.
+- [x] **Rentabilidade:** paginação de 30 sem repetir pedido (427 pedidos em 12 meses), ordem por receita, grupos
+  produto/categoria/canal/fornecedor/UF; CSV com `;` e 427 linhas (o BOM foi conferido só no teste local).
+- [x] **Custos logísticos e fornecedores:** frete por UF, perdas de estoque; fornecedores de demonstração marcados.
+- [x] **Conferência C22–C24:** nenhuma divergência (299 pedidos no C24).
+- [x] **Margem do pedido de demonstração 1428:** parcial, com natureza e origem de cada componente.
+- [ ] **Desempenho:** cada consulta de período leva ~4–5 s na VPS (a margem de um pedido, 47 ms). Causa provável:
+  JIT do PostgreSQL (custo estimado ~4 milhões, acima de `jit_above_cost`). Corrigido em 9d713a3 (`jit = off` nas
+  consultas analíticas). Conferir na VPS com `SHOW jit; SELECT pg_jit_available();` e, depois da nova implantação,
+  repetir: o painel deve responder em menos de 1 s.
+- [ ] **Corrigido em 9d713a3, conferir depois da implantação:**
+  - estorno de conferência de devolução aparecia como "Devolução ao estoque (CMV)" desconhecida (pedido 1428);
+  - pedido de marketplace sem e-mail do comprador (1463, Mercado Livre) ficava fora do "Excluir" demonstração e da
+    contagem (139 − 133 ≠ 5).
+- [ ] **Corrigido em 7c25b27, conferir depois da implantação:** com o filtro guardado em "Excluir", Fornecedores
+  mostrava os de demonstração (a busca com o filtro padrão chegava por último).
+- [ ] **Permissões com outros perfis:** não testadas no HTTPS (exigiria entrar com outra conta); cobertas nos testes
+  locais.
+
 Pendentes, fora do HTTPS de testes:
 - [ ] **Contador:** alíquota estimada por regime e base (total ou mercadoria), validada no painel com
   `fiscal.validate`.

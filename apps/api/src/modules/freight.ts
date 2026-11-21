@@ -309,7 +309,8 @@ export type TrackingSource = { source: 'carrier' | 'manual'; actorId: string | n
  * so no historico. Duplicado (mesma chave do provedor) nao entra. Chamar dentro de tx.
  */
 export async function applyTracking(db: Db, shipmentId: string, ev: TrackEvent, src: TrackingSource): Promise<'applied' | 'recorded' | 'duplicate'> {
-  const { order, s } = await lockShipment(db, shipmentId);
+  // Despacho anterior (legacy): o evento entra no historico, mas a situacao segue o pedido (fluxo antigo, sem mudanca).
+  const { order, s } = await lockShipment(db, shipmentId, { allowLegacy: true });
   if (ev.key && (await db.query('SELECT 1 FROM shipment_events WHERE shipment_id = $1 AND provider_event_id = $2', [s.id, ev.key])).rows[0]) return 'duplicate';
   const cur = s.status;
   const target = TARGET[ev.status];
@@ -317,7 +318,9 @@ export async function applyTracking(db: Db, shipmentId: string, ev: TrackEvent, 
   const notes: string[] = [`Transportador: ${TRACK_LABEL[ev.status]}`];
   if (ev.description) notes.push(safeError(ev.description).slice(0, 200));
   const tracked = (await db.query<{ tracking_code: string | null }>('SELECT tracking_code FROM shipments WHERE id = $1', [s.id])).rows[0]!.tracking_code;
-  if (ev.tracking && tracked && ev.tracking.toUpperCase() !== tracked.toUpperCase()) {
+  if (s.kind === 'legacy') {
+    notes.push('remessa do despacho anterior: registrado no histórico; a situação segue o pedido');
+  } else if (ev.tracking && tracked && ev.tracking.toUpperCase() !== tracked.toUpperCase()) {
     notes.push(`código informado pelo transportador (${ev.tracking}) diferente do registrado (${tracked}): a situação não foi alterada`);
   } else if (target && RANK[cur] !== undefined && RANK[target]! > RANK[cur]!) {
     to = target;

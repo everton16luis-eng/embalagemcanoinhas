@@ -833,6 +833,13 @@ describe('segurança, compatibilidade e migração', () => {
     const ok = await boss.post(`${F}/shipments/${o.shipment}/costs`, { kind: 'manual', amountCents: 1000, requestKey: key() });
     expect(ok.statusCode, ok.body).toBe(200);
     expect((await view(o.shipment)).costs.netCents).toBe(1000);
+    // Rastreio manual no despacho anterior da loja: fica no historico, a situacao segue o pedido e sai do "parado".
+    const t = await boss.post(`${F}/shipments/${o.shipment}/tracking`, { status: 'out_for_delivery', requestKey: key() });
+    expect(t.statusCode, t.body).toBe(200);
+    expect((await shipmentRow(o.shipment)).status).toBe('shipped');
+    const ev = (await view(o.shipment)).tracking.events.find((e: any) => e.action === 'track_out_for_delivery');
+    expect(ev.note).toMatch(/despacho anterior/);
+    expect((await boss.get(`${F}/shipments?view=stale&pageSize=100`)).json().items.some((i: any) => i.id === o.shipment)).toBe(false);
   });
 
   it('a aplicação não altera cotação, log nem histórico da etiqueta (imutáveis)', async () => {

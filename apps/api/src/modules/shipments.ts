@@ -75,12 +75,12 @@ async function lockOrder(db: Db, id: string) {
 }
 
 /** Trava pedido e remessa, nessa ordem (a mesma da alocacao: pedido antes das variantes). */
-export async function lockShipment(db: Db, id: string) {
+export async function lockShipment(db: Db, id: string, opts: { allowLegacy?: boolean } = {}) {
   const s0 = (await db.query<{ order_id: string }>('SELECT order_id FROM shipments WHERE id = $1', [id])).rows[0];
   if (!s0) throw notFound();
   const order = await lockOrder(db, s0.order_id);
   const s = (await db.query<ShipmentRow>(`SELECT ${SHIP_COLS} FROM shipments WHERE id = $1 FOR UPDATE`, [id])).rows[0]!;
-  if (s.kind === 'legacy') throw new AppError(409, 'LEGACY_SHIPMENT', 'Remessa de pedido antigo: já foi despachada pelo fluxo anterior.');
+  if (s.kind === 'legacy' && !opts.allowLegacy) throw new AppError(409, 'LEGACY_SHIPMENT', 'Remessa de pedido antigo: já foi despachada pelo fluxo anterior.');
   return { order, s };
 }
 

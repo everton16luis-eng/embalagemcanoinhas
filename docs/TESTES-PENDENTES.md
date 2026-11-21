@@ -825,6 +825,16 @@ pequenos. Nada nesta fase movimenta estoque: anote o saldo do produto antes e co
     relatório ficou só com "Entrega própria" (24 remessas), e a remessa da Shopee nº 1419 não mostra mais o painel
     "Frete";
   - em janela estreita (767 px, menu recolhido), sem rolagem lateral.
+- **Testes com gravação pelo HTTPS em 21/11/2026** (Chrome, proprietário), no pedido de demonstração nº 1416
+  (despacho anterior, entrega própria, nota "não exigida"):
+  - custo pago R$ 18,40 → pago R$ 18,40; ajuste sem motivo recusado ("Informe o motivo."); ajuste de R$ 2,00 → R$ 20,40;
+    estorno de R$ 1,00 → R$ 19,40; os três lançamentos ficaram na lista;
+  - **defeito:** o rastreio manual nessa remessa era recusado ("Remessa de pedido antigo: já foi despachada pelo fluxo
+    anterior."), embora ela apareça em "Em transporte" e "Rastreio parado". Corrigido no local: o evento entra no
+    histórico com a nota "remessa do despacho anterior", e a situação segue o pedido, sem mudar o fluxo antigo;
+  - aviso falso do Melhor Envio, sem assinatura e com assinatura falsa: `404`, porque não há Melhor Envio configurado;
+  - não testados: despacho com custo e entrega pela remessa (não há remessa de entrega nova embalada nem em transporte
+    na VPS) e a página do cliente (precisa da conta do cliente).
 - **Conferido pelo HTTPS sem defeito:** a fila nas quatro situações, o relatório, a trava da etiqueta com os motivos e
   o painel "Frete" sem botão de compra.
 
@@ -877,7 +887,8 @@ Validação pelo painel HTTPS, como proprietário, depois da implantação:
   curl.exe -s -o NUL -w "%{http_code}" -X POST https://<domínio>/api/v1/webhooks/carriers/melhorenvio -H "content-type: application/json" -d '{\"event\":\"order.delivered\",\"data\":{\"id\":\"x\"}}'
   ```
 
-  Deve responder `401`. Nenhuma remessa muda.
+  Sem Melhor Envio configurado, responde `404` (a rota não existe para esse provedor). Com o Melhor Envio configurado,
+  responde `401`. Nenhuma remessa muda e nenhum aviso é gravado.
 - [ ] **Permissões:**
   - o perfil da logística vê Fretes e registra custo e rastreio;
   - o perfil de expedição não tem "Etiquetas de frete";

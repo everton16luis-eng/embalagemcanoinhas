@@ -727,9 +727,15 @@ pagamento real.
   - documento e envio (versões 1 e 2), quando houver CNPJ;
   - "Preencher pela nota (XML)";
   - perfis de outros usuários.
-- Melhorias anotadas, não são defeitos:
-  - o histórico da confirmação mostra só a embalagem (por exemplo "Caixa com 12"), sem o produto;
-  - requisição de produto sem oferta marcada como principal aparece em "Sem fornecedor principal".
+- **Melhorias futuras** (registradas em 20/11/2026, não são defeitos):
+  - exibir o nome do produto junto à embalagem no histórico de confirmação (hoje aparece só, por exemplo, "Caixa com
+    12");
+  - manter visíveis as requisições sem fornecedor principal (grupo "Sem fornecedor principal"), **sem** selecionar
+    automaticamente um fornecedor.
+
+**Fase 7 concluída funcionalmente em 20/11/2026** (em execução `e057df4`, 0026 aplicada, C1–C13 sem divergência em 204
+variantes). As pendências acima continuam abertas: compra nº 79 aguardando a decisão do aumento, cadastro da empresa
+e versões do documento, pré-preenchimento pelo XML e permissões por perfil.
 
 Validação pelo painel HTTPS, depois da implantação. Use só compras de teste, do fornecedor de demonstração, com valores
 pequenos. Nada nesta fase movimenta estoque: anote o saldo do produto antes e confira que só o recebimento o muda.

@@ -15,6 +15,9 @@ export const pool = new pg.Pool({
   idleTimeoutMillis: 30_000,
   statement_timeout: 30_000,
   idle_in_transaction_session_timeout: 60_000,
+  // Fuso da loja em toda conexao: current_date, prazos e relatorios por dia seguem o horario de Brasilia, mesmo com
+  // o servidor (e o Postgres) em UTC. Datas gravadas (timestamptz) nao mudam.
+  options: '-c TimeZone=America/Sao_Paulo',
 });
 
 const lost = (err: Error) => console.error('conexao com o banco perdida', err.message);

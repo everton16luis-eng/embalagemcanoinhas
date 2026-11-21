@@ -46,6 +46,28 @@ export async function trackingOccurrence(db: Db, e: { orderId: string; shipmentI
 }
 
 /**
+ * Pagamento devolvido ou contestado no provedor (Fase 9b): abre no maximo UMA ocorrencia de reembolso por pedido
+ * (indice unico); aviso repetido so entra no historico. Nao segura a conclusao, nao registra reembolso, nao mexe no
+ * estoque nem na NF-e: o reembolso e registrado por quem tem refunds.record, depois de conferir.
+ */
+export async function paymentOccurrence(db: Db, orderId: string, status: 'refunded' | 'charged_back') {
+  const description = status === 'refunded' ? 'Pagamento devolvido ao cliente no provedor: conferir e registrar o reembolso.' : 'Contestação (chargeback) aberta pelo cliente no provedor.';
+  const ins = await db.query<{ id: string }>(
+    `INSERT INTO logistic_occurrences (order_id, kind, source, description, blocks_completion)
+     VALUES ($1, 'refund', 'payment', $2, false)
+     ON CONFLICT (order_id) WHERE source = 'payment' DO NOTHING RETURNING id`,
+    [orderId, description],
+  );
+  if (ins.rows[0]) {
+    await db.query(`INSERT INTO occurrence_events (occurrence_id, action, to_status, note) VALUES ($1, 'open', 'open', $2)`, [ins.rows[0].id, description]);
+    return { occurrenceId: ins.rows[0].id, opened: true };
+  }
+  const cur = (await db.query<{ id: string; status: string }>(`SELECT id, status FROM logistic_occurrences WHERE order_id = $1 AND source = 'payment'`, [orderId])).rows[0]!;
+  await db.query(`INSERT INTO occurrence_events (occurrence_id, action, from_status, to_status, note) VALUES ($1, 'payment', $2, $2, $3)`, [cur.id, cur.status, `Novo aviso do pagamento: ${description}`]);
+  return { occurrenceId: cur.id, opened: false };
+}
+
+/**
  * Custo historico da saida (D9-3): media ponderada do custo medio gravado nos movimentos de venda do pedido e da
  * variante (a venda nao muda a media, entao avg_cost_after e o custo com que a mercadoria saiu). Sem venda
  * registrada, ou venda com custo zero (estoque que entrou sem custo, ou seja, custo desconhecido): null. A entrada usa

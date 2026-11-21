@@ -19,8 +19,10 @@ export const neg = (v: string) => (v.startsWith('-') ? v.slice(1) : `-${v}`);
 export type MovementKind =
   | 'receipt' | 'sale' | 'return' | 'loss' | 'damage' | 'adjustment' | 'inventory' | 'reserve' | 'release'
   // SGLog Fase 3 (docs/20-sglog-fase3.md §1)
-  | 'transfer_out' | 'transfer_in' | 'transfer_loss' | 'transfer_return' | 'block' | 'unblock' | 'damage_hold' | 'damage_release' | 'reversal';
-export type SourceType = 'purchase_receipt' | 'order' | 'cart' | 'quote' | 'inventory' | 'manual' | 'reservation' | 'transfer' | 'adjustment_request' | 'customer_return';
+  | 'transfer_out' | 'transfer_in' | 'transfer_loss' | 'transfer_return' | 'block' | 'unblock' | 'damage_hold' | 'damage_release' | 'reversal'
+  // SGLog Fase 9b: devolucao ao fornecedor (saida fisica confirmada)
+  | 'supplier_return';
+export type SourceType = 'purchase_receipt' | 'order' | 'cart' | 'quote' | 'inventory' | 'manual' | 'reservation' | 'transfer' | 'adjustment_request' | 'customer_return' | 'supplier_return';
 
 type VariantInfo = { variant_id: string; sku: string; allows_fraction: boolean; availability_mode: 'stock' | 'made_to_order'; base_unit: string };
 

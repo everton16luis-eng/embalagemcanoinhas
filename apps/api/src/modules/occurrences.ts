@@ -15,7 +15,7 @@ import { AppError, notFound } from '../lib/errors.js';
 import { idParams, isUniqueViolation, pageQuery } from '../lib/http.js';
 import { OCCURRENCE_KINDS, RESPONSIBILITIES, releaseHold } from '../lib/returns.js';
 import { requireAnyPermission, requirePermission } from './auth.js';
-import { addEvent } from './orders.js';
+import { addInternalEvent } from './orders.js';
 
 const key = z.string().min(8).max(100);
 const OCC_COLS = `o.id, o.number, o.order_id, ord.number AS order_number, o.shipment_id, s.seq AS shipment_seq, o.order_item_id, oi.sku AS item_sku,
@@ -86,7 +86,7 @@ export async function openOccurrence(db: Db, actorId: string, b: z.infer<typeof 
     )
   ).rows[0]!;
   await db.query(`INSERT INTO occurrence_events (occurrence_id, action, to_status, note, actor_id) VALUES ($1, 'open', 'open', $2, $3)`, [o.id, b.description, actorId]);
-  await addEvent(db, b.orderId, order.status, `Ocorrência nº ${o.number} aberta.`, actorId);
+  await addInternalEvent(db, b.orderId, order.status, `Ocorrência nº ${o.number} aberta.`, actorId);
   return o;
 }
 

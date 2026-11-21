@@ -13,6 +13,7 @@ BEGIN
       LOCK TABLE stock_movements IN ACCESS EXCLUSIVE MODE NOWAIT;
       LOCK TABLE stock_reconciliations IN ACCESS EXCLUSIVE MODE NOWAIT;
       LOCK TABLE logistics_settings IN ACCESS EXCLUSIVE MODE NOWAIT;
+      LOCK TABLE order_events IN ACCESS EXCLUSIVE MODE NOWAIT;
       EXIT;
     EXCEPTION WHEN lock_not_available THEN
       tries := tries + 1;
@@ -30,14 +31,19 @@ BEGIN
   IF EXISTS (SELECT 1 FROM logistic_occurrences) OR EXISTS (SELECT 1 FROM customer_returns) THEN
     RAISE EXCEPTION 'Reversao da 0028 recusada: ha ocorrencia ou devolucao registrada.' USING ERRCODE = 'restrict_violation';
   END IF;
-  IF EXISTS (SELECT 1 FROM stock_movements WHERE source_type = 'customer_return') THEN
+  IF EXISTS (SELECT 1 FROM refund_records) OR EXISTS (SELECT 1 FROM return_fiscal_documents) OR EXISTS (SELECT 1 FROM supplier_returns)
+     OR EXISTS (SELECT 1 FROM orders WHERE replacement_for_return_id IS NOT NULL) THEN
+    RAISE EXCEPTION 'Reversao da 0028 recusada: ha reembolso, documento fiscal de devolucao, pedido de reposicao ou devolucao ao fornecedor registrado.' USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF EXISTS (SELECT 1 FROM stock_movements WHERE source_type IN ('customer_return', 'supplier_return') OR kind = 'supplier_return') THEN
     RAISE EXCEPTION 'Reversao da 0028 recusada: ha movimento de estoque de devolucao.' USING ERRCODE = 'restrict_violation';
   END IF;
   IF EXISTS (SELECT 1 FROM orders WHERE logistics_status = 'on_hold') THEN
     RAISE EXCEPTION 'Reversao da 0028 recusada: ha pedido segurado por ocorrencia.' USING ERRCODE = 'restrict_violation';
   END IF;
-  IF EXISTS (SELECT 1 FROM stock_reconciliations WHERE check_code IN ('C14', 'C15', 'C16') OR field IN ('returned', 'inspected', 'quarantine') OR ref_id IS NOT NULL) THEN
-    RAISE EXCEPTION 'Reversao da 0028 recusada: ha divergencia C14-C16 registrada na conferencia.' USING ERRCODE = 'restrict_violation';
+  IF EXISTS (SELECT 1 FROM stock_reconciliations WHERE check_code IN ('C14', 'C15', 'C16', 'C17', 'C18', 'C19', 'C20', 'C21')
+             OR field IN ('returned', 'inspected', 'quarantine', 'refunded', 'refund_record', 'fiscal', 'hold', 'supplier_returned') OR ref_id IS NOT NULL) THEN
+    RAISE EXCEPTION 'Reversao da 0028 recusada: ha divergencia C14-C21 registrada na conferencia.' USING ERRCODE = 'restrict_violation';
   END IF;
   IF EXISTS (SELECT 1 FROM logistics_settings WHERE return_regret_days IS DISTINCT FROM 7 OR return_defect_days IS DISTINCT FROM 90
              OR return_defect_nondurable_days IS DISTINCT FROM 30 OR return_warranty_days IS NOT NULL OR return_policy_text IS NOT NULL) THEN
@@ -277,6 +283,11 @@ BEGIN
   END IF;
   RETURN NEW;
 END $$;
+ALTER TABLE stock_movements DROP CONSTRAINT stock_movements_supplier_return;
+ALTER TABLE stock_movements DROP CONSTRAINT stock_movements_kind_check;
+ALTER TABLE stock_movements ADD CONSTRAINT stock_movements_kind_check CHECK (kind IN (
+  'receipt', 'sale', 'return', 'loss', 'damage', 'adjustment', 'inventory', 'reserve', 'release',
+  'transfer_out', 'transfer_in', 'transfer_loss', 'transfer_return', 'block', 'unblock', 'damage_hold', 'damage_release', 'reversal'));
 ALTER TABLE stock_movements DROP CONSTRAINT stock_movements_source_type_check;
 ALTER TABLE stock_movements ADD CONSTRAINT stock_movements_source_type_check
   CHECK (source_type IN ('purchase_receipt', 'order', 'cart', 'quote', 'inventory', 'manual', 'reservation', 'transfer', 'adjustment_request'));
@@ -287,6 +298,19 @@ ALTER TABLE orders DROP CONSTRAINT orders_logistics_status_check;
 ALTER TABLE orders ADD CONSTRAINT orders_logistics_status_check CHECK (logistics_status IN (
   'awaiting', 'analysis', 'processing', 'partially_shipped', 'shipped', 'partially_delivered', 'completed', 'canceled'));
 
+DROP TABLE supplier_return_events;
+DROP TABLE supplier_return_items;
+DROP TABLE supplier_returns;
+ALTER TABLE orders DROP CONSTRAINT orders_total_cents_check;
+ALTER TABLE orders ADD CONSTRAINT orders_total_cents_check CHECK (total_cents > 0);
+DROP INDEX orders_replacement_once;
+ALTER TABLE orders DROP COLUMN replacement_for_return_id;
+DROP TABLE return_fiscal_documents;
+DROP TABLE refund_events;
+DROP TABLE refund_records;
+DROP FUNCTION refund_records_check();
+DROP INDEX logistic_occurrences_payment_once;
+ALTER TABLE order_events DROP COLUMN internal;
 DROP TABLE return_events;
 DROP TABLE quarantine_decisions;
 DROP FUNCTION quarantine_decisions_check();
@@ -299,4 +323,4 @@ DROP TABLE customer_returns;
 DROP TABLE occurrence_events;
 DROP TABLE logistic_occurrences;
 ALTER TABLE logistics_settings DROP COLUMN return_regret_days, DROP COLUMN return_defect_days, DROP COLUMN return_defect_nondurable_days,
-  DROP COLUMN return_warranty_days, DROP COLUMN return_policy_text;
+  DROP COLUMN return_warranty_days, DROP COLUMN return_policy_text, DROP COLUMN returns_since;

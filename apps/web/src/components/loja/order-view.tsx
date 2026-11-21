@@ -6,6 +6,14 @@ import { api } from '@/lib/api';
 import { reais } from './price';
 
 type Payment = { id: string; method: string; status: string; status_detail: string | null; amount_cents: string; pix_qr_code: string | null; pix_qr_base64: string | null; pix_expires_at: string | null; card_last_four: string | null; card_brand: string | null; installments: number | null };
+const RETURN_PUBLIC: Record<string, string> = {
+  authorized: 'autorizada, aguardando o envio',
+  in_transit: 'a caminho da loja',
+  received: 'recebida pela loja, em conferência',
+  inspected: 'conferida',
+  completed: 'concluída',
+};
+
 export type Order = {
   id: string;
   number: number;
@@ -25,6 +33,8 @@ export type Order = {
   items: { id: string; sku: string; product_name: string; packaging_label: string; base_qty_per_pack: string; packs: number; unit_price_cents: string; total_cents: string; made_to_order: boolean; lead_time_days: number | null }[];
   payments: Payment[];
   events: { status: string; note: string | null; created_at: string }[];
+  /** SGLog Fase 9: devolucoes e trocas, so a situacao. */
+  returns?: { number: number; kind: string; status: string; created_at: string; updated_at: string }[];
   shipment: { carrier: string | null; tracking_code: string | null; tracking_url: string | null; shipped_at: string | null; delivered_at: string | null } | null;
   // SGLog Fase 5: remessas (entrega parcial mostra cada uma com o seu rastreio).
   shipments?: { id: string; seq: number; kind: string; status: string; carrier: string | null; tracking_code: string | null; tracking_url: string | null; shipped_at: string | null; delivered_at: string | null; items: { sku: string; productName: string; qty: string }[]; timeline?: { action: string; status: string; at: string }[] }[];
@@ -198,6 +208,15 @@ export function OrderView({ base, devToken }: { base: string; devToken?: string 
           </p>
         )}
         {(o.shipments ?? []).filter((s) => s.kind !== 'legacy').length <= 1 && <Timeline items={((o.shipments ?? []).find((s) => s.kind !== 'legacy') ?? o.shipments?.[0])?.timeline} />}
+        {(o.returns ?? []).length > 0 && (
+          <ul className="mt-3 space-y-1 text-sm" data-testid="order-returns-public">
+            {o.returns!.map((r) => (
+              <li key={r.number} className="border border-g-line p-3">
+                <b>{r.kind === 'exchange' ? 'Troca' : r.kind === 'refusal' ? 'Devolução (recusa na entrega)' : 'Devolução'}</b> · {RETURN_PUBLIC[r.status] ?? 'Em andamento'}
+              </li>
+            ))}
+          </ul>
+        )}
         {o.invoice && (
           <p className="mt-3 border border-g-line p-3 text-sm">
             <b>Nota fiscal nº {o.invoice.number}</b>

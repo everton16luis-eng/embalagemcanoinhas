@@ -35,6 +35,7 @@ const NAV = [
   // SGLog Fase 9: ocorrencias e devolucoes (logistica reversa, conferencia e quarentena).
   { href: '/painel/logistica/ocorrencias', label: 'Ocorrências', icon: TriangleAlert, perm: 'occurrences.manage|returns.manage|logistics.view', group: 'Logística' },
   { href: '/painel/logistica/devolucoes', label: 'Devoluções', icon: Undo2, perm: 'returns.manage|returns.receive|logistics.view', group: 'Logística' },
+  { href: '/painel/logistica/devolucoes-fornecedor', label: 'Devol. ao fornecedor', icon: Undo2, perm: 'purchases.view|purchases.manage', group: 'Logística' },
   // SGLog Fase 7: abastecimento (compras sem confirmacao, atrasos, a caminho) e requisicoes internas de compra.
   { href: '/painel/logistica/abastecimento', label: 'Abastecimento', icon: Activity, perm: 'logistics.view|purchases.view', group: 'Logística' },
   { href: '/painel/estoque', label: 'Estoque', icon: Warehouse, perm: 'stock.view', group: 'Logística' },

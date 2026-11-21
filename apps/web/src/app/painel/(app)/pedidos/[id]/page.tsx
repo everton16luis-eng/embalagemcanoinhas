@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { DOC_STATUS } from '@/components/fiscal';
 import { CHANNEL_LABEL, INVOICE_STATUS, METHOD_LABEL, ORDER_STATUS, PAYMENT_STATUS } from '@/components/orders';
 import { AllocationPanel, LogisticsBadge } from '@/components/logistics';
+import { OrderRefundsPanel } from '@/components/refunds';
 import { OrderReturnsPanel } from '@/components/returns';
 import { OrderShipmentsPanel, type OrderShipment } from '@/components/shipments';
 import { Guard, useMe } from '@/components/shell';
@@ -45,6 +46,7 @@ type Order = {
   // SGLog Fase 4 (so no painel).
   logistics_status?: string | null;
   allocation_required?: boolean;
+  replacement_for_return_id?: string | null;
 };
 
 type FiscalCheck = {
@@ -375,7 +377,19 @@ function Detail() {
 
           {can('logistics.view') && <OrderShipmentsPanel shipments={o.shipments ?? []} />}
 
+          {o.replacement_for_return_id && (
+            <Notice tone="warn">
+              Pedido de reposição de troca, sem cobrança.{' '}
+              <Link href={`/painel/logistica/devolucoes/${o.replacement_for_return_id}`} className="underline">
+                Ver a troca
+              </Link>
+              . A NF-e não é emitida automaticamente: confira com o contador a natureza da operação antes de emitir. O despacho segue exigindo a NF-e autorizada.
+            </Notice>
+          )}
+
           {(can('occurrences.manage') || can('returns.manage') || can('returns.receive') || can('logistics.view')) && o.status !== 'pending_payment' && o.status !== 'canceled' && <OrderReturnsPanel orderId={o.id} onChange={load} />}
+
+          {(can('refunds.record') || can('returns.manage') || can('orders.view')) && o.status !== 'pending_payment' && !o.replacement_for_return_id && <OrderRefundsPanel orderId={o.id} />}
 
           {can('logistics.view') && (o.allocation_required || o.logistics_status) && <AllocationPanel orderId={o.id} onChange={load} />}
 

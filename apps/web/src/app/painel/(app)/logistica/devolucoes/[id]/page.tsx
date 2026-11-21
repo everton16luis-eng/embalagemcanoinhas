@@ -6,6 +6,7 @@ import Link from '@/components/painel-link';
 import { useParams } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import { CONDITION, Deadlines, RETURN_KIND, RETURN_METHOD, RETURN_REASON, ReturnBadge, type Deadline } from '@/components/returns';
+import { OrderRefundsPanel } from '@/components/refunds';
 import { Guard, useMe } from '@/components/shell';
 import { newKey, useWarehouses } from '@/components/stock';
 import { Badge, Button, Field, Input, Notice, PageHeader, Panel, Select } from '@/components/ui';
@@ -60,7 +61,18 @@ type Insp = {
   decided: string;
   decisions: { decision: string; qty: string; reason: string; createdAt: string; actorName: string | null }[];
 };
-type View = { return: Ret; items: Item[]; inspections: Insp[]; events: { id: string; action: string; note: string | null; created_at: string; actor_name: string | null; to_status: string | null }[]; deadlines: Deadline[] };
+type Fiscal = { id: string; kind: string; doc_type: string | null; access_key: string | null; doc_number: string | null; series: string | null; issued_on: string | null; justification: string | null; created_at: string; actor_name: string | null };
+type View = {
+  return: Ret;
+  items: Item[];
+  inspections: Insp[];
+  events: { id: string; action: string; note: string | null; created_at: string; actor_name: string | null; to_status: string | null }[];
+  deadlines: Deadline[];
+  fiscal: Fiscal[];
+  fiscalResolved: boolean;
+  replacement: { id: string; number: number; status: string; logistics_status: string | null; invoice_status: string } | null;
+};
+const DOC_TYPE: Record<string, string> = { customer_nfe: 'NF-e de devolução emitida pelo cliente', store_entry_nfe: 'NF-e de entrada emitida pela loja', other: 'Outro documento' };
 type Line = { key: number; itemId: string; condition: string; qty: string; reason: string };
 const DECISION: Record<string, string> = { release: 'Liberada para venda', damaged: 'Passou para avariada', discard: 'Descartada (baixa)' };
 
@@ -377,6 +389,36 @@ function Page() {
           </div>
         </Panel>
 
+        <FiscalPanel v={v} onDone={apply} />
+
+        {r.kind === 'exchange' && (
+          <Panel title="Troca: pedido de reposição" description="Pedido separado, sem cobrança, ligado a esta devolução. Segue alocação, NF-e e expedição como qualquer pedido; a NF-e não é emitida automaticamente.">
+            {v.replacement ? (
+              <p className="text-sm" data-testid="replacement-link">
+                <Link href={`/painel/pedidos/${v.replacement.id}`} className="font-medium text-act hover:underline">
+                  Pedido de reposição nº {v.replacement.number}
+                </Link>{' '}
+                · NF-e {v.replacement.invoice_status === 'authorized' ? 'autorizada' : 'pendente'}
+              </p>
+            ) : manage && r.status !== 'canceled' ? (
+              <Button
+                variant="primary"
+                busy={busy === 'replacement'}
+                onClick={() => {
+                  if (window.confirm('Criar o pedido de reposição, sem cobrança, com os itens desta troca? A mercadoria é reservada agora.')) run('replacement', `/${id}/replacement`, { version: r.version }, 'Pedido de reposição criado.');
+                }}
+                data-testid="create-replacement"
+              >
+                Criar pedido de reposição
+              </Button>
+            ) : (
+              <p className="text-sm text-ink-soft">Sem pedido de reposição.</p>
+            )}
+          </Panel>
+        )}
+
+        <OrderRefundsPanel orderId={r.order_id} returnId={r.id} />
+
         {manage && ['authorized', 'in_transit', 'inspected'].includes(r.status) && (
           <div className="flex flex-wrap gap-2">
             {r.status === 'inspected' && (
@@ -422,5 +464,108 @@ export default function DevolucaoPage() {
     <Guard perm="returns.manage|returns.receive|occurrences.manage|logistics.view|orders.view">
       <Page />
     </Guard>
+  );
+}
+
+/** Documento fiscal da devolucao: registro do documento emitido fora, ou a dispensa justificada (permissao fiscal). */
+function FiscalPanel({ v, onDone }: { v: View; onDone: (r: View) => void }) {
+  const { can, me } = useMe();
+  const r = v.return;
+  const canDoc = can('returns.manage') || can('fiscal.manage');
+  const canWaive = can('fiscal.manage');
+  const [mode, setMode] = useState<'document' | 'waiver' | null>(null);
+  const [f, setF] = useState({ docType: 'customer_nfe', accessKey: '', docNumber: '', series: '', issuedOn: '', justification: '' });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const submit = async () => {
+    setBusy(true);
+    setError('');
+    try {
+      const body =
+        mode === 'waiver'
+          ? { kind: 'waiver', justification: f.justification, requestKey: newKey() }
+          : { kind: 'document', docType: f.docType, accessKey: f.accessKey.replace(/\D/g, '') || null, docNumber: f.docNumber.trim() || null, series: f.series.trim() || null, issuedOn: f.issuedOn || null, requestKey: newKey() };
+      onDone(await api<View>(`/admin/returns/${r.id}/fiscal`, { method: 'POST', body }));
+      setMode(null);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  if (!r.fiscal_required && !v.fiscal.length) return null;
+  return (
+    <Panel
+      title="Documento fiscal da devolução"
+      description="Registro separado da NF-e da venda: a nota original não é cancelada nem alterada. Informe a referência do documento emitido fora do sistema, ou a dispensa justificada (permissão fiscal). CFOP e tributos não são definidos aqui."
+      actions={
+        r.status !== 'canceled' && (
+          <>
+            {canDoc && <Button onClick={() => setMode(mode === 'document' ? null : 'document')}>Registrar documento</Button>}
+            {canWaive && <Button onClick={() => setMode(mode === 'waiver' ? null : 'waiver')}>Dispensar</Button>}
+          </>
+        )
+      }
+    >
+      <div className="space-y-3 text-sm" data-testid="return-fiscal">
+        {error && <Notice tone="bad">{error}</Notice>}
+        {r.fiscal_required && !v.fiscalResolved && <Notice tone="warn">Pendente: a devolução só encerra com o documento fiscal ou a dispensa.</Notice>}
+        {mode === 'waiver' && !me.user.mfaEnabled && <Notice tone="warn">A dispensa exige a verificação em duas etapas ativa.</Notice>}
+        {mode === 'document' && (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Tipo">
+              {(fid) => (
+                <Select id={fid} value={f.docType} onChange={(e) => setF({ ...f, docType: e.target.value })}>
+                  {Object.entries(DOC_TYPE).map(([k, label]) => (
+                    <option key={k} value={k}>
+                      {label}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </Field>
+            <Field label="Chave de acesso (44 dígitos)">{(fid) => <Input id={fid} inputMode="numeric" value={f.accessKey} onChange={(e) => setF({ ...f, accessKey: e.target.value })} />}</Field>
+            <Field label="Número">{(fid) => <Input id={fid} value={f.docNumber} maxLength={20} onChange={(e) => setF({ ...f, docNumber: e.target.value })} />}</Field>
+            <Field label="Série">{(fid) => <Input id={fid} value={f.series} maxLength={5} onChange={(e) => setF({ ...f, series: e.target.value })} />}</Field>
+            <Field label="Emissão">{(fid) => <Input id={fid} type="date" value={f.issuedOn} onChange={(e) => setF({ ...f, issuedOn: e.target.value })} />}</Field>
+          </div>
+        )}
+        {mode === 'waiver' && (
+          <Field label="Justificativa da dispensa" required hint="Mínimo de 10 caracteres. Fica no histórico permanente.">
+            {(fid) => <Input id={fid} value={f.justification} maxLength={1000} onChange={(e) => setF({ ...f, justification: e.target.value })} />}
+          </Field>
+        )}
+        {mode && (
+          <div className="flex gap-2">
+            <Button
+              variant="primary"
+              busy={busy}
+              disabled={mode === 'waiver' ? f.justification.trim().length < 10 : !f.accessKey.replace(/\D/g, '') && !f.docNumber.trim()}
+              onClick={submit}
+            >
+              Registrar
+            </Button>
+            <Button variant="ghost" onClick={() => setMode(null)}>
+              Voltar
+            </Button>
+          </div>
+        )}
+        {v.fiscal.length > 0 && (
+          <ul className="space-y-1">
+            {v.fiscal.map((d) => (
+              <li key={d.id}>
+                <Badge tone={d.kind === 'waiver' ? 'warn' : 'good'}>{d.kind === 'waiver' ? 'Dispensa' : 'Documento'}</Badge>{' '}
+                {d.kind === 'waiver' ? d.justification : `${DOC_TYPE[d.doc_type ?? 'other']}: ${d.access_key ? `chave ${d.access_key}` : `nº ${d.doc_number}${d.series ? ` série ${d.series}` : ''}`}`}
+                <span className="text-ink-faint">
+                  {' '}
+                  · {when(d.created_at)}
+                  {d.actor_name ? ` · ${d.actor_name}` : ''}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </Panel>
   );
 }

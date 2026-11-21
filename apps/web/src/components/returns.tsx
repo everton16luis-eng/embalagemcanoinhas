@@ -59,6 +59,15 @@ export const CONDITION: Record<string, { label: string; tone: Tone; hint: string
   missing: { label: 'Faltando', tone: 'neutral', hint: 'não veio; sem estoque' },
 };
 
+export const SUPPLIER_RETURN_STATUS: Record<string, { label: string; tone: Tone }> = {
+  draft: { label: 'Rascunho', tone: 'neutral' },
+  sent: { label: 'Enviada', tone: 'act' },
+  accepted: { label: 'Aceita', tone: 'good' },
+  refused: { label: 'Recusada (voltou)', tone: 'warn' },
+  canceled: { label: 'Cancelada', tone: 'neutral' },
+};
+export const BUCKET: Record<string, string> = { on_hand: 'Livre', blocked: 'Bloqueado', damaged: 'Avariado' };
+
 export function OccurrenceBadge({ status }: { status: string }) {
   const s = OCCURRENCE_STATUS[status] ?? { label: status, tone: 'neutral' as Tone };
   return <Badge tone={s.tone}>{s.label}</Badge>;

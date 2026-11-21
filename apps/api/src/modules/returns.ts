@@ -20,7 +20,7 @@ import { saleUnitCost } from '../lib/returns.js';
 import { activeWarehouse, assertFree, assertWhole, lockVariants, moveStock, neg, qty as qtySchema, variantInfo, type Movement } from '../lib/stock.js';
 import { requireAnyPermission, requirePermission, type Auth } from './auth.js';
 import { orderOccurrences } from './occurrences.js';
-import { addEvent } from './orders.js';
+import { addInternalEvent, insertOrder, type NewOrder, type OrderLine } from './orders.js';
 
 const key = z.string().min(8).max(100);
 const milli = (v: string | number | null | undefined) => Math.round(Number(v ?? 0) * 1000);
@@ -145,7 +145,16 @@ export async function returnView(db: Db | typeof pool, id: string) {
     )
   ).rows;
   const policy = await returnPolicy(db);
-  return { return: ret, items, inspections, events, deadlines: deadlines(policy, ret.delivered_at) };
+  const fiscal = (
+    await db.query(
+      `SELECT d.id, d.kind, d.doc_type, d.access_key, d.doc_number, d.series, d.issued_on, d.justification, d.created_at, u.name AS actor_name
+       FROM return_fiscal_documents d LEFT JOIN users u ON u.id = d.actor_id WHERE d.return_id = $1 ORDER BY d.id`,
+      [id],
+    )
+  ).rows;
+  const refunds = (await db.query(`SELECT id, number, amount_cents, method, status, created_at FROM refund_records WHERE return_id = $1 ORDER BY number`, [id])).rows;
+  const replacement = (await db.query(`SELECT id, number, status, logistics_status, invoice_status FROM orders WHERE replacement_for_return_id = $1`, [id])).rows[0] ?? null;
+  return { return: ret, items, inspections, events, deadlines: deadlines(policy, ret.delivered_at), fiscal, fiscalResolved: fiscal.length > 0, refunds, replacement };
 }
 
 /** Itens do pedido com o que pode voltar: despachado, entregue, ja em devolucao. */
@@ -390,6 +399,39 @@ export async function returnRoutes(app: FastifyInstance) {
     };
   });
 
+  // Relatorio do periodo (9b): devolucoes, conferencia por condicao (com o custo de entrada), ocorrencias, reembolsos
+  // registrados e devolucoes ao fornecedor. So leitura; os valores de reembolso sao os registrados, nao conciliados.
+  app.get('/report', async (req) => {
+    requireAnyPermission(req, 'returns.manage', 'reports.view', 'refunds.record');
+    const q = z.object({ from: z.iso.date(), to: z.iso.date() }).parse(req.query);
+    const p = [q.from, q.to];
+    const range = (col: string) => `${col} >= $1::date AND ${col} < $2::date + 1`;
+    const [returns, conditions, occurrences, refunds, supplier, pending] = await Promise.all([
+      pool.query(`SELECT kind, reason, status, count(*)::int AS n FROM customer_returns WHERE ${range('created_at')} GROUP BY kind, reason, status ORDER BY kind, reason, status`, p),
+      pool.query(
+        `SELECT condition, sum(CASE WHEN reverses_id IS NULL THEN qty ELSE -qty END)::text AS qty,
+                round(sum(CASE WHEN reverses_id IS NULL THEN 1 ELSE -1 END * qty * coalesce(unit_cost_cents, 0)))::bigint AS cost_cents
+         FROM return_inspections WHERE ${range('created_at')} GROUP BY condition ORDER BY condition`,
+        p,
+      ),
+      pool.query(`SELECT kind, responsibility, status, count(*)::int AS n FROM logistic_occurrences WHERE ${range('created_at')} GROUP BY kind, responsibility, status ORDER BY kind`, p),
+      pool.query(`SELECT method, status, count(*)::int AS n, sum(amount_cents)::bigint AS amount_cents FROM refund_records WHERE ${range('created_at')} GROUP BY method, status ORDER BY method, status`, p),
+      pool.query(
+        `SELECT s.status, count(DISTINCT s.id)::int AS n, coalesce(sum(i.qty), 0)::text AS qty FROM supplier_returns s LEFT JOIN supplier_return_items i ON i.supplier_return_id = s.id
+         WHERE ${range('s.created_at')} GROUP BY s.status ORDER BY s.status`,
+        p,
+      ),
+      pool.query(
+        `SELECT (SELECT count(*)::int FROM customer_returns r WHERE r.fiscal_required AND r.status NOT IN ('completed', 'canceled')
+                   AND NOT EXISTS (SELECT 1 FROM return_fiscal_documents d WHERE d.return_id = r.id)) AS fiscal_pending,
+                (SELECT count(*)::int FROM refund_records WHERE status = 'requested') AS refunds_requested,
+                (SELECT count(*)::int FROM refund_records WHERE status = 'done') AS refunds_unconfirmed,
+                (SELECT count(*)::int FROM orders WHERE logistics_status = 'on_hold') AS orders_on_hold`,
+      ),
+    ]);
+    return { from: q.from, to: q.to, returns: returns.rows, conditions: conditions.rows, occurrences: occurrences.rows, refunds: refunds.rows, supplierReturns: supplier.rows, pending: pending.rows[0] };
+  });
+
   app.get('/:id', async (req) => {
     requireAnyPermission(req, ...view);
     const { id } = idParams.parse(req.params);
@@ -487,7 +529,7 @@ export async function returnRoutes(app: FastifyInstance) {
         if (b.occurrenceId) {
           await db.query(`INSERT INTO occurrence_events (occurrence_id, action, note, actor_id) VALUES ($1, 'return', $2, $3)`, [b.occurrenceId, `${docRef(r)} autorizada.`, auth.userId]);
         }
-        await addEvent(db, b.orderId, order.status, `${docRef(r)} autorizada (${b.kind === 'refusal' ? 'recusa' : b.kind === 'exchange' ? 'troca' : 'devolução'}).`, auth.userId);
+        await addInternalEvent(db, b.orderId, order.status, `${docRef(r)} autorizada (${b.kind === 'refusal' ? 'recusa' : b.kind === 'exchange' ? 'troca' : 'devolução'}).`, auth.userId);
         await audit(db, { actorId: auth.userId, action: 'return.authorize', entity: 'customer_return', entityId: r.id, after: { ...b, requestKey: undefined }, ip: auth.ip });
         return r.id;
       });
@@ -539,7 +581,7 @@ export async function returnRoutes(app: FastifyInstance) {
       const wh = await activeWarehouse(c.db, b.warehouseId);
       await setStatus(c.db, c.r, 'received', ', warehouse_id = $3, received_at = now(), received_by = $4', [wh.id, auth.userId]);
       await returnEvent(c.db, { returnId: c.r.id, action: 'receive', from: c.r.status, to: 'received', note: [`Recebida no depósito ${wh.name}`, b.note].filter(Boolean).join('. '), requestKey: b.requestKey, actorId: auth.userId });
-      await addEvent(c.db, c.order.id, c.order.status, `${docRef(c.r)} recebida no depósito ${wh.name} (aguarda conferência).`, auth.userId);
+      await addInternalEvent(c.db, c.order.id, c.order.status, `${docRef(c.r)} recebida no depósito ${wh.name} (aguarda conferência).`, auth.userId);
       await audit(c.db, { actorId: auth.userId, action: 'return.receive', entity: 'customer_return', entityId: c.r.id, after: { warehouseId: wh.id }, ip: auth.ip });
     });
   });
@@ -738,7 +780,7 @@ export async function returnRoutes(app: FastifyInstance) {
       }
       await setStatus(c.db, c.r, 'completed', ', completed_at = now(), completed_by = $3', [auth.userId]);
       await returnEvent(c.db, { returnId: c.r.id, action: 'complete', from: c.r.status, to: 'completed', requestKey: b.requestKey, actorId: auth.userId });
-      await addEvent(c.db, c.order.id, c.order.status, `${docRef(c.r)} encerrada.`, auth.userId);
+      await addInternalEvent(c.db, c.order.id, c.order.status, `${docRef(c.r)} encerrada.`, auth.userId);
       await audit(c.db, { actorId: auth.userId, action: 'return.complete', entity: 'customer_return', entityId: c.r.id, ip: auth.ip });
     });
   });
@@ -757,15 +799,154 @@ export async function returnRoutes(app: FastifyInstance) {
       }
       await setStatus(c.db, c.r, 'canceled', ', canceled_at = now(), cancel_reason = $3', [b.reason]);
       await returnEvent(c.db, { returnId: c.r.id, action: 'cancel', from: c.r.status, to: 'canceled', note: b.reason, requestKey: b.requestKey, actorId: auth.userId });
-      await addEvent(c.db, c.order.id, c.order.status, `${docRef(c.r)} cancelada: ${b.reason}`, auth.userId);
+      await addInternalEvent(c.db, c.order.id, c.order.status, `${docRef(c.r)} cancelada: ${b.reason}`, auth.userId);
       await audit(c.db, { actorId: auth.userId, action: 'return.cancel', entity: 'customer_return', entityId: c.r.id, after: { reason: b.reason }, ip: auth.ip });
     });
+  });
+
+  // Documento fiscal da devolucao (9b): registro do documento emitido fora (chave ou numero) ou a dispensa justificada.
+  // Separado da NF-e da venda: a nota original nao e cancelada e o invoice_status do pedido nao muda. Nada de CFOP,
+  // natureza ou tributo e inventado aqui. Dispensa so com permissao fiscal (com verificacao em duas etapas).
+  app.post('/:id/fiscal', async (req) => {
+    // Sessao e permissao antes de ler o corpo.
+    requireAnyPermission(req, 'returns.manage', 'fiscal.manage');
+    const { id } = idParams.parse(req.params);
+    const b = z
+      .discriminatedUnion('kind', [
+        z.strictObject({
+          kind: z.literal('document'),
+          docType: z.enum(['customer_nfe', 'store_entry_nfe', 'other']),
+          accessKey: z.string().regex(/^[0-9]{44}$/).optional().nullable(),
+          docNumber: z.string().trim().min(1).max(20).optional().nullable(),
+          series: z.string().trim().min(1).max(5).optional().nullable(),
+          issuedOn: z.iso.date().optional().nullable(),
+          requestKey: key,
+        }),
+        z.strictObject({ kind: z.literal('waiver'), justification: z.string().trim().min(10).max(1000), requestKey: key }),
+      ])
+      .parse(req.body);
+    const auth = b.kind === 'waiver' ? requirePermission(req, 'fiscal.manage') : requireAnyPermission(req, 'returns.manage', 'fiscal.manage');
+    if (b.kind === 'document' && !b.accessKey && !b.docNumber) throw new AppError(422, 'DOCUMENT_REF_REQUIRED', 'Informe a chave de acesso ou o número do documento.');
+    return act(auth, id, b.requestKey, async (c) => {
+      if (c.r.status === 'canceled') throw new AppError(409, 'INVALID_TRANSITION', 'Devolução cancelada.');
+      await c.db.query(
+        `INSERT INTO return_fiscal_documents (return_id, kind, doc_type, access_key, doc_number, series, issued_on, justification, actor_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        b.kind === 'document'
+          ? [c.r.id, 'document', b.docType, b.accessKey ?? null, b.docNumber || null, b.series || null, b.issuedOn ?? null, null, auth.userId]
+          : [c.r.id, 'waiver', null, null, null, null, null, b.justification, auth.userId],
+      );
+      await c.db.query('UPDATE customer_returns SET version = version + 1, updated_at = now() WHERE id = $1', [c.r.id]);
+      const ref = b.kind === 'document' ? (b.accessKey ? `chave ${b.accessKey}` : `nº ${b.docNumber}${b.series ? ` série ${b.series}` : ''}`) : '';
+      const note = b.kind === 'document' ? `Documento fiscal da devolução registrado (${ref}).` : `Dispensa do documento fiscal: ${b.justification}`;
+      await returnEvent(c.db, { returnId: c.r.id, action: 'fiscal', from: c.r.status, to: c.r.status, note: note.slice(0, 500), requestKey: b.requestKey, actorId: auth.userId });
+      await audit(c.db, { actorId: auth.userId, action: `return.fiscal_${b.kind}`, entity: 'customer_return', entityId: c.r.id, after: { ...b, requestKey: undefined }, ip: auth.ip });
+    });
+  });
+
+  // Troca (D9-4): pedido de reposicao separado, ligado a devolucao, sem cobranca (desconto integral, frete zero).
+  // Nasce pago (nada a cobrar) e segue as regras de sempre: alocacao, NF-e autorizada antes do despacho (a emissao
+  // automatica nao alcanca a reposicao), remessa unica. Um por devolucao.
+  app.post('/:id/replacement', async (req, reply) => {
+    const auth = requirePermission(req, 'returns.manage');
+    const { id } = idParams.parse(req.params);
+    const b = z.strictObject({ version: z.number().int(), requestKey: key }).parse(req.body);
+    let created = false;
+    const out = await act(auth, id, b.requestKey, async (c) => {
+      assertVersion(c.r, b.version);
+      if (c.r.kind !== 'exchange') throw new AppError(409, 'NOT_EXCHANGE', 'Só a devolução do tipo troca gera pedido de reposição.');
+      if (c.r.status === 'canceled') throw new AppError(409, 'INVALID_TRANSITION', 'Devolução cancelada.');
+      if ((await c.db.query('SELECT 1 FROM orders WHERE replacement_for_return_id = $1', [c.r.id])).rows[0]) {
+        throw new AppError(409, 'REPLACEMENT_EXISTS', 'Esta troca já tem pedido de reposição.');
+      }
+      const o = (
+        await c.db.query<{
+          customer_id: string | null;
+          channel: NewOrder['channel'];
+          buyer: Record<string, unknown>;
+          ship_to: Record<string, unknown> | null;
+          shipping_option_id: string | null;
+          shipping_snapshot: Record<string, unknown>;
+          payment_method: NewOrder['paymentMethod'];
+        }>('SELECT customer_id, channel, buyer, ship_to, shipping_option_id, shipping_snapshot, payment_method FROM orders WHERE id = $1', [c.order.id])
+      ).rows[0]!;
+      if (MARKETPLACES.includes(o.channel)) throw new AppError(409, 'MARKETPLACE_EXCHANGE', 'Troca de pedido de marketplace é conduzida pela plataforma.');
+      const rows = (
+        await c.db.query<{
+          qty: string;
+          variant_id: string;
+          packaging_id: string;
+          sku: string;
+          product_name: string;
+          packaging_label: string;
+          base_qty_per_pack: string;
+          list_price_cents: string;
+          unit_price_cents: string;
+          made_to_order: boolean;
+          lead_time_days: number | null;
+        }>(
+          `SELECT i.qty, oi.variant_id, oi.packaging_id, oi.sku, oi.product_name, oi.packaging_label, oi.base_qty_per_pack, oi.list_price_cents,
+                  oi.unit_price_cents, oi.made_to_order, oi.lead_time_days
+           FROM customer_return_items i JOIN order_items oi ON oi.id = i.order_item_id WHERE i.return_id = $1 ORDER BY oi.sku`,
+          [c.r.id],
+        )
+      ).rows;
+      const lines = rows.map((l) => {
+        const packs = milli(l.qty) / milli(l.base_qty_per_pack);
+        if (!Number.isInteger(packs)) {
+          throw new AppError(422, 'REPLACEMENT_PACKS', `${l.sku}: a troca de ${Number(l.qty)} não fecha embalagens inteiras de ${Number(l.base_qty_per_pack)}. Faça a reposição pelo balcão.`);
+        }
+        return {
+          variantId: l.variant_id,
+          packagingId: l.packaging_id,
+          sku: l.sku,
+          productName: l.product_name,
+          label: l.packaging_label,
+          baseQty: l.base_qty_per_pack,
+          packs,
+          listPriceCents: Number(l.list_price_cents),
+          unitPriceCents: Number(l.unit_price_cents),
+          totalCents: Number(l.unit_price_cents) * packs,
+          madeToOrder: l.made_to_order,
+          leadTimeDays: l.lead_time_days,
+        };
+      });
+      const subtotal = lines.reduce((t, l) => t + l.totalCents, 0);
+      const repl = await insertOrder(
+        c.db,
+        {
+          requestKey: `exchange:${c.r.id}`,
+          customerId: o.customer_id,
+          channel: o.channel,
+          buyer: o.buyer,
+          shipTo: o.ship_to,
+          shipping: { ...o.shipping_snapshot, id: o.shipping_option_id },
+          paymentMethod: o.payment_method,
+          paid: true,
+          subtotalCents: subtotal,
+          discountCents: subtotal,
+          freightCents: 0,
+          notes: `Reposição da troca nº ${c.r.number} do pedido nº ${c.order.number}. Sem cobrança.`,
+          dueMinutes: 60,
+          eventNote: `Pedido de reposição da troca do pedido nº ${c.order.number}, sem cobrança.`,
+          replacementForReturnId: c.r.id,
+        },
+        lines as unknown as OrderLine[],
+      );
+      await c.db.query('UPDATE customer_returns SET version = version + 1, updated_at = now() WHERE id = $1', [c.r.id]);
+      await returnEvent(c.db, { returnId: c.r.id, action: 'exchange', from: c.r.status, to: c.r.status, note: `Pedido de reposição nº ${repl.number} criado (sem cobrança).`, requestKey: b.requestKey, actorId: auth.userId });
+      await addInternalEvent(c.db, c.order.id, c.order.status, `${docRef(c.r)}: pedido de reposição nº ${repl.number} criado.`, auth.userId);
+      await audit(c.db, { actorId: auth.userId, action: 'return.replacement', entity: 'customer_return', entityId: c.r.id, after: { orderId: repl.id, number: repl.number }, ip: auth.ip });
+      created = true;
+    });
+    if (created) reply.code(201);
+    return out;
   });
 }
 
 const CONDITION_PT: Record<string, string> = { good: 'em bom estado', quarantine: 'em quarentena', damaged: 'avariado', discarded: 'descartado', missing: 'faltando' };
 
-/** Pendencia fiscal da devolucao resolvida? A Fase 9b registra o documento ou a dispensa. */
-async function fiscalResolved(_db: Db, _returnId: string) {
-  return false;
+/** Pendencia fiscal da devolucao resolvida: documento fiscal registrado ou dispensa justificada (Fase 9b). */
+export async function fiscalResolved(db: Db | typeof pool, returnId: string) {
+  return Boolean((await db.query('SELECT 1 FROM return_fiscal_documents WHERE return_id = $1 LIMIT 1', [returnId])).rows[0]);
 }

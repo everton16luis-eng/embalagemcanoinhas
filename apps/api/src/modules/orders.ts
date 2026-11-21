@@ -9,6 +9,7 @@ import { AppError, notFound } from '../lib/errors.js';
 import { invoiceSummary, sendOrderInvoice } from '../lib/fiscal-files.js';
 import { idParams, likePattern, pageQuery } from '../lib/http.js';
 import type { PaymentProvider, ProviderPayment } from '../lib/payments.js';
+import { paymentOccurrence } from '../lib/returns.js';
 import { consumeReservation, releaseReservation, reserve } from '../lib/stock.js';
 import { currentOptinText, queueOrderMessage } from './whatsapp.js';
 import { closePendingShipments, orderShipments } from './shipments.js';
@@ -48,7 +49,7 @@ export async function orderView(db: Db | typeof pool, orderId: string, opts: { s
   const o = (
     await db.query(
       `SELECT id, number, status, channel, buyer, ship_to, shipping_snapshot, payment_method, subtotal_cents, discount_cents, freight_cents, total_cents,
-              notes, invoice_status, has_backorder, payment_due_at, paid_at, canceled_at, cancel_reason, created_at, version${opts.staff ? ', customer_id, request_key, logistics_status, logistics_note, logistics_version, allocation_required' : ''}
+              notes, invoice_status, has_backorder, payment_due_at, paid_at, canceled_at, cancel_reason, created_at, version${opts.staff ? ', customer_id, request_key, logistics_status, logistics_note, logistics_version, allocation_required, replacement_for_return_id' : ''}
        FROM orders WHERE id = $1`,
       [orderId],
     )
@@ -71,7 +72,7 @@ export async function orderView(db: Db | typeof pool, orderId: string, opts: { s
   ).rows;
   const events = (
     await db.query(
-      `SELECT e.status, e.note, e.created_at${opts.staff ? ', u.name AS actor_name' : ''} FROM order_events e LEFT JOIN users u ON u.id = e.actor_id WHERE e.order_id = $1 ORDER BY e.id`,
+      `SELECT e.status, e.note, e.created_at${opts.staff ? ', u.name AS actor_name' : ''} FROM order_events e LEFT JOIN users u ON u.id = e.actor_id WHERE e.order_id = $1${opts.staff ? '' : ' AND NOT e.internal'} ORDER BY e.id`,
       [orderId],
     )
   ).rows;
@@ -85,7 +86,11 @@ export async function orderView(db: Db | typeof pool, orderId: string, opts: { s
       )
     ).rows[0] ?? null;
   const shipments = await orderShipments(db, orderId, { staff: opts.staff });
-  return { ...o, items, payments, events, shipment, shipments, invoice: await invoiceSummary(db, orderId) };
+  // SGLog Fase 9: devolucoes e trocas, so a situacao (sem notas, deposito, valores ou nomes).
+  const returns = (
+    await db.query(`SELECT number, kind, status, created_at, updated_at FROM customer_returns WHERE order_id = $1 AND status <> 'canceled' ORDER BY number`, [orderId])
+  ).rows;
+  return { ...o, items, payments, events, shipment, shipments, returns, invoice: await invoiceSummary(db, orderId) };
 }
 
 async function orderByToken(db: Db | typeof pool, token: string) {
@@ -97,6 +102,11 @@ async function orderByToken(db: Db | typeof pool, token: string) {
 
 export async function addEvent(db: Db, orderId: string, status: string, note: string | null, actorId: string | null = null) {
   await db.query('INSERT INTO order_events (order_id, status, note, actor_id) VALUES ($1, $2, $3, $4)', [orderId, status, note, actorId]);
+}
+
+/** SGLog Fase 9: evento so da equipe (ocorrencia, devolucao, reembolso). Nao aparece na pagina do cliente. */
+export async function addInternalEvent(db: Db, orderId: string, status: string, note: string, actorId: string | null = null) {
+  await db.query('INSERT INTO order_events (order_id, status, note, actor_id, internal) VALUES ($1, $2, $3, $4, true)', [orderId, status, note, actorId]);
 }
 
 export async function releaseOrderReservations(db: Db, actorId: string | null, orderId: string) {
@@ -149,6 +159,8 @@ export async function applyPayment(db: Db, paymentId: string, p: ProviderPayment
     if (order.status === 'canceled') await addEvent(db, order.id, 'canceled', 'Pagamento aprovado depois do cancelamento: devolver o valor pelo painel do Mercado Pago.');
   } else if (status === 'refunded' || status === 'charged_back') {
     await addEvent(db, order.id, order.status, status === 'refunded' ? 'Pagamento devolvido ao cliente.' : 'Contestação (chargeback) aberta pelo cliente.');
+    // SGLog Fase 9b: ocorrencia de reembolso (uma por pedido, so registro; nao reembolsa nem mexe no estoque).
+    if (order.status !== 'pending_payment') await paymentOccurrence(db, order.id, status);
   } else if (mismatch) {
     await addEvent(db, order.id, order.status, 'Pagamento com valor divergente: conferir no Mercado Pago.');
   }
@@ -228,6 +240,8 @@ export type NewOrder = {
   notes: string | null;
   dueMinutes: number;
   eventNote: string;
+  /** SGLog Fase 9 (D9-4): pedido de reposicao de uma troca (total zero, sem cobranca). */
+  replacementForReturnId?: string | null;
 };
 
 /** Grava pedido, itens e reservas de estoque na transacao de quem chama. O token publico vem da chave do pedido. */
@@ -236,10 +250,10 @@ export async function insertOrder(db: Db, o: NewOrder, lines: OrderLine[]) {
   const { rows } = await db.query<{ id: string; number: number }>(
     `INSERT INTO orders (public_token_hash, request_key, customer_id, channel, buyer, ship_to, shipping_option_id, shipping_snapshot, payment_method,
                          subtotal_cents, discount_cents, freight_cents, total_cents, notes, has_backorder, payment_due_at, status, paid_at,
-                         whatsapp_optin_text, whatsapp_optin_at)
+                         whatsapp_optin_text, whatsapp_optin_at, replacement_for_return_id)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, false, now() + make_interval(mins => $15),
              CASE WHEN $16 THEN 'paid' ELSE 'pending_payment' END, CASE WHEN $16 THEN now() END,
-             $17::text, CASE WHEN $17::text IS NOT NULL THEN now() END) RETURNING id, number`,
+             $17::text, CASE WHEN $17::text IS NOT NULL THEN now() END, $18) RETURNING id, number`,
     [
       sha256(publicToken(o.requestKey)),
       o.requestKey,
@@ -258,6 +272,7 @@ export async function insertOrder(db: Db, o: NewOrder, lines: OrderLine[]) {
       o.dueMinutes,
       Boolean(o.paid),
       o.whatsappOptinText ?? null,
+      o.replacementForReturnId ?? null,
     ],
   );
   const order = rows[0]!;

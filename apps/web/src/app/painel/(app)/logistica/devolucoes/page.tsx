@@ -3,11 +3,12 @@
 // SGLog Fase 9a: devolucoes, quarentena e politica de prazos (so informativa, D9-10).
 import Link from '@/components/painel-link';
 import { useCallback, useEffect, useState } from 'react';
-import { RETURN_KIND, RETURN_REASON, ReturnBadge } from '@/components/returns';
+import { REFUND_METHOD, REFUND_STATUS, RefundBadge } from '@/components/refunds';
+import { CONDITION, OCCURRENCE_KIND, OCCURRENCE_STATUS, RESPONSIBILITY, RETURN_KIND, RETURN_REASON, RETURN_STATUS, ReturnBadge, SUPPLIER_RETURN_STATUS } from '@/components/returns';
 import { Guard, useMe } from '@/components/shell';
 import { Badge, Button, Empty, Field, Input, Notice, PageHeader, Panel, Select, Textarea } from '@/components/ui';
 import { api } from '@/lib/api';
-import { qty, when } from '@/lib/format';
+import { money, qty, when } from '@/lib/format';
 
 type Row = { id: string; number: number; order_id: string; order_number: number; kind: string; reason: string; status: string; warehouse_name: string | null; item_count: number; created_at: string; channel: string };
 type List = { items: Row[]; total: number; page: number; pageSize: number; counts: { awaiting: number; to_inspect: number; to_complete: number; quarantine: number } };
@@ -203,12 +204,161 @@ function PolicyForm() {
   );
 }
 
+type RefundRow = { id: string; number: number; order_id: string; order_number: number; return_number: number | null; amount_cents: string; method: string; external_ref: string | null; status: string; reason: string; created_at: string };
+type RefundList = { items: RefundRow[]; counts: { requested: number; done: number; requested_cents: string; done_cents: string } };
+
+function Refunds() {
+  const [status, setStatus] = useState('open');
+  const [data, setData] = useState<RefundList | null>(null);
+  const [error, setError] = useState('');
+  useEffect(() => {
+    api<RefundList>(`/admin/refunds?status=${status}&pageSize=50`).then(setData, (e) => setError(e.message));
+  }, [status]);
+  return (
+    <Panel title="Reembolsos" description="Registros do que foi devolvido ao cliente fora do sistema. O registro e as transições ficam na tela do pedido (permissão própria, com verificação em duas etapas).">
+      {error && <Notice tone="bad">{error}</Notice>}
+      {data && (
+        <div className="mb-3 flex flex-wrap gap-2 text-sm">
+          <Badge tone="warn">
+            {data.counts.requested} solicitado(s) · {money(data.counts.requested_cents)}
+          </Badge>
+          <Badge tone="act">
+            {data.counts.done} realizado(s) sem confirmação · {money(data.counts.done_cents)}
+          </Badge>
+        </div>
+      )}
+      <Select aria-label="Situação do reembolso" className="mb-3 w-auto" value={status} onChange={(e) => setStatus(e.target.value)}>
+        <option value="open">Em aberto (solicitado ou realizado)</option>
+        <option value="confirmed">Confirmados</option>
+        <option value="canceled">Cancelados</option>
+        <option value="all">Todos</option>
+      </Select>
+      {!data ? null : data.items.length === 0 ? (
+        <Empty title="Nenhum reembolso" />
+      ) : (
+        <ul className="divide-y divide-line text-sm" data-testid="refund-queue">
+          {data.items.map((r) => (
+            <li key={r.id} className="flex flex-col gap-1 py-2 sm:flex-row sm:items-center sm:gap-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <Link href={`/painel/pedidos/${r.order_id}`} className="font-medium text-act hover:underline">
+                  Pedido nº {r.order_number}
+                </Link>
+                <span className="num">{money(r.amount_cents)}</span>
+                <RefundBadge status={r.status} />
+              </div>
+              <span className="min-w-0 flex-1 truncate text-ink-soft">
+                Nº {r.number} · {REFUND_METHOD[r.method]}
+                {r.external_ref ? ` · ref. ${r.external_ref}` : ''} · {r.reason}
+              </span>
+              <span className="text-xs text-ink-faint">{when(r.created_at)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Panel>
+  );
+}
+
+type ReportData = {
+  returns: { kind: string; reason: string; status: string; n: number }[];
+  conditions: { condition: string; qty: string; cost_cents: string }[];
+  occurrences: { kind: string; responsibility: string; status: string; n: number }[];
+  refunds: { method: string; status: string; n: number; amount_cents: string }[];
+  supplierReturns: { status: string; n: number; qty: string }[];
+  pending: { fiscal_pending: number; refunds_requested: number; refunds_unconfirmed: number; orders_on_hold: number };
+};
+
+function ReportTable({ title, head, rows }: { title: string; head: string[]; rows: (string | number)[][] }) {
+  return (
+    <div>
+      <h3 className="mb-1 text-sm font-medium">{title}</h3>
+      {rows.length === 0 ? (
+        <p className="text-sm text-ink-soft">Nada no período.</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[420px] text-sm">
+            <thead className="text-left text-ink-soft">
+              <tr>
+                {head.map((h) => (
+                  <th key={h} className="py-1 pr-2 font-medium">
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r, i) => (
+                <tr key={i} className="border-t border-line">
+                  {r.map((c, j) => (
+                    <td key={j} className="num py-1 pr-2">
+                      {c}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Report() {
+  const today = new Date().toISOString().slice(0, 10);
+  const [from, setFrom] = useState(today.slice(0, 8) + '01');
+  const [to, setTo] = useState(today);
+  const [data, setData] = useState<ReportData | null>(null);
+  const [error, setError] = useState('');
+  useEffect(() => {
+    if (!from || !to) return;
+    api<ReportData>(`/admin/returns/report?from=${from}&to=${to}`).then(
+      (r) => {
+        setError('');
+        setData(r);
+      },
+      (e) => setError(e.message),
+    );
+  }, [from, to]);
+  const st = (s: string) => RETURN_STATUS[s]?.label ?? REFUND_STATUS[s]?.label ?? s;
+  return (
+    <Panel title="Relatório do período" description="Devoluções, conferência por condição (valor pelo custo de entrada), ocorrências, reembolsos registrados (não conciliados) e devoluções ao fornecedor.">
+      <div className="mb-4 flex flex-wrap items-end gap-2">
+        <Field label="De">{(id) => <Input id={id} type="date" value={from} onChange={(e) => setFrom(e.target.value)} />}</Field>
+        <Field label="Até">{(id) => <Input id={id} type="date" value={to} onChange={(e) => setTo(e.target.value)} />}</Field>
+      </div>
+      {error && <Notice tone="bad">{error}</Notice>}
+      {data && (
+        <div className="space-y-5" data-testid="returns-report">
+          <div className="flex flex-wrap gap-2 text-sm">
+            <Badge tone={data.pending.fiscal_pending ? 'warn' : 'neutral'}>{data.pending.fiscal_pending} com pendência fiscal</Badge>
+            <Badge tone={data.pending.refunds_requested ? 'warn' : 'neutral'}>{data.pending.refunds_requested} reembolso(s) solicitado(s)</Badge>
+            <Badge tone={data.pending.refunds_unconfirmed ? 'act' : 'neutral'}>{data.pending.refunds_unconfirmed} realizado(s) sem confirmação</Badge>
+            <Badge tone={data.pending.orders_on_hold ? 'bad' : 'neutral'}>{data.pending.orders_on_hold} pedido(s) com ocorrência</Badge>
+          </div>
+          <ReportTable title="Devoluções" head={['Tipo', 'Motivo', 'Situação', 'Qtd.']} rows={data.returns.map((r) => [RETURN_KIND[r.kind] ?? r.kind, RETURN_REASON[r.reason] ?? r.reason, st(r.status), r.n])} />
+          <ReportTable title="Conferência" head={['Condição', 'Quantidade', 'Valor (custo)']} rows={data.conditions.map((c) => [CONDITION[c.condition]?.label ?? c.condition, qty(c.qty), money(c.cost_cents)])} />
+          <ReportTable
+            title="Ocorrências"
+            head={['Tipo', 'Responsável', 'Situação', 'Qtd.']}
+            rows={data.occurrences.map((o) => [OCCURRENCE_KIND[o.kind] ?? o.kind, RESPONSIBILITY[o.responsibility] ?? o.responsibility, OCCURRENCE_STATUS[o.status]?.label ?? o.status, o.n])}
+          />
+          <ReportTable title="Reembolsos registrados" head={['Meio', 'Situação', 'Qtd.', 'Valor']} rows={data.refunds.map((r) => [REFUND_METHOD[r.method] ?? r.method, st(r.status), r.n, money(r.amount_cents)])} />
+          <ReportTable title="Devoluções ao fornecedor" head={['Situação', 'Qtd.', 'Itens']} rows={data.supplierReturns.map((r) => [SUPPLIER_RETURN_STATUS[r.status]?.label ?? r.status, r.n, qty(r.qty)])} />
+        </div>
+      )}
+    </Panel>
+  );
+}
+
 function Page() {
-  const [tab, setTab] = useState<'list' | 'quarantine' | 'policy'>('list');
+  const [tab, setTab] = useState<'list' | 'quarantine' | 'refunds' | 'report' | 'policy'>('list');
   const [counts, setCounts] = useState<List['counts'] | null>(null);
   const tabs: [typeof tab, string][] = [
     ['list', 'Devoluções'],
     ['quarantine', `Quarentena${counts?.quarantine ? ` (${counts.quarantine})` : ''}`],
+    ['refunds', 'Reembolsos'],
+    ['report', 'Relatório'],
     ['policy', 'Política'],
   ];
   return (
@@ -239,6 +389,8 @@ function Page() {
       </div>
       {tab === 'list' && <Returns onCounts={setCounts} />}
       {tab === 'quarantine' && <Quarantine />}
+      {tab === 'refunds' && <Refunds />}
+      {tab === 'report' && <Report />}
       {tab === 'policy' && <PolicyForm />}
     </>
   );

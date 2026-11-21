@@ -29,6 +29,7 @@
 --   stock_movements        ACCESS EXCLUSIVE     checagens e gatilho de estorno
 --   stock_reconciliations  ACCESS EXCLUSIVE     coluna e checagens
 --   logistics_settings     ACCESS EXCLUSIVE     colunas novas
+--   order_events           ACCESS EXCLUSIVE     coluna nova (internal)
 --   demais                 SHARE ROW EXCLUSIVE  FKs novas
 SET LOCAL lock_timeout = '10s';
 DO $$
@@ -40,6 +41,7 @@ BEGIN
       LOCK TABLE stock_movements IN ACCESS EXCLUSIVE MODE NOWAIT;
       LOCK TABLE stock_reconciliations IN ACCESS EXCLUSIVE MODE NOWAIT;
       LOCK TABLE logistics_settings IN ACCESS EXCLUSIVE MODE NOWAIT;
+      LOCK TABLE order_events IN ACCESS EXCLUSIVE MODE NOWAIT;
       LOCK TABLE shipments, shipment_items, shipment_events, order_items, warehouses, users, product_variants IN SHARE ROW EXCLUSIVE MODE NOWAIT;
       EXIT;
     EXCEPTION WHEN lock_not_available THEN
@@ -341,10 +343,189 @@ CREATE TRIGGER orders_occurrence_hold BEFORE UPDATE ON orders FOR EACH ROW
   EXECUTE FUNCTION orders_occurrence_hold();
 
 -- ---------------------------------------------------------------------------------------------------------------
+-- Historico do pedido: eventos internos (ocorrencia, devolucao, reembolso: deposito, valores, nomes) nao aparecem na
+-- pagina do cliente. Padrao false: o codigo anterior continua gravando eventos publicos como antes.
+ALTER TABLE order_events ADD COLUMN internal boolean NOT NULL DEFAULT false;
+
+-- ---------------------------------------------------------------------------------------------------------------
+-- 9b. Ocorrencia aberta pelo pagamento (contestacao ou devolucao do valor no provedor): uma por pedido; so registro.
+CREATE UNIQUE INDEX logistic_occurrences_payment_once ON logistic_occurrences (order_id) WHERE source = 'payment';
+-- Inicio da conferencia financeira (C18): pagamentos devolvidos antes da Fase 9 nao contam.
+ALTER TABLE logistics_settings ADD COLUMN returns_since timestamptz NOT NULL DEFAULT now();
+
+-- ---------------------------------------------------------------------------------------------------------------
+-- 9b. Reembolsos (D9-5): SO registro do que foi feito fora do sistema (provedor, banco, caixa, marketplace).
+--   status  requested (solicitado) -> done (realizado, com referencia externa) -> confirmed (conferido no extrato
+--           ou no provedor); requested|done -> canceled. Nada conclui sozinho: receber a mercadoria nao reembolsa.
+--   A mesma operacao financeira (meio + referencia externa) nao entra duas vezes. A soma dos reembolsos nao
+--   cancelados de um pedido nunca passa do total do pedido (gatilho com o pedido travado, contando os concorrentes).
+--   Pedido de marketplace: so o meio 'marketplace' (registro do que a plataforma fez); loja propria, nunca esse meio.
+CREATE TABLE refund_records (
+  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  number        integer GENERATED ALWAYS AS IDENTITY UNIQUE,
+  order_id      uuid NOT NULL REFERENCES orders(id),
+  return_id     uuid REFERENCES customer_returns(id),
+  occurrence_id uuid REFERENCES logistic_occurrences(id),
+  amount_cents  bigint NOT NULL CHECK (amount_cents > 0),
+  method        text NOT NULL CHECK (method IN ('mercadopago', 'pix', 'bank_transfer', 'cash', 'card_reversal', 'marketplace', 'other')),
+  external_ref  text CHECK (length(external_ref) BETWEEN 1 AND 120),
+  status        text NOT NULL DEFAULT 'requested' CHECK (status IN ('requested', 'done', 'confirmed', 'canceled')),
+  reason        text NOT NULL CHECK (length(reason) BETWEEN 3 AND 500),
+  requested_by  uuid REFERENCES users(id),
+  done_at       timestamptz,
+  done_by       uuid REFERENCES users(id),
+  confirmed_at  timestamptz,
+  confirmed_by  uuid REFERENCES users(id),
+  canceled_at   timestamptz,
+  canceled_by   uuid REFERENCES users(id),
+  cancel_reason text CHECK (length(cancel_reason) BETWEEN 3 AND 300),
+  version       integer NOT NULL DEFAULT 1,
+  request_key   text NOT NULL UNIQUE CHECK (length(request_key) BETWEEN 8 AND 100),
+  created_at    timestamptz NOT NULL DEFAULT now(),
+  updated_at    timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT refund_records_ref CHECK (status IN ('requested', 'canceled') OR external_ref IS NOT NULL),
+  CONSTRAINT refund_records_done CHECK (status NOT IN ('done', 'confirmed') OR done_at IS NOT NULL),
+  CONSTRAINT refund_records_confirmed CHECK (status <> 'confirmed' OR confirmed_at IS NOT NULL),
+  CONSTRAINT refund_records_canceled CHECK ((status = 'canceled') = (canceled_at IS NOT NULL AND cancel_reason IS NOT NULL))
+);
+CREATE INDEX refund_records_order ON refund_records (order_id);
+CREATE UNIQUE INDEX refund_records_operation ON refund_records (method, external_ref) WHERE external_ref IS NOT NULL AND status <> 'canceled';
+
+CREATE FUNCTION refund_records_check() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
+DECLARE o record; total bigint;
+BEGIN
+  SELECT id, channel, total_cents INTO o FROM orders WHERE id = NEW.order_id FOR UPDATE;
+  IF (o.channel IN ('mercadolivre', 'shopee')) <> (NEW.method = 'marketplace') THEN
+    RAISE EXCEPTION 'meio de reembolso incompativel com o canal do pedido' USING ERRCODE = 'check_violation', CONSTRAINT = 'refund_records_method';
+  END IF;
+  SELECT coalesce(sum(amount_cents), 0) INTO total FROM refund_records WHERE order_id = NEW.order_id AND status <> 'canceled';
+  IF total > o.total_cents THEN
+    RAISE EXCEPTION 'reembolsos (%) passam do total do pedido (%)', total, o.total_cents USING ERRCODE = 'check_violation', CONSTRAINT = 'refund_records_total';
+  END IF;
+  RETURN NULL;
+END $$;
+CREATE CONSTRAINT TRIGGER refund_records_check AFTER INSERT OR UPDATE OF amount_cents, status, method ON refund_records
+  FOR EACH ROW EXECUTE FUNCTION refund_records_check();
+
+CREATE TABLE refund_events (
+  id          bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  refund_id   uuid NOT NULL REFERENCES refund_records(id),
+  action      text NOT NULL CHECK (action IN ('request', 'done', 'confirm', 'cancel', 'note')),
+  from_status text,
+  to_status   text,
+  note        text CHECK (length(note) <= 500),
+  request_key text UNIQUE CHECK (length(request_key) BETWEEN 8 AND 100),
+  actor_id    uuid REFERENCES users(id),
+  created_at  timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX refund_events_refund ON refund_events (refund_id);
+
+-- ---------------------------------------------------------------------------------------------------------------
+-- 9b. Documento fiscal da devolucao: registro separado da NF-e da venda (que nao muda, nem o invoice_status).
+--   document  referencia do documento emitido fora (chave de acesso ou numero e serie); nada de CFOP ou tributo aqui
+--   waiver    nao exigencia, com justificativa de quem tem permissao fiscal
+-- Imutavel: corrigir e registrar outro (o mais recente vale).
+CREATE TABLE return_fiscal_documents (
+  id            bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  return_id     uuid NOT NULL REFERENCES customer_returns(id),
+  kind          text NOT NULL CHECK (kind IN ('document', 'waiver')),
+  doc_type      text CHECK (doc_type IN ('customer_nfe', 'store_entry_nfe', 'other')),
+  access_key    text CHECK (access_key ~ '^[0-9]{44}$'),
+  doc_number    text CHECK (length(doc_number) BETWEEN 1 AND 20),
+  series        text CHECK (length(series) BETWEEN 1 AND 5),
+  issued_on     date,
+  justification text CHECK (length(justification) BETWEEN 10 AND 1000),
+  actor_id      uuid REFERENCES users(id),
+  created_at    timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT return_fiscal_documents_shape CHECK (
+    (kind = 'document' AND doc_type IS NOT NULL AND (access_key IS NOT NULL OR doc_number IS NOT NULL))
+    OR (kind = 'waiver' AND justification IS NOT NULL AND access_key IS NULL AND doc_number IS NULL))
+);
+CREATE INDEX return_fiscal_documents_return ON return_fiscal_documents (return_id);
+
+-- ---------------------------------------------------------------------------------------------------------------
+-- 9b. Troca (D9-4): pedido de reposicao separado, ligado a devolucao, sem cobranca (total zero, desconto integral).
+-- Segue as regras de sempre: alocacao, NF-e autorizada (ou dispensada) antes do despacho, remessa unica.
+ALTER TABLE orders ADD COLUMN replacement_for_return_id uuid REFERENCES customer_returns(id);
+CREATE UNIQUE INDEX orders_replacement_once ON orders (replacement_for_return_id) WHERE replacement_for_return_id IS NOT NULL;
+ALTER TABLE orders DROP CONSTRAINT orders_total_cents_check;
+ALTER TABLE orders ADD CONSTRAINT orders_total_cents_check CHECK (total_cents > 0 OR (replacement_for_return_id IS NOT NULL AND total_cents = 0));
+
+-- ---------------------------------------------------------------------------------------------------------------
+-- 9b. Devolucao ao fornecedor: rascunho -> enviada (saida fisica confirmada: so ai o estoque sai) -> aceita | recusada
+-- (a mercadoria volta: estorno dos movimentos); rascunho -> cancelada. Nenhum credito, reembolso ou abatimento
+-- automatico; nenhum e-mail ao fornecedor.
+CREATE TABLE supplier_returns (
+  id                 uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  number             integer GENERATED ALWAYS AS IDENTITY UNIQUE,
+  supplier_id        uuid NOT NULL REFERENCES suppliers(id),
+  purchase_order_id  uuid REFERENCES purchase_orders(id),
+  customer_return_id uuid REFERENCES customer_returns(id),
+  warehouse_id       uuid NOT NULL REFERENCES warehouses(id),
+  status             text NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'sent', 'accepted', 'refused', 'canceled')),
+  reason             text NOT NULL CHECK (length(reason) BETWEEN 3 AND 500),
+  document_ref       text CHECK (length(document_ref) BETWEEN 1 AND 60),
+  carrier            text CHECK (length(carrier) <= 80),
+  tracking_code      text CHECK (length(tracking_code) <= 60),
+  notes              text CHECK (length(notes) <= 1000),
+  sent_at            timestamptz,
+  sent_by            uuid REFERENCES users(id),
+  closed_at          timestamptz,
+  closed_by          uuid REFERENCES users(id),
+  close_note         text CHECK (length(close_note) BETWEEN 3 AND 500),
+  created_by         uuid REFERENCES users(id),
+  version            integer NOT NULL DEFAULT 1,
+  request_key        text NOT NULL UNIQUE CHECK (length(request_key) BETWEEN 8 AND 100),
+  created_at         timestamptz NOT NULL DEFAULT now(),
+  updated_at         timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT supplier_returns_sent CHECK (status IN ('draft', 'canceled') OR (sent_at IS NOT NULL AND document_ref IS NOT NULL)),
+  CONSTRAINT supplier_returns_closed CHECK (status NOT IN ('accepted', 'refused', 'canceled') OR (closed_at IS NOT NULL AND close_note IS NOT NULL))
+);
+CREATE INDEX supplier_returns_supplier ON supplier_returns (supplier_id);
+
+-- Itens: de qual saldo sai (livre, bloqueado ou avariado). Imutaveis: mudar e cancelar o rascunho e abrir outro.
+CREATE TABLE supplier_return_items (
+  id                 bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  supplier_return_id uuid NOT NULL REFERENCES supplier_returns(id),
+  variant_id         uuid NOT NULL REFERENCES product_variants(id),
+  bucket             text NOT NULL CHECK (bucket IN ('on_hand', 'blocked', 'damaged')),
+  qty                numeric(14, 3) NOT NULL CHECK (qty > 0),
+  CONSTRAINT supplier_return_items_once UNIQUE (supplier_return_id, variant_id, bucket)
+);
+
+CREATE TABLE supplier_return_events (
+  id                 bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  supplier_return_id uuid NOT NULL REFERENCES supplier_returns(id),
+  action             text NOT NULL CHECK (action IN ('create', 'send', 'accept', 'refuse', 'cancel', 'note')),
+  from_status        text,
+  to_status          text,
+  note               text CHECK (length(note) <= 500),
+  request_key        text UNIQUE CHECK (length(request_key) BETWEEN 8 AND 100),
+  actor_id           uuid REFERENCES users(id),
+  created_at         timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX supplier_return_events_return ON supplier_return_events (supplier_return_id);
+
+-- Historicos imutaveis da 9b.
+CREATE TRIGGER refund_events_immutable BEFORE UPDATE OR DELETE ON refund_events FOR EACH ROW EXECUTE FUNCTION forbid_mutation();
+CREATE TRIGGER return_fiscal_documents_immutable BEFORE UPDATE OR DELETE ON return_fiscal_documents FOR EACH ROW EXECUTE FUNCTION forbid_mutation();
+CREATE TRIGGER supplier_return_items_immutable BEFORE UPDATE OR DELETE ON supplier_return_items FOR EACH ROW EXECUTE FUNCTION forbid_mutation();
+CREATE TRIGGER supplier_return_events_immutable BEFORE UPDATE OR DELETE ON supplier_return_events FOR EACH ROW EXECUTE FUNCTION forbid_mutation();
+
+-- Estoque: saida 'supplier_return' (do livre; bloqueado e avariado passam antes por 'unblock' / 'damage_release' na
+-- mesma transacao) e o estorno desses movimentos quando o fornecedor recusa.
+ALTER TABLE stock_movements DROP CONSTRAINT stock_movements_kind_check;
+ALTER TABLE stock_movements ADD CONSTRAINT stock_movements_kind_check CHECK (kind IN (
+  'receipt', 'sale', 'return', 'loss', 'damage', 'adjustment', 'inventory', 'reserve', 'release',
+  'transfer_out', 'transfer_in', 'transfer_loss', 'transfer_return', 'block', 'unblock', 'damage_hold', 'damage_release', 'reversal',
+  'supplier_return'));
+ALTER TABLE stock_movements ADD CONSTRAINT stock_movements_supplier_return CHECK (kind <> 'supplier_return' OR (on_hand_delta < 0 AND source_type = 'supplier_return'));
+
+-- ---------------------------------------------------------------------------------------------------------------
 -- Estoque: origem 'customer_return' (conferencia e quarentena) e estorno desses movimentos.
 ALTER TABLE stock_movements DROP CONSTRAINT stock_movements_source_type_check;
 ALTER TABLE stock_movements ADD CONSTRAINT stock_movements_source_type_check
-  CHECK (source_type IN ('purchase_receipt', 'order', 'cart', 'quote', 'inventory', 'manual', 'reservation', 'transfer', 'adjustment_request', 'customer_return'));
+  CHECK (source_type IN ('purchase_receipt', 'order', 'cart', 'quote', 'inventory', 'manual', 'reservation', 'transfer', 'adjustment_request', 'customer_return', 'supplier_return'));
 
 CREATE OR REPLACE FUNCTION stock_movements_reversal_check() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
 DECLARE o stock_movements; dflt uuid := (SELECT id FROM warehouses WHERE is_default);
@@ -357,8 +538,8 @@ BEGIN
     IF NEW.transfer_id IS DISTINCT FROM o.transfer_id THEN
       RAISE EXCEPTION 'estorno de transferencia com outra transferencia' USING ERRCODE = 'restrict_violation', CONSTRAINT = 'stock_movements_reversal_target';
     END IF;
-  ELSIF o.kind NOT IN ('adjustment', 'loss', 'damage', 'return', 'block', 'unblock', 'damage_hold', 'damage_release')
-     OR o.source_type NOT IN ('manual', 'adjustment_request', 'customer_return') THEN
+  ELSIF o.kind NOT IN ('adjustment', 'loss', 'damage', 'return', 'block', 'unblock', 'damage_hold', 'damage_release', 'supplier_return')
+     OR o.source_type NOT IN ('manual', 'adjustment_request', 'customer_return', 'supplier_return') THEN
     RAISE EXCEPTION 'movimento do tipo % nao pode ser estornado', o.kind USING ERRCODE = 'restrict_violation', CONSTRAINT = 'stock_movements_reversal_target';
   END IF;
   IF o.variant_id <> NEW.variant_id OR coalesce(o.warehouse_id, dflt) <> coalesce(NEW.warehouse_id, dflt)
@@ -374,15 +555,20 @@ END $$;
 --   C14 devolvido (devolucoes nao canceladas) <= despachado, por item do pedido
 --   C15 conferido (boa, quarentena, avariada, descartada; menos estornos) = entradas 'return' da devolucao (menos estornos)
 --   C16 quarentena aberta (conferida e sem decisao) <= saldo bloqueado do deposito
+--   C17 reembolsos nao cancelados <= total do pedido (9b)
+--   C18 pagamento devolvido no provedor (depois da Fase 9) tem reembolso registrado (9b)
+--   C19 devolucao encerrada de pedido com NF-e autorizada tem documento fiscal ou dispensa (9b)
+--   C20 pedido 'on_hold' tem ocorrencia aberta que segura a conclusao (9b)
+--   C21 devolucao ao fornecedor enviada ou aceita = saidas 'supplier_return' (menos estornos), por item (9b)
 -- ref_id: pedido da divergencia (a linha pode nao ter variante nas conferencias financeiras da 9b).
 ALTER TABLE stock_reconciliations ADD COLUMN ref_id uuid;
 ALTER TABLE stock_reconciliations DROP CONSTRAINT stock_reconciliations_check_code_check;
 ALTER TABLE stock_reconciliations ADD CONSTRAINT stock_reconciliations_check_code_check
-  CHECK (check_code IN ('run', 'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9', 'C10', 'C11', 'C12', 'C13', 'C14', 'C15', 'C16'));
+  CHECK (check_code IN ('run', 'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9', 'C10', 'C11', 'C12', 'C13', 'C14', 'C15', 'C16', 'C17', 'C18', 'C19', 'C20', 'C21'));
 ALTER TABLE stock_reconciliations DROP CONSTRAINT stock_reconciliations_field_check;
 ALTER TABLE stock_reconciliations ADD CONSTRAINT stock_reconciliations_field_check
   CHECK (field IN ('on_hand', 'reserved', 'blocked', 'damaged', 'in_transit', 'shipped', 'picked', 'checked', 'received', 'rejected', 'linked', 'converted',
-                   'returned', 'inspected', 'quarantine'));
+                   'returned', 'inspected', 'quarantine', 'refunded', 'refund_record', 'fiscal', 'hold', 'supplier_returned'));
 
 CREATE OR REPLACE FUNCTION stock_reconcile() RETURNS SETOF stock_reconciliations LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
 DECLARE v_run uuid := gen_random_uuid(); dflt uuid := (SELECT id FROM warehouses WHERE is_default);
@@ -578,6 +764,40 @@ BEGIN
     FROM quar q LEFT JOIN stock_location_balances l ON l.warehouse_id = q.warehouse_id AND l.variant_id = q.variant_id
     WHERE q.qty > coalesce(l.blocked, 0)
   ),
+  -- C17: reembolsos nao cancelados x total do pedido.
+  c17 AS (
+    SELECT o.id AS order_id, o.total_cents::numeric AS exp_v, sum(r.amount_cents)::numeric AS got_v
+    FROM refund_records r JOIN orders o ON o.id = r.order_id WHERE r.status <> 'canceled'
+    GROUP BY o.id, o.total_cents HAVING sum(r.amount_cents) > o.total_cents
+  ),
+  -- C18: pagamento devolvido depois da Fase 9 sem reembolso registrado.
+  c18 AS (
+    SELECT p.order_id, p.amount_cents::numeric AS exp_v, 0::numeric AS got_v
+    FROM payments p WHERE p.status = 'refunded' AND p.updated_at >= (SELECT returns_since FROM logistics_settings)
+      AND NOT EXISTS (SELECT 1 FROM refund_records r WHERE r.order_id = p.order_id AND r.status <> 'canceled')
+  ),
+  -- C19: devolucao encerrada que exigia documento fiscal e nao tem documento nem dispensa.
+  c19 AS (
+    SELECT r.order_id FROM customer_returns r
+    WHERE r.status = 'completed' AND r.fiscal_required AND NOT EXISTS (SELECT 1 FROM return_fiscal_documents d WHERE d.return_id = r.id)
+  ),
+  -- C20: pedido segurado sem ocorrencia aberta que segure.
+  c20 AS (
+    SELECT o.id AS order_id FROM orders o WHERE o.logistics_status = 'on_hold'
+      AND NOT EXISTS (SELECT 1 FROM logistic_occurrences x WHERE x.order_id = o.id AND x.blocks_completion AND x.status IN ('open', 'in_progress'))
+  ),
+  -- C21: devolucao ao fornecedor x saidas do estoque, por item.
+  srt_mv AS (
+    SELECT m.source_id AS item, -sum(m.on_hand_delta) AS qty
+    FROM stock_movements m LEFT JOIN stock_movements o ON o.id = m.reverses_id
+    WHERE m.source_type = 'supplier_return' AND (m.kind = 'supplier_return' OR (m.kind = 'reversal' AND o.kind = 'supplier_return'))
+    GROUP BY m.source_id
+  ),
+  c21 AS (
+    SELECT i.variant_id, s.warehouse_id, CASE WHEN s.status IN ('sent', 'accepted') THEN i.qty ELSE 0 END AS exp_v, coalesce(mv.qty, 0) AS got_v
+    FROM supplier_return_items i JOIN supplier_returns s ON s.id = i.supplier_return_id LEFT JOIN srt_mv mv ON mv.item = i.id::text
+    WHERE CASE WHEN s.status IN ('sent', 'accepted') THEN i.qty ELSE 0 END <> coalesce(mv.qty, 0)
+  ),
   divs AS (
     SELECT CASE WHEN has_open THEN 'C1' ELSE 'C5' END AS code, 'on_hand' AS field, variant_id, NULL::uuid AS warehouse_id, exp_on AS expected, b_on AS found, NULL::uuid AS ref_id FROM base WHERE exp_on <> b_on
     UNION ALL SELECT CASE WHEN has_open THEN 'C1' ELSE 'C5' END, 'reserved', variant_id, NULL, exp_res, b_res, NULL FROM base WHERE exp_res <> b_res
@@ -610,6 +830,11 @@ BEGIN
     UNION ALL SELECT 'C14', 'returned', variant_id, NULL, exp_v, got_v, order_id FROM c14 WHERE got_v > exp_v
     UNION ALL SELECT 'C15', 'inspected', variant_id, warehouse_id, exp_v, got_v, order_id FROM c15
     UNION ALL SELECT 'C16', 'quarantine', variant_id, warehouse_id, exp_v, got_v, NULL FROM c16
+    UNION ALL SELECT 'C17', 'refunded', NULL, NULL, exp_v, got_v, order_id FROM c17
+    UNION ALL SELECT 'C18', 'refund_record', NULL, NULL, exp_v, got_v, order_id FROM c18
+    UNION ALL SELECT 'C19', 'fiscal', NULL, NULL, 1, 0, order_id FROM c19
+    UNION ALL SELECT 'C20', 'hold', NULL, NULL, 1, 0, order_id FROM c20
+    UNION ALL SELECT 'C21', 'supplier_returned', variant_id, warehouse_id, exp_v, got_v, NULL FROM c21
   ),
   ins AS (
     INSERT INTO stock_reconciliations (run_id, check_code, field, variant_id, warehouse_id, expected, found, created_by, ref_id)
@@ -628,6 +853,8 @@ GRANT EXECUTE ON FUNCTION stock_reconcile() TO loja_app;
 -- Privilegios minimos: historicos so por inclusao.
 GRANT SELECT, INSERT ON occurrence_events, customer_return_items, return_inspections, quarantine_decisions, return_events TO loja_app;
 GRANT SELECT, INSERT, UPDATE ON logistic_occurrences, customer_returns TO loja_app;
+GRANT SELECT, INSERT ON refund_events, return_fiscal_documents, supplier_return_items, supplier_return_events TO loja_app;
+GRANT SELECT, INSERT, UPDATE ON refund_records, supplier_returns TO loja_app;
 
 -- Resumo para quem aplica.
 DO $$
@@ -635,6 +862,6 @@ DECLARE ms numeric;
 BEGIN
   ms := round(extract(epoch FROM clock_timestamp() - current_setting('sglog.t0')::timestamptz) * 1000);
   RAISE NOTICE '0028: pedidos e estoque bloqueados por % ms (ate aqui; o bloqueio termina no COMMIT)', ms;
-  RAISE NOTICE '0028: % pedido(s) entregue(s) e % concluido(s) na logistica; nenhuma ocorrencia ou devolucao existe ainda',
+  RAISE NOTICE '0028: % pedido(s) entregue(s) e % concluido(s) na logistica; nenhuma ocorrencia, devolucao, reembolso ou devolucao ao fornecedor existe ainda',
     (SELECT count(*) FROM orders WHERE status = 'delivered'), (SELECT count(*) FROM orders WHERE logistics_status = 'completed');
 END $$;

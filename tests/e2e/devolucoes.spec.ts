@@ -84,4 +84,37 @@ test.describe('ocorrências e devoluções (Fase 9a)', () => {
     await expect(page.getByText('Erro interno')).toHaveCount(0);
     expect(erros).toEqual([]);
   });
+
+  test('9b: reembolsos, relatório, devoluções ao fornecedor e o painel de reembolso do pedido (sem enviar)', async ({ page }, info) => {
+    const erros = errosDoConsole(page);
+    await page.goto('/painel/logistica/devolucoes');
+    await page.getByRole('tab', { name: 'Reembolsos' }).click();
+    await expect(page.getByTestId('refund-queue').or(page.getByText('Nenhum reembolso'))).toBeVisible();
+    await page.getByRole('tab', { name: 'Relatório' }).click();
+    await expect(page.getByTestId('returns-report')).toContainText('pendência fiscal');
+    await semRolagemLateral(page);
+    await page.screenshot({ path: info.outputPath('devolucoes-relatorio.png'), fullPage: true });
+
+    await page.goto('/painel/logistica/devolucoes-fornecedor');
+    await expect(page.getByRole('heading', { name: 'Devoluções ao fornecedor', level: 1 })).toBeVisible();
+    await expect(page.getByTestId('supplier-return-list').or(page.getByText('Nenhuma devolução ao fornecedor'))).toBeVisible();
+    await page.getByRole('button', { name: 'Nova devolução' }).click();
+    await expect(page.getByTestId('supplier-return-form')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Criar rascunho' })).toBeDisabled();
+    await semRolagemLateral(page);
+    await page.screenshot({ path: info.outputPath('devolucoes-fornecedor.png'), fullPage: true });
+
+    const list = await api(page, '/admin/orders?status=delivered&pageSize=5');
+    const order = (list.items ?? list.orders ?? [])[0] as { id: string } | undefined;
+    if (order) {
+      await page.goto(`/painel/pedidos/${order.id}`);
+      await expect(page.getByTestId('refunds-panel')).toContainText('Ainda elegível');
+      await page.getByTestId('open-refund-form').click();
+      await expect(page.getByTestId('refund-form').getByRole('button', { name: 'Registrar' })).toBeDisabled();
+      await semRolagemLateral(page);
+      await page.screenshot({ path: info.outputPath('pedido-reembolso.png'), fullPage: true });
+    }
+    await expect(page.getByText('Erro interno')).toHaveCount(0);
+    expect(erros).toEqual([]);
+  });
 });

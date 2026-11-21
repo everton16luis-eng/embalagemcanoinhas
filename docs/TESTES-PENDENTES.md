@@ -678,8 +678,20 @@ pagamento real.
 
 ## SGLog Fase 7 — abastecimento e fornecedores ([32-sglog-fase7.md](32-sglog-fase7.md))
 
-**Situação: implementada no local (branch `sglog/fase7`), ainda não implantada.** Roteiro de implantação em
-[33-sglog-fase7-implantacao.md](33-sglog-fase7-implantacao.md).
+**Situação: implantada na VPS em 21/11/2026 (`f5501d7`, migração 0026).** Roteiro em
+[33-sglog-fase7-implantacao.md](33-sglog-fase7-implantacao.md). Backup antes da implantação: `20261121-002752`.
+
+- **Ensaio da 0026:** bloqueios em 1 ms e compras bloqueadas por 54 ms. Na produção, 113 ms.
+- **Bloco 5.1 logo após a implantação:**
+  - `RESULTADO: OK`, 204 variantes, C1–C13 sem divergência;
+  - 6 compras enviadas como anteriores ao acompanhamento;
+  - documentos, confirmações, requisições e itens cancelados em 0;
+  - e-mail ao fornecedor, dropshipping e remessas múltiplas `blocked`;
+  - prazo de confirmação de 2 dias.
+- **Pendente antes de testar o envio:**
+  - razão social, CNPJ e endereço em Empresa, que estavam vazios;
+  - ou o endereço do "Depósito principal".
+- **Reversão:** a 0026 ainda pode ser desfeita até o primeiro uso da Fase 7.
 
 Validação pelo painel HTTPS, depois da implantação. Use só compras de teste, do fornecedor de demonstração, com valores
 pequenos. Nada nesta fase movimenta estoque: anote o saldo do produto antes e confira que só o recebimento o muda.

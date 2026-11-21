@@ -792,8 +792,20 @@ pequenos. Nada nesta fase movimenta estoque: anote o saldo do produto antes e co
 
 ## SGLog Fase 8 — fretes, etiquetas, rastreio e custos ([35-sglog-fase8.md](35-sglog-fase8.md))
 
-**Situação: implementada só no local (`sglog/fase8`), aguardando merge, push e implantação autorizados.** Roteiro de
-implantação em [36-sglog-fase8-implantacao.md](36-sglog-fase8-implantacao.md).
+**Situação: implantada na VPS em 21/11/2026 (`d58a3dd`, migração 0027).** Roteiro em
+[36-sglog-fase8-implantacao.md](36-sglog-fase8-implantacao.md).
+
+- **Antes da implantação:** 401 remessas, 10 em transporte e 5 eventos de remessa. O `.env` não tinha alocação
+  automática, etiqueta ligada nem Melhor Envio. O backup foi verificado (4 arquivos com sha256 correto).
+- **Ensaio da 0027:** OK.
+- **Migração na produção:** bloqueios em 1 ms, sem nova tentativa; concluída em 106 ms.
+- **Bloco 5.1 logo após a implantação:**
+  - `RESULTADO: OK`, 204 variantes, C1–C13 sem divergência;
+  - etiqueta `blocked`, limite `null`, rastreio a cada 6 h e parado depois de 5 dias;
+  - remessas (401) e eventos (5) iguais aos de antes;
+  - cotações, etiquetas, custos, tarefas e avisos em 0;
+  - dropshipping, remessas múltiplas e e-mail ao fornecedor `blocked`;
+  - log da API sem erros.
 
 No local:
 - suíte da API 495/495;

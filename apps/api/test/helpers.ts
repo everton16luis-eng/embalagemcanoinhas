@@ -219,7 +219,7 @@ export async function allocateOrder(c: ReturnType<typeof client>, orderId: strin
  * SGLog Fase 5: leva a remessa pendente do pedido ate embalada (separa e confere tudo pelo SKU). Devolve a remessa.
  * `c` precisa de shipping.pick.
  */
-export async function packOrder(c: ReturnType<typeof client>, orderId: string, packages = [{ weightG: 1000 }]) {
+export async function packOrder(c: ReturnType<typeof client>, orderId: string, packages: { weightG: number; lengthMm?: number; widthMm?: number; heightMm?: number }[] = [{ weightG: 1000 }]) {
   const key = () => `test-${randomBytes(6).toString('hex')}`;
   const o = (await c.get(`/api/v1/admin/orders/${orderId}`)).json().order;
   const open = (o.shipments as { id: string; status: string }[]).find((s) => ['pending', 'picking', 'checking', 'packed'].includes(s.status));

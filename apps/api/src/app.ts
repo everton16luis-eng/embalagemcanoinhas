@@ -48,6 +48,7 @@ import { warehouseRoutes } from './modules/warehouses.js';
 import { logisticsRoutes } from './modules/logistics.js';
 import { backorderRoutes } from './modules/backorders.js';
 import { shipmentRoutes } from './modules/shipments.js';
+import { carrierWebhookRoutes, freightRoutes } from './modules/freight.js';
 import { supplierRoutes } from './modules/suppliers.js';
 import { userRoutes } from './modules/users.js';
 
@@ -147,6 +148,10 @@ export async function buildApp(opts: {
     if (err instanceof AppError) {
       return reply.code(err.statusCode).send({ error: { code: err.code, message: err.message, ...(err.details === undefined ? {} : { details: err.details }) } });
     }
+    // Gatilho da 0027: remessa com etiqueta ativa nao e cancelada por nenhum caminho.
+    if ((err as { constraint?: string }).constraint === 'shipments_label_active') {
+      return reply.code(409).send({ error: { code: 'LABEL_ACTIVE', message: 'A remessa tem etiqueta ativa. Cancele a etiqueta e aguarde a confirmação do transportador antes.' } });
+    }
     if (err instanceof ZodError) {
       const issues = err.issues.map((i) => ({ field: i.path.join('.'), message: i.message }));
       return reply.code(400).send({ error: { code: 'VALIDATION_ERROR', message: 'Dados inválidos.', issues } });
@@ -187,6 +192,7 @@ export async function buildApp(opts: {
   await app.register(logisticsRoutes, { prefix: '/api/v1/admin/logistics' });
   await app.register(backorderRoutes, { prefix: '/api/v1/admin/backorders' });
   await app.register(shipmentRoutes, { prefix: '/api/v1/admin/shipments' });
+  await app.register(freightRoutes, { prefix: '/api/v1/admin/freight' });
   await app.register(transferRoutes, { prefix: '/api/v1/admin/stock-transfers' });
   await app.register(stockReportRoutes, { prefix: '/api/v1/admin/stock-reports' });
   await app.register(inventoryRoutes, { prefix: '/api/v1/admin/inventory-counts' });
@@ -209,6 +215,7 @@ export async function buildApp(opts: {
   await app.register(webhookRoutes, { prefix: '/api/v1/webhooks' });
   await app.register(fiscalWebhookRoutes, { prefix: '/api/v1/webhooks/fiscal' });
   await app.register(whatsappWebhookRoutes, { prefix: '/api/v1/webhooks/whatsapp' });
+  await app.register(carrierWebhookRoutes, { prefix: '/api/v1/webhooks/carriers' });
   await app.register(whatsappAdminRoutes, { prefix: '/api/v1/admin/whatsapp' });
   await app.register(botAdminRoutes, { prefix: '/api/v1/admin/whatsapp/bot' });
   await app.register(salesReportRoutes, { prefix: '/api/v1/admin/sales-reports' });

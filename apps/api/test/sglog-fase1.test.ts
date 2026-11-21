@@ -317,7 +317,8 @@ describe('papéis novos (menor privilégio)', () => {
     // Fase 5 (D5-8): separar/conferir (shipping.pick) e criar/dividir/cancelar remessa (logistics.manage).
     // Fase 6 (D6-1/D6-5): logistica recebe compra (purchases.receive); financeiro informa pagamento (purchases.pay), sem aprovar.
     // Fase 7 (D7-6): logistica abre requisicao de compra (purchases.request); comprador e financeiro, nao.
-    logistics: ['catalog.view', 'logistics.allocate', 'logistics.manage', 'logistics.view', 'orders.view', 'purchases.receive', 'purchases.request', 'purchases.view', 'shipping.manage', 'shipping.pick', 'stock.adjust', 'stock.manage', 'stock.transfer', 'stock.view', 'suppliers.view'],
+    // Fase 8 (D8-7): logistica compra/cancela etiqueta (shipping.labels, com MFA; a compra real segue bloqueada pela trava).
+    logistics: ['catalog.view', 'logistics.allocate', 'logistics.manage', 'logistics.view', 'orders.view', 'purchases.receive', 'purchases.request', 'purchases.view', 'shipping.labels', 'shipping.manage', 'shipping.pick', 'stock.adjust', 'stock.manage', 'stock.transfer', 'stock.view', 'suppliers.view'],
     buyer: ['catalog.view', 'logistics.view', 'purchases.manage', 'purchases.view', 'stock.view', 'suppliers.manage', 'suppliers.view'],
     finance: ['orders.view', 'purchases.pay', 'purchases.view', 'reports.view', 'suppliers.view'],
   };

@@ -75,7 +75,7 @@ async function lockOrder(db: Db, id: string) {
 }
 
 /** Trava pedido e remessa, nessa ordem (a mesma da alocacao: pedido antes das variantes). */
-async function lockShipment(db: Db, id: string) {
+export async function lockShipment(db: Db, id: string) {
   const s0 = (await db.query<{ order_id: string }>('SELECT order_id FROM shipments WHERE id = $1', [id])).rows[0];
   if (!s0) throw notFound();
   const order = await lockOrder(db, s0.order_id);
@@ -97,6 +97,24 @@ async function shipmentItems(db: Db | typeof pool, shipmentId: string) {
 async function settings(db: Db | typeof pool) {
   return (await db.query<{ multi_shipment_status: 'blocked' | 'enabled'; distinct_checker: boolean }>('SELECT multi_shipment_status, distinct_checker FROM logistics_settings')).rows[0]!;
 }
+
+/** Etiqueta da Fase 8 que pode ter cobrado ou vai cobrar (nao cancelada, nao falhou). */
+async function activeLabel(db: Db | typeof pool, shipmentId: string) {
+  return (
+    (
+      await db.query<{ id: string; status: string; tracking_code: string | null }>(
+        `SELECT id, status, tracking_code FROM shipping_labels WHERE shipment_id = $1 AND status NOT IN ('canceled', 'failed') LIMIT 1`,
+        [shipmentId],
+      )
+    ).rows[0] ?? null
+  );
+}
+const labelActive = (l: { status: string }) =>
+  new AppError(
+    409,
+    'LABEL_ACTIVE',
+    `A remessa tem etiqueta ativa (${l.status}). Cancele a etiqueta e aguarde a confirmação do transportador antes de mudar a embalagem ou cancelar a remessa.`,
+  );
 
 async function event(db: Db, e: { shipmentId: string; from: string | null; to: string; action: string; note?: string | null; requestKey?: string | null; actorId: string | null; source?: string }) {
   await db.query(
@@ -223,7 +241,7 @@ export async function createShipmentsForOrder(db: Db, actorId: string | null, or
 // ---------------------------------------------------------------------------------------------------------------
 // Projecao para o pedido (D5-5, tabela do planejamento §3.7)
 
-async function projectOrder(db: Db, order: OrderRow, actorId: string, note: string | null = null) {
+export async function projectOrder(db: Db, order: OrderRow, actorId: string | null, note: string | null = null) {
   const rows = (
     await db.query<{ status: string }>(`SELECT status FROM shipments WHERE order_id = $1 AND kind <> 'legacy' AND status <> 'canceled'`, [order.id])
   ).rows.map((r) => r.status);
@@ -477,7 +495,12 @@ export async function orderShipments(db: Db | typeof pool, orderId: string, opts
               ${opts.staff ? ', s.warehouse_id, w.name AS warehouse_name, s.version, s.canceled_at, s.cancel_reason, s.packed_at' : ''},
               coalesce((SELECT json_agg(json_build_object('sku', v.sku, 'productName', oi.product_name, 'qty', i.base_qty${opts.staff ? `, 'picked', i.picked_qty, 'checked', i.checked_qty` : ''}) ORDER BY v.sku)
                         FROM shipment_items i JOIN product_variants v ON v.id = i.variant_id JOIN order_items oi ON oi.id = i.order_item_id
-                        WHERE i.shipment_id = s.id AND i.status = 'active'), '[]') AS items
+                        WHERE i.shipment_id = s.id AND i.status = 'active'), '[]') AS items,
+              -- Linha do tempo do rastreio (Fase 8): situacao e data, sem notas internas nem nomes.
+              coalesce((SELECT json_agg(json_build_object('action', e.action, 'status', e.to_status, 'at', e.occurred_at) ORDER BY e.occurred_at, e.id)
+                        FROM shipment_events e WHERE e.shipment_id = s.id
+                          AND e.action IN ('dispatch', 'handover', 'deliver', 'track_posted', 'track_in_transit', 'track_out_for_delivery', 'track_delivered',
+                                           'track_delivery_failed', 'track_returned')), '[]') AS timeline
        FROM shipments s LEFT JOIN warehouses w ON w.id = s.warehouse_id
        WHERE s.order_id = $1 ${opts.staff ? '' : `AND s.status <> 'canceled'`} ORDER BY s.seq`,
       [orderId],
@@ -812,7 +835,12 @@ export async function shipmentRoutes(app: FastifyInstance) {
       assertVersion(c.s, b.version);
       if (b.to === 'picking') assertStatus(c.s, ['checking'], 'Só a remessa em conferência volta para a separação.');
       else assertStatus(c.s, ['packed'], 'Só a remessa embalada volta para a conferência.');
-      if (b.to === 'checking') await setStatus(c.db, c.s, 'checking', ', packed_at = NULL, packages = NULL, volumes = NULL, weight_g = NULL');
+      const label = await activeLabel(c.db, c.s.id);
+      if (label) throw labelActive(label);
+      // A cotacao era desta embalagem: deixa de valer (Fase 8).
+      if (b.to === 'checking') {
+        await setStatus(c.db, c.s, 'checking', ', packed_at = NULL, packages = NULL, volumes = NULL, weight_g = NULL, quote_id = NULL, carrier_provider = NULL, carrier_service = NULL');
+      }
       else await setStatus(c.db, c.s, 'picking');
       await event(c.db, { shipmentId: c.s.id, from: c.s.status, to: b.to, action: 'reopen', note: b.note, requestKey: b.requestKey, actorId: auth.userId });
       await projectOrder(c.db, c.order, auth.userId, `Remessa nº ${c.s.seq} reaberta: ${b.note}`);
@@ -855,6 +883,8 @@ export async function shipmentRoutes(app: FastifyInstance) {
         carrier: z.string().trim().max(80).optional().nullable(),
         trackingCode: z.string().trim().max(60).optional().nullable(),
         trackingUrl: z.url().max(300).optional().nullable(),
+        // Fase 8 (D8-9): custo pago a transportadora, opcional no despacho manual. Sem valor = desconhecido.
+        freightCostCents: z.number().int().min(1).max(10_000_000).optional().nullable(),
         requestKey: key,
       })
       .parse(req.body);
@@ -862,6 +892,17 @@ export async function shipmentRoutes(app: FastifyInstance) {
       assertVersion(c.s, b.version);
       assertStatus(c.s, ['packed'], 'Só a remessa embalada pode ser despachada.');
       assertMoving(c.order);
+      const label = await activeLabel(c.db, c.s.id);
+      if (label && !['purchased', 'printed'].includes(label.status)) {
+        throw new AppError(
+          409,
+          'LABEL_PENDING',
+          label.status === 'cancel_requested'
+            ? 'O cancelamento da etiqueta aguarda a confirmação do transportador. Despache depois da resposta.'
+            : 'A compra da etiqueta ainda não foi concluída ou conferida. Resolva a etiqueta antes de despachar.',
+        );
+      }
+      if (b.freightCostCents && label) throw new AppError(409, 'COST_FROM_LABEL', 'O custo desta remessa vem da etiqueta comprada pelo sistema.');
       if (c.order.invoice_status !== 'authorized' && c.order.invoice_status !== 'not_required') {
         throw new AppError(409, 'INVOICE_REQUIRED', 'Emita e autorize a NF-e antes de despachar a mercadoria.');
       }
@@ -894,21 +935,33 @@ export async function shipmentRoutes(app: FastifyInstance) {
       }
       const pickup = c.s.kind === 'pickup';
       const marketplace = c.s.kind === 'marketplace';
+      if (b.freightCostCents && (pickup || marketplace)) throw new AppError(422, 'NOT_CARRIER_SHIPMENT', 'Retirada e marketplace não têm custo de frete da loja.');
+      // Etiqueta comprada pelo sistema: o rastreio vem dela quando nao informado. Sem etiqueta: transportadora manual.
+      const tracking = pickup ? null : b.trackingCode || label?.tracking_code || null;
       await c.db.query(
         `UPDATE shipments SET status = $2, carrier = $3, tracking_code = $4, tracking_url = $5, shipped_at = now(), shipped_by = $6,
-           delivered_at = CASE WHEN $7 THEN now() END, version = version + 1, updated_at = now() WHERE id = $1`,
-        [c.s.id, pickup ? 'delivered' : 'shipped', pickup || marketplace ? null : b.carrier || null, pickup ? null : b.trackingCode || null, pickup || marketplace ? null : b.trackingUrl || null, auth.userId, pickup],
+           delivered_at = CASE WHEN $7 THEN now() END,
+           carrier_provider = CASE WHEN $8 THEN coalesce(carrier_provider, 'manual') ELSE carrier_provider END,
+           version = version + 1, updated_at = now() WHERE id = $1`,
+        [c.s.id, pickup ? 'delivered' : 'shipped', pickup || marketplace ? null : b.carrier || null, tracking, pickup || marketplace ? null : b.trackingUrl || null, auth.userId, pickup, !pickup && !marketplace && !label],
       );
-      await event(c.db, { shipmentId: c.s.id, from: 'packed', to: 'shipped', action: pickup ? 'handover' : 'dispatch', note: b.trackingCode ? `Rastreio ${b.trackingCode}` : null, requestKey: b.requestKey, actorId: auth.userId });
+      if (b.freightCostCents) {
+        await c.db.query(`INSERT INTO shipment_freight_costs (shipment_id, kind, amount_cents, note, actor_id) VALUES ($1, 'manual', $2, 'Informado no despacho', $3)`, [
+          c.s.id,
+          b.freightCostCents,
+          auth.userId,
+        ]);
+      }
+      await event(c.db, { shipmentId: c.s.id, from: 'packed', to: 'shipped', action: pickup ? 'handover' : 'dispatch', note: tracking ? `Rastreio ${tracking}` : null, requestKey: b.requestKey, actorId: auth.userId });
       if (pickup) await event(c.db, { shipmentId: c.s.id, from: 'shipped', to: 'delivered', action: 'handover', note: 'Retirada pelo cliente', actorId: auth.userId });
-      await projectOrder(c.db, c.order, auth.userId, b.trackingCode ? `Remessa nº ${c.s.seq}: código de rastreio ${b.trackingCode}` : `Remessa nº ${c.s.seq} ${pickup ? 'retirada' : 'despachada'}`);
+      await projectOrder(c.db, c.order, auth.userId, tracking ? `Remessa nº ${c.s.seq}: código de rastreio ${tracking}` : `Remessa nº ${c.s.seq} ${pickup ? 'retirada' : 'despachada'}`);
       if (!pickup) await queueOrderMessage(c.db, c.order.id, 'order_shipped', c.s.id);
       await audit(c.db, {
         actorId: auth.userId,
         action: pickup ? 'shipment.handover' : 'shipment.dispatch',
         entity: 'shipment',
         entityId: c.s.id,
-        after: { orderId: c.order.id, seq: c.s.seq, carrier: b.carrier, trackingCode: b.trackingCode },
+        after: { orderId: c.order.id, seq: c.s.seq, carrier: b.carrier, trackingCode: tracking, freightCostCents: b.freightCostCents ?? null },
         ip: auth.ip,
       });
     });
@@ -936,7 +989,9 @@ export async function shipmentRoutes(app: FastifyInstance) {
     return act(auth, id, b.requestKey, 'event', async (c) => {
       assertVersion(c.s, b.version);
       assertStatus(c.s, ['picking', 'checking', 'packed'], 'Só remessa em separação, conferência ou embalada volta para pendente.');
-      await setStatus(c.db, c.s, 'pending', ', packed_at = NULL, packages = NULL, volumes = NULL, weight_g = NULL');
+      const label = await activeLabel(c.db, c.s.id);
+      if (label) throw labelActive(label);
+      await setStatus(c.db, c.s, 'pending', ', packed_at = NULL, packages = NULL, volumes = NULL, weight_g = NULL, quote_id = NULL, carrier_provider = NULL, carrier_service = NULL');
       await event(c.db, { shipmentId: c.s.id, from: c.s.status, to: 'pending', action: 'release', note: b.note, requestKey: b.requestKey, actorId: auth.userId });
       await projectOrder(c.db, c.order, auth.userId, `Remessa nº ${c.s.seq} voltou para pendente: ${b.note}`);
       await audit(c.db, { actorId: auth.userId, action: 'shipment.release', entity: 'shipment', entityId: c.s.id, after: { note: b.note }, ip: auth.ip });
@@ -952,6 +1007,8 @@ export async function shipmentRoutes(app: FastifyInstance) {
     return act(auth, id, b.requestKey, 'event', async (c) => {
       assertVersion(c.s, b.version);
       assertStatus(c.s, OPEN_SHIPMENT, 'Remessa despachada não pode ser cancelada.');
+      const label = await activeLabel(c.db, c.s.id);
+      if (label) throw labelActive(label);
       const items = await shipmentItems(c.db, c.s.id);
       const held = items.filter((i) => milli(i.picked_qty) > 0);
       if (held.length) {

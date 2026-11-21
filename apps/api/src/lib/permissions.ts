@@ -49,6 +49,9 @@ export const PERMISSIONS = [
   'orders.view',
   'orders.manage',
   'shipping.manage',
+  // SGLog Fase 8 (docs/35-sglog-fase8.md): comprar, cancelar e resolver etiqueta de frete (gasta dinheiro: MFA, D8-7).
+  // A compra real continua bloqueada pela trava do frete.
+  'shipping.labels',
   'sales_desk.use',
   'marketplaces.manage',
   'finance.view',
@@ -67,7 +70,7 @@ export type Role = (typeof ROLES)[number];
 
 const ROLE_DEFAULTS: Record<Role, readonly Permission[]> = {
   owner: PERMISSIONS,
-  manager: ['users.view', 'audit.view', 'settings.manage', 'company.view', 'fiscal.view', 'catalog.view', 'catalog.manage', 'prices.manage', 'catalog.import', 'stock.view', 'stock.manage', 'stock.transfer', 'stock.adjust', 'purchases.view', 'purchases.manage', 'purchases.approve', 'purchases.receive', 'purchases.pay', 'purchases.request', 'suppliers.view', 'suppliers.manage', 'logistics.view', 'logistics.allocate', 'shipping.pick', 'logistics.manage', 'orders.view', 'orders.manage', 'shipping.manage', 'sales_desk.use', 'marketplaces.manage', 'finance.view', 'reports.view', 'email.view'],
+  manager: ['users.view', 'audit.view', 'settings.manage', 'company.view', 'fiscal.view', 'catalog.view', 'catalog.manage', 'prices.manage', 'catalog.import', 'stock.view', 'stock.manage', 'stock.transfer', 'stock.adjust', 'purchases.view', 'purchases.manage', 'purchases.approve', 'purchases.receive', 'purchases.pay', 'purchases.request', 'suppliers.view', 'suppliers.manage', 'logistics.view', 'logistics.allocate', 'shipping.pick', 'logistics.manage', 'orders.view', 'orders.manage', 'shipping.manage', 'shipping.labels', 'sales_desk.use', 'marketplaces.manage', 'finance.view', 'reports.view', 'email.view'],
   sales: ['catalog.view', 'stock.view', 'logistics.view', 'orders.view', 'sales_desk.use'],
   // Estoquista ve fornecedores, mas nao muda custo nem cadastro (D2-4); concessao individual continua possivel.
   // Fase 7 (D7-6): pede compra (requisicao).
@@ -79,7 +82,7 @@ const ROLE_DEFAULTS: Record<Role, readonly Permission[]> = {
   // SGLog (docs/sglog-fase0-auditoria.md §10.3.1): menor privilegio, so permissoes que ja existem.
   // Gerente de logistica: estoque, despacho e consulta de compras. Sem orders.manage (cancelar pedido mexe em
   // cobranca e nota) e sem reports.view (faturamento).
-  logistics: ['catalog.view', 'stock.view', 'stock.manage', 'stock.transfer', 'stock.adjust', 'purchases.view', 'purchases.receive', 'purchases.request', 'suppliers.view', 'logistics.view', 'logistics.allocate', 'logistics.manage', 'shipping.pick', 'orders.view', 'shipping.manage'],
+  logistics: ['catalog.view', 'stock.view', 'stock.manage', 'stock.transfer', 'stock.adjust', 'purchases.view', 'purchases.receive', 'purchases.request', 'suppliers.view', 'logistics.view', 'logistics.allocate', 'logistics.manage', 'shipping.pick', 'orders.view', 'shipping.manage', 'shipping.labels'],
   // Comprador: compras e fornecedores. Sem orders.view (dados pessoais de clientes) e sem stock.manage (ajustes e perdas).
   // Fase 6 (D6-1): nao recebe mercadoria (purchases.receive): quem compra nao da entrada no estoque.
   buyer: ['catalog.view', 'stock.view', 'purchases.view', 'purchases.manage', 'suppliers.view', 'suppliers.manage', 'logistics.view'],
@@ -89,7 +92,7 @@ const ROLE_DEFAULTS: Record<Role, readonly Permission[]> = {
 };
 
 /** Permissoes que exigem verificacao em duas etapas ativa na conta. */
-export const MFA_REQUIRED: ReadonlySet<Permission> = new Set(['users.manage', 'settings.manage', 'company.manage', 'fiscal.manage', 'fiscal.validate', 'prices.manage', 'catalog.import', 'marketplaces.manage', 'email.manage', 'email.accounts', 'bot.manage', 'stock.adjust', 'purchases.approve']);
+export const MFA_REQUIRED: ReadonlySet<Permission> = new Set(['users.manage', 'settings.manage', 'company.manage', 'fiscal.manage', 'fiscal.validate', 'prices.manage', 'catalog.import', 'marketplaces.manage', 'email.manage', 'email.accounts', 'bot.manage', 'stock.adjust', 'purchases.approve', 'shipping.labels']);
 
 export const roleDefaults = (role: string) => new Set<Permission>(ROLE_DEFAULTS[role as Role] ?? []);
 

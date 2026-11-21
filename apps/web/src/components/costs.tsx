@@ -98,21 +98,23 @@ const EXCLUDED: Record<string, string> = {
 };
 
 export function MarginSummary({ m }: { m: Margin }) {
+  // Grupo com componente desconhecido: o valor mostrado e parcial (o que falta nao entra como zero).
+  const lacks = (comps: string[]) => (m.missing.some((c) => comps.includes(c)) ? 'parcial' : undefined);
   const cells: [string, number, string?][] = [
     ['Receita', m.revenueCents],
-    ['CMV', m.cogsCents],
-    ['Custos logísticos', m.logisticsCents],
-    ['Taxas e comissões', m.feesCents],
-    ['Tributos', m.taxesCents, m.taxesEstimatedCents ? 'estimados' : undefined],
-    ['Devoluções', m.returnsCents],
+    ['CMV', m.cogsCents, lacks(['cogs', 'cogs_pending', 'exchange_cogs'])],
+    ['Custos logísticos', m.logisticsCents, lacks(['freight_paid', 'packaging'])],
+    ['Taxas e comissões', m.feesCents, lacks(['payment_fee', 'marketplace_fees', 'marketplace_shipping'])],
+    ['Tributos', m.taxesCents, lacks(['tax_estimated', 'tax_recorded']) ?? (m.taxesEstimatedCents ? 'estimados' : undefined)],
+    ['Devoluções', m.returnsCents, lacks(['return_freight'])],
   ];
   return (
     <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-md border border-line bg-line sm:grid-cols-4">
       {cells.map(([label, v, hint]) => (
         <div key={label} className="bg-card px-3 py-2">
-          <dt className="text-xs text-ink-soft">
+          <dt className={`text-xs ${hint === 'parcial' ? 'text-warn' : 'text-ink-soft'}`}>
             {label}
-            {hint ? ` (${hint})` : ''}
+            {hint === 'parcial' ? ' (parcial: falta custo)' : hint ? ` (${hint})` : ''}
           </dt>
           <dd className="num text-sm font-medium">{money(v)}</dd>
         </div>
@@ -268,7 +270,7 @@ export function OrderMarginPanel({ orderId }: { orderId: string }) {
                       <td className="py-1.5 pr-2">
                         <NatureBadge nature={l.nature} />
                       </td>
-                      <td className={`num py-1.5 pr-2 text-right ${l.nature === 'info' ? 'text-ink-soft line-through' : ''}`}>{l.amountCents === null ? '—' : money(l.amountCents)}</td>
+                      <td className={`num whitespace-nowrap py-1.5 pr-2 text-right ${l.nature === 'info' ? 'text-ink-soft line-through' : ''}`}>{l.amountCents === null ? '—' : money(l.amountCents)}</td>
                       <td className="py-1.5 text-ink-soft">
                         {l.detail}
                         <span className="text-ink-faint">

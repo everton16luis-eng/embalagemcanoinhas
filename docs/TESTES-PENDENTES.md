@@ -1063,3 +1063,75 @@ Pendentes, fora do HTTPS de testes:
 - [ ] **Contador:** natureza da operação e CFOP do documento de devolução (consumidor e PJ) e da NF-e da reposição de
   troca (total zero), antes do uso real.
 - [ ] **Você:** política de trocas e devoluções (prazos de referência) confirmada com o jurídico.
+
+## SGLog Fase 10 — custos, margem de contribuição e gestão ([41-sglog-fase10.md](41-sglog-fase10.md))
+
+**Situação: implementada no local; não implantada.** Roteiro de implantação em
+[42-sglog-fase10-implantacao.md](42-sglog-fase10-implantacao.md).
+
+No local (21/11/2026):
+- suíte da API 546/546 (12 testes da 10a e 8 da 10b); typecheck, build da API e `next build` do painel sem erro;
+- código anterior (`d0f7a9b`) 526/526 com a 0029 aplicada (só a lista de limpeza dos testes ganhou as tabelas novas);
+- 0029 em up, down e up no banco de teste; com configuração, lançamento ou importação, a reversão é recusada;
+- volume: 10 mil pedidos sintéticos, resumo, página, rateio por produto, logística e indicadores em menos de 0,5 s
+  cada, também com estatísticas velhas no banco;
+- C22–C24 sem divergência no banco de desenvolvimento (416 pedidos de demonstração; 0 completos, por falta de
+  configuração);
+- e2e no desktop e a 375 px (uma spec por vez, pelo limite de 20 logins por minuto): 52 aprovados e 2 pulados (sem
+  remessa em manuseio no banco de demonstração), incluindo as 10 telas da Gestão.
+
+**Regras para os testes pelo HTTPS:**
+- só pedidos e fornecedores de demonstração (`@demo.invalid`, `(demonstração)`); nunca EMBRAST;
+- **nada movimenta dinheiro.** Lançamento de custo e configuração são só registro; não faça cobrança, reembolso ou
+  pagamento real para testar;
+- não altere `invoice_status` nem NF-e;
+- o MFA é digitado só por você;
+- qualquer configuração, lançamento ou importação impede reverter a 0029 (a reversão recusa, sem perder nada). Lance
+  valores de teste pequenos com referência `TESTE-F10-…` e estorne no fim.
+
+Validação pelo painel HTTPS, como proprietário, depois da implantação:
+
+- [ ] **Menu Gestão.** Painel Gestão, Rentabilidade, Custos logísticos, Desempenho de fornecedores e Custos e margens
+  abrem sem "Erro interno". No celular, nada rola para o lado (as tabelas rolam por dentro).
+- [ ] **Painel Gestão, 12 meses:**
+  - o aviso de demonstração mostra a quantidade; "Demonstração: Excluir" tira o aviso e zera os pedidos (na VPS só há
+    demonstração), com a mensagem de período sem pedidos;
+  - sem configuração, o aviso "Dados insuficientes" mostra cobertura 0%; "Custos que faltam" lista tributos, taxa,
+    embalagem e frete pago; os cartões de custos logísticos, taxas e tributos dizem "parcial";
+  - trocar "Período pela" para data do despacho muda a frase do período;
+  - "Como ler estes números" diz que margem de contribuição não é lucro líquido.
+- [ ] **Margem do pedido.** Num pedido de demonstração entregue: o painel "Margem de contribuição" mostra cada
+  componente com natureza (Efetivo, Estimado, Desconhecido) e origem; o resultado é parcial e lista o que falta.
+  Confira um CMV com o movimento de venda em Estoque (mesmo custo médio da baixa).
+- [ ] **Configuração (pede MFA).** Em Custos e margens → Configurações, "Nova configuração" de embalagem genérica
+  (por volume, R$ 1,20, origem "Teste F10"): fica "A validar" e **não** muda a margem. "Cancelar" com motivo. Não
+  valide alíquota de tributo: isso é do contador.
+- [ ] **Lançamento (pede MFA).** No pedido de demonstração, "Lançar custo" → taxa do pagamento R$ 0,01, referência
+  `TESTE-F10-1`:
+  - a taxa passa a "Efetivo" e a margem cai R$ 0,01;
+  - lançar de novo o mesmo tipo é recusado (já existe um ativo);
+  - "Estornar" com motivo: volta a "Desconhecido".
+- [ ] **Planilha.** Em Importação, um CSV com uma linha
+  (`pedido;tipo;valor;data;referencia;observacao` / `<nº do pedido de demonstração>;taxa_pagamento;0,01;<hoje>;TESTE-F10-2;`):
+  - a prévia mostra "ok"; importar cria o lançamento;
+  - o mesmo arquivo de novo: "já importada"; estorne o lançamento no pedido.
+- [ ] **Conferência.** Custos e margens → Conferência → "Conferir C22–C24": nenhuma divergência.
+- [ ] **Rentabilidade.** Abas Pedidos, Produto, Categoria, Canal, Fornecedor e UF abrem; ordenar por margem %;
+  "Exportar CSV" baixa um arquivo que abre no Excel com `;` e vírgula decimal, com a coluna `margem_contribuicao`.
+- [ ] **Custos logísticos e fornecedores.** Frete cobrado × pago por UF e perdas de estoque aparecem; fornecedores de
+  demonstração marcados, e "Excluir" demonstração os tira.
+- [ ] **Permissões:**
+  - o perfil da logística e o do atendimento não veem o menu Gestão nem o painel de margem do pedido;
+  - o perfil financeiro vê Gestão e margens e lança custo (com MFA), mas não cria configuração;
+  - em Usuários, aparecem as cinco permissões novas.
+- [ ] **Banco depois dos testes** (como `loja`, bloco 5.1 do doc 42):
+  - C22–C23 e C1–C21 sem divergência;
+  - `lancamentos` e `importacoes` iguais ao que foi registrado (estornos contam como lançamento);
+  - pedidos, pagamentos, notas, movimentos e remessas iguais aos da etapa 1;
+  - as travas continuam `blocked`.
+
+Pendentes, fora do HTTPS de testes:
+- [ ] **Contador:** alíquota estimada por regime e base (total ou mercadoria), validada no painel com
+  `fiscal.validate`.
+- [ ] **Você:** tabelas de taxa do Mercado Pago (Pix e cartão por parcelas) e dos marketplaces, e o custo das caixas
+  de envio, para informar as configurações reais.

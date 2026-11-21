@@ -183,7 +183,7 @@ Roteiro em [08-whatsapp-transportadoras-relatorios.md](08-whatsapp-transportador
 - [ ] Cotação real: conferir `custom_price`/`custom_delivery_time` e serviços indisponíveis com o CEP da empresa.
 - [ ] **Você** Escolher os serviços de transportadora que a loja oferece e cadastrar o CEP da empresa; preencher
       peso e medidas das variações (sem eles a opção não aparece).
-- [ ] **Você** Decidir como comprar o frete e gerar etiqueta (hoje fora do sistema).
+- [ ] **Você** Decidir como comprar o frete e gerar etiqueta (hoje fora do sistema). Fase 8: compra pelo sistema pronta e bloqueada; veja a seção da Fase 8 no fim.
 
 ## Auditoria de novembro de 2026 ([AUDITORIA-2026-11.md](AUDITORIA-2026-11.md))
 
@@ -789,3 +789,76 @@ pequenos. Nada nesta fase movimenta estoque: anote o saldo do produto antes e co
   - logística pede compra, mas não gera compra;
   - estoquista pede e gera;
   - financeiro vê as requisições, mas não pede nem gera compra.
+
+## SGLog Fase 8 — fretes, etiquetas, rastreio e custos ([35-sglog-fase8.md](35-sglog-fase8.md))
+
+**Situação: implementada só no local (`sglog/fase8`), aguardando merge, push e implantação autorizados.** Roteiro de
+implantação em [36-sglog-fase8-implantacao.md](36-sglog-fase8-implantacao.md).
+
+No local:
+- suíte da API 495/495;
+- código anterior (`e057df4`) 471/471 com a 0027 aplicada;
+- 0027 em up, down e up;
+- telas a 375 px e no desktop.
+
+**A compra real de etiqueta continua bloqueada.** Não ligue `SHIPPING_LABELS_ENABLED` nem libere a regra do frete.
+Use só pedidos de teste, com NF-e já autorizada pelo fluxo normal: não altere `invoice_status`.
+
+Validação pelo painel HTTPS, como proprietário, depois da implantação:
+
+- [ ] **Menu e trava.** Abra Logística → Fretes:
+  - o topo mostra o transportador. Sem token do Melhor Envio, aparece "nenhum configurado (frete manual)";
+  - aparece "Compra de etiqueta pelo sistema: bloqueada", com os motivos (servidor, regras do frete e limite não
+    definido);
+  - nenhum botão de compra.
+- [ ] **Listas e relatório:**
+  - "Sem custo informado" lista as remessas despachadas nos últimos 90 dias;
+  - o relatório do mês mostra o cobrado, e o pago "não informado" (nunca R$ 0,00) enquanto ninguém informar custo;
+  - a tela não rola para o lado no celular.
+- [ ] **Remessa embalada de teste.** O painel "Frete" mostra cobrado, cotado "—" e pago "não informado":
+  - sem provedor, aparece "Cotação pelo sistema indisponível";
+  - em Etiqueta, aparece o aviso de compra bloqueada.
+- [ ] **Despacho com custo.** Despache a remessa de teste informando a transportadora, o código e o custo pago (por
+  exemplo R$ 18,40):
+  - o painel passa a mostrar o pago R$ 18,40;
+  - a remessa sai de "Sem custo informado";
+  - o relatório conta a remessa na diferença cobrado − pago.
+- [ ] **Despacho sem custo.** Numa segunda remessa, despache sem o custo. Ela aparece em "Sem custo informado" e o pago
+  fica "não informado". Depois, em "Custo pago à transportadora", registre o custo e confira a mudança.
+- [ ] **Ajuste e estorno.** Na primeira remessa:
+  - registre um ajuste de R$ 2,00 com motivo: o pago vira R$ 20,40;
+  - registre um estorno de R$ 1,00 com motivo: o pago vira R$ 19,40;
+  - os lançamentos anteriores continuam iguais (não há edição nem exclusão);
+  - ajuste ou estorno sem motivo é recusado.
+- [ ] **Rastreio manual:**
+  - na remessa despachada, registre "Em trânsito" e depois "Saiu para entrega": o histórico mostra os dois;
+  - registre "Em trânsito" de novo: entra no histórico, mas a situação continua "Saiu para entrega" (sem voltar);
+  - "Falha na entrega" só fica registrada, e a remessa continua em transporte (o tratamento é da Fase 9).
+- [ ] **Página do cliente.** Com a conta do cliente de teste, abra o pedido. O histórico de rastreio mostra enviada,
+  em trânsito e saiu para entrega, sem nome de funcionário nem observação interna.
+- [ ] **Entrega.** "Marcar como entregue" na remessa. O pedido fica entregue, como antes, e o histórico do cliente
+  mostra "Entregue".
+- [ ] **Aviso falso.** Do seu computador (não da VPS), envie um aviso sem assinatura:
+
+  ```powershell
+  curl.exe -s -o NUL -w "%{http_code}" -X POST https://<domínio>/api/v1/webhooks/carriers/melhorenvio -H "content-type: application/json" -d '{\"event\":\"order.delivered\",\"data\":{\"id\":\"x\"}}'
+  ```
+
+  Deve responder `401`. Nenhuma remessa muda.
+- [ ] **Permissões:**
+  - o perfil da logística vê Fretes e registra custo e rastreio;
+  - o perfil de expedição não tem "Etiquetas de frete";
+  - em Usuários, a permissão nova aparece como "Etiquetas de frete (compra, cancelamento)".
+- [ ] **Fila.** Em Fretes → "Fila de integrações", "Com falha" fica vazia. Sem provedor, nenhuma tarefa é criada.
+- [ ] **Banco depois dos testes** (como `loja`, bloco 5.1 do doc 36):
+  - `RESULTADO: OK`;
+  - `etiquetas` 0 e `etiqueta` `blocked`;
+  - `custos` igual ao número de lançamentos feitos.
+
+Pendentes, fora do HTTPS de testes:
+- [ ] **Você** Conta do Melhor Envio no sandbox: token, `MELHOR_ENVIO_SANDBOX=true` e o segredo do app em
+  `MELHOR_ENVIO_WEBHOOK_SECRET`. Depois, cotar uma remessa real e cadastrar a URL do aviso no app.
+- [ ] Conferir com um aviso real assinado se a assinatura é em base64, como assumido a partir da documentação.
+- [ ] **Decisão futura** Compra de etiqueta pelo sistema. Exige:
+  - um provedor com idempotência ou busca pela nossa chave (o Melhor Envio não tem);
+  - CNPJ e NF-e em produção, saldo, teste no sandbox, limite definido, MFA e a sua autorização expressa.

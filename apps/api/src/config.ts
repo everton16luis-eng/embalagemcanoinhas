@@ -74,6 +74,11 @@ const schema = z.object({
   MELHOR_ENVIO_TOKEN: blankAsMissing(z.string().min(20).optional()),
   MELHOR_ENVIO_USER_AGENT: blankAsMissing(z.string().min(5).max(200).optional()),
   MELHOR_ENVIO_SANDBOX: blankAsMissing(z.enum(['true', 'false']).optional()).transform((v) => v !== 'false'),
+  // Segredo do aplicativo no Melhor Envio: confere a assinatura X-ME-Signature dos avisos (docs/35-sglog-fase8.md).
+  MELHOR_ENVIO_WEBHOOK_SECRET: blankAsMissing(z.string().min(16).max(200).optional()),
+  // SGLog Fase 8: compra de etiqueta pelo sistema. Desligada por padrao; ligar exige autorizacao expressa (D8-3) e,
+  // alem deste valor, um provedor que compre etiqueta, a liberacao nas regras do frete e um limite definido.
+  SHIPPING_LABELS_ENABLED: blankAsMissing(z.enum(['true', 'false']).optional()).transform((v) => v === 'true'),
   // CEP de onde sai a mercadoria (cotacao).
   SHIP_FROM_CEP: blankAsMissing(z.string().regex(/^[0-9]{8}$/).optional()),
   CARRIER_FAKE: blankAsMissing(z.enum(['true', 'false']).optional()).transform((v) => v === 'true'),

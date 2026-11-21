@@ -32,6 +32,23 @@ test.describe('fretes (Fase 8)', () => {
     await semRolagemLateral(page);
     await page.screenshot({ path: info.outputPath('fretes.png'), fullPage: true });
 
+    // Todos os cards, em cliques seguidos (duas voltas rapidas e uma com espera): nenhum erro interno, e o erro de um
+    // card nao fica preso nos outros.
+    const cards = ['A cotar', 'Cotadas', 'Rastreio parado', 'Sem custo informado', 'Em transporte', 'Etiquetas'];
+    const counts = page.getByTestId('freight-counts');
+    for (let lap = 0; lap < 2; lap++) for (const c of cards) await counts.getByRole('button', { name: new RegExp(c) }).click();
+    for (const c of cards) {
+      await counts.getByRole('button', { name: new RegExp(c) }).click();
+      await expect(page.getByRole('heading', { name: c, exact: true })).toBeVisible();
+      await expect(page.getByTestId('freight-list').or(page.getByText('Nenhuma remessa nesta lista.'))).toBeVisible();
+      await expect(page.getByText('Erro interno')).toHaveCount(0);
+    }
+    for (const st of ['Na fila', 'Concluídas', 'Todas', 'Com falha']) {
+      await page.getByLabel('Situação da tarefa').selectOption({ label: st });
+      await expect(page.getByTestId('freight-jobs').or(page.getByText('Nenhuma tarefa.'))).toBeVisible();
+    }
+    await expect(page.getByText('Erro interno')).toHaveCount(0);
+
     await page.getByRole('button', { name: /Sem custo informado/ }).click();
     await expect(page.getByRole('heading', { name: 'Sem custo informado' })).toBeVisible();
     await expect(page.getByTestId('freight-list').or(page.getByText('Nenhuma remessa nesta lista.'))).toBeVisible();

@@ -40,6 +40,14 @@ import { lockShipment, projectOrder } from './shipments.js';
 export const QUOTE_TTL_MIN = 120;
 const ACTIVE_LABEL = ['requested', 'purchasing', 'uncertain', 'purchased', 'printed', 'cancel_requested'];
 const TRACKED = ['shipped', 'in_transit', 'out_for_delivery'];
+// Remessa com frete da loja: a de entrega, ou a do despacho anterior (legacy) de pedido da loja ou do balcao que nao
+// seja retirada. Pedido de marketplace fica com o marketplace (rastreio, custo e entrega sao dele) e nunca entra aqui.
+// Usa os apelidos s (shipments) e o (orders).
+export const STORE_CARRIER_SQL = `(s.kind = 'delivery' OR (s.kind = 'legacy' AND o.channel IN ('store', 'sales_desk')
+  AND NOT EXISTS (SELECT 1 FROM shipping_options so WHERE so.id = o.shipping_option_id AND so.kind = 'pickup')))`;
+async function isStoreCarrier(db: Db | typeof pool, id: string) {
+  return !!(await db.query(`SELECT 1 FROM shipments s JOIN orders o ON o.id = s.order_id WHERE s.id = $1 AND ${STORE_CARRIER_SQL}`, [id])).rows[0];
+}
 const RANK: Record<string, number> = { shipped: 1, in_transit: 2, out_for_delivery: 3, delivered: 4 };
 const TARGET: Record<TrackStatus, string | null> = {
   posted: 'in_transit',
@@ -278,6 +286,7 @@ export async function freightView(db: Db | typeof pool, id: string) {
       warehouseName: r.w_name,
       warehouseCep: r.w_cep,
       toCep: r.ship_to?.cep ?? null,
+      storeCarrier: await isStoreCarrier(db, id),
     },
     provider: provider ? { name: provider.name, capabilities: provider.capabilities } : null,
     gate,
@@ -716,7 +725,7 @@ export async function freightReport(db: Db | typeof pool, from: string, to: stri
               (SELECT count(*)::int FROM shipments x WHERE x.order_id = s.order_id AND x.status <> 'canceled' AND x.kind IN ('delivery', 'legacy')) AS live,
               (SELECT count(*)::int FROM shipments x WHERE x.order_id = s.order_id AND x.status <> 'canceled' AND x.kind IN ('delivery', 'legacy') AND x.seq < s.seq) AS rank
        FROM shipments s JOIN orders o ON o.id = s.order_id LEFT JOIN shipping_quotes q ON q.id = s.quote_id
-       WHERE s.kind IN ('delivery', 'legacy') AND s.status <> 'canceled' AND s.shipped_at IS NOT NULL
+       WHERE ${STORE_CARRIER_SQL} AND s.status <> 'canceled' AND s.shipped_at IS NOT NULL
          AND (s.shipped_at AT TIME ZONE 'America/Sao_Paulo')::date BETWEEN $1::date AND $2::date
        ORDER BY s.shipped_at, o.number, s.seq`,
       [from, to],
@@ -794,9 +803,9 @@ export async function freightRoutes(app: FastifyInstance) {
         `SELECT
            (SELECT count(*)::int FROM shipments s WHERE s.kind = 'delivery' AND s.status = 'packed' AND s.quote_id IS NULL) AS to_quote,
            (SELECT count(*)::int FROM shipments s WHERE s.kind = 'delivery' AND s.status = 'packed' AND s.quote_id IS NOT NULL) AS quoted,
-           (SELECT count(*)::int FROM shipments s WHERE s.status = ANY($1::text[])
+           (SELECT count(*)::int FROM shipments s JOIN orders o ON o.id = s.order_id WHERE ${STORE_CARRIER_SQL} AND s.status = ANY($1::text[])
               AND coalesce(s.last_tracking_event_at, s.shipped_at) < now() - make_interval(days => $2)) AS stale,
-           (SELECT count(*)::int FROM shipments s WHERE s.kind IN ('delivery', 'legacy') AND s.shipped_at IS NOT NULL AND s.status <> 'canceled'
+           (SELECT count(*)::int FROM shipments s JOIN orders o ON o.id = s.order_id WHERE ${STORE_CARRIER_SQL} AND s.shipped_at IS NOT NULL AND s.status <> 'canceled'
               AND s.shipped_at > now() - interval '90 days' AND NOT EXISTS (SELECT 1 FROM shipment_freight_costs c WHERE c.shipment_id = s.id)) AS without_cost,
            (SELECT count(*)::int FROM integration_jobs WHERE status = 'dead') AS jobs_dead,
            (SELECT count(*)::int FROM integration_jobs WHERE status IN ('pending', 'running') AND attempts > 0 AND last_error IS NOT NULL) AS jobs_retrying,
@@ -819,27 +828,35 @@ export async function freightRoutes(app: FastifyInstance) {
     requirePermission(req, 'logistics.view');
     const q = pageQuery.extend({ view: z.enum(['to_quote', 'quoted', 'labels', 'stale', 'without_cost', 'tracking']).default('to_quote') }).parse(req.query);
     const st = await freightSettings(pool);
-    const where: Record<typeof q.view, string> = {
-      to_quote: `s.kind = 'delivery' AND s.status = 'packed' AND s.quote_id IS NULL`,
-      quoted: `s.kind = 'delivery' AND s.status = 'packed' AND s.quote_id IS NOT NULL`,
-      labels: `EXISTS (SELECT 1 FROM shipping_labels l WHERE l.shipment_id = s.id)`,
-      stale: `s.status = ANY($3::text[]) AND coalesce(s.last_tracking_event_at, s.shipped_at) < now() - make_interval(days => $4)`,
-      without_cost: `s.kind IN ('delivery', 'legacy') AND s.shipped_at IS NOT NULL AND s.status <> 'canceled' AND s.shipped_at > now() - interval '90 days'
+    // Cada lista recebe so os parametros que usa: parametro sobrando da erro no Postgres ("could not determine data type").
+    const filters: Record<typeof q.view, (p: (v: unknown) => string) => string> = {
+      to_quote: () => `s.kind = 'delivery' AND s.status = 'packed' AND s.quote_id IS NULL`,
+      quoted: () => `s.kind = 'delivery' AND s.status = 'packed' AND s.quote_id IS NOT NULL`,
+      labels: () => `EXISTS (SELECT 1 FROM shipping_labels l WHERE l.shipment_id = s.id)`,
+      stale: (p) => `${STORE_CARRIER_SQL} AND s.status = ANY(${p(TRACKED)}::text[]) AND coalesce(s.last_tracking_event_at, s.shipped_at) < now() - make_interval(days => ${p(st.tracking_stale_days)}::int)`,
+      without_cost: () => `${STORE_CARRIER_SQL} AND s.shipped_at IS NOT NULL AND s.status <> 'canceled' AND s.shipped_at > now() - interval '90 days'
                      AND NOT EXISTS (SELECT 1 FROM shipment_freight_costs c WHERE c.shipment_id = s.id)`,
-      tracking: `s.status = ANY($3::text[])`,
+      tracking: (p) => `${STORE_CARRIER_SQL} AND s.status = ANY(${p(TRACKED)}::text[])`,
     };
-    const params: unknown[] = [q.pageSize, (q.page - 1) * q.pageSize, TRACKED, st.tracking_stale_days];
-    const usesExtra = q.view === 'stale' || q.view === 'tracking';
-    const p = usesExtra ? params : params.slice(0, 2);
-    const total = (await pool.query<{ n: number }>(`SELECT count(*)::int AS n FROM shipments s WHERE ${where[q.view]}`.replace(/\$3/g, '$1').replace(/\$4/g, '$2'), usesExtra ? [TRACKED, st.tracking_stale_days] : [])).rows[0]!.n;
+    const build = (first: unknown[]) => {
+      const params = [...first];
+      const where = filters[q.view]((v) => {
+        params.push(v);
+        return `$${params.length}`;
+      });
+      return { where, params };
+    };
+    const c = build([]);
+    const total = (await pool.query<{ n: number }>(`SELECT count(*)::int AS n FROM shipments s JOIN orders o ON o.id = s.order_id WHERE ${c.where}`, c.params)).rows[0]!.n;
+    const l = build([q.pageSize, (q.page - 1) * q.pageSize]);
     const { rows } = await pool.query(
       `SELECT s.id, s.seq, s.kind, s.status, s.version, s.carrier, s.tracking_code, s.shipped_at, s.packed_at, s.tracking_status, s.last_tracked_at, s.last_tracking_event_at,
-              s.carrier_provider, s.carrier_service, o.number AS order_number, o.freight_cents, w.name AS warehouse_name, q.price_cents AS quoted_cents, q.service_name,
+              s.carrier_provider, s.carrier_service, o.number AS order_number, o.freight_cents::int AS freight_cents, w.name AS warehouse_name, q.price_cents AS quoted_cents, q.service_name,
               (SELECT l.status FROM shipping_labels l WHERE l.shipment_id = s.id ORDER BY l.requested_at DESC LIMIT 1) AS label_status,
               (SELECT sum(c.amount_cents)::int FROM shipment_freight_costs c WHERE c.shipment_id = s.id) AS net_cents
        FROM shipments s JOIN orders o ON o.id = s.order_id LEFT JOIN warehouses w ON w.id = s.warehouse_id LEFT JOIN shipping_quotes q ON q.id = s.quote_id
-       WHERE ${where[q.view]} ORDER BY coalesce(s.shipped_at, s.packed_at, s.created_at) DESC, o.number LIMIT $1 OFFSET $2`,
-      p,
+       WHERE ${l.where} ORDER BY coalesce(s.shipped_at, s.packed_at, s.created_at) DESC, o.number LIMIT $1 OFFSET $2`,
+      l.params,
     );
     return { items: rows, total, page: q.page, pageSize: q.pageSize };
   });
@@ -1141,8 +1158,10 @@ export async function freightRoutes(app: FastifyInstance) {
     if ((await pool.query('SELECT 1 FROM shipment_freight_costs WHERE request_key = $1', [b.requestKey])).rows[0]) return { replayed: true, freight: await freightView(pool, id) };
     try {
       await tx(auth.userId, async (db) => {
-        const { s } = await lockShipment(db, id);
-        if (s.kind === 'pickup' || s.kind === 'marketplace') throw new AppError(409, 'NOT_CARRIER_SHIPMENT', 'Retirada e marketplace não têm custo de frete da loja.');
+        // Bloqueio simples (o lockShipment da Fase 5 recusa o despacho anterior, que tambem recebe custo).
+        const s = (await db.query<{ status: string }>('SELECT status FROM shipments WHERE id = $1 FOR UPDATE', [id])).rows[0];
+        if (!s) throw new AppError(404, 'NOT_FOUND', 'Remessa não encontrada.');
+        if (!(await isStoreCarrier(db, id))) throw new AppError(409, 'NOT_CARRIER_SHIPMENT', 'Retirada e marketplace não têm custo de frete da loja.');
         if (s.status === 'canceled') throw new AppError(409, 'INVALID_TRANSITION', 'Remessa cancelada.');
         if (b.kind === 'manual' && (await db.query(`SELECT 1 FROM shipment_freight_costs WHERE shipment_id = $1 AND kind = 'label'`, [id])).rows[0]) {
           throw new AppError(409, 'COST_FROM_LABEL', 'O custo desta remessa veio da etiqueta. Use um ajuste para corrigir.');
@@ -1182,7 +1201,7 @@ export async function freightRoutes(app: FastifyInstance) {
     try {
       result = await tx(auth.userId, async (db) => {
         const r = await freightRow(db, id);
-        if (r.kind !== 'delivery' && r.kind !== 'legacy') throw new AppError(409, 'NOT_CARRIER_SHIPMENT', 'Retirada e marketplace não têm rastreio pelo sistema.');
+        if (!(await isStoreCarrier(db, id))) throw new AppError(409, 'NOT_CARRIER_SHIPMENT', 'Retirada e marketplace não têm rastreio pelo sistema.');
         if (!TRACKED.includes(r.status) && r.status !== 'delivered') throw new AppError(409, 'NOT_SHIPPED', 'Só a remessa despachada recebe rastreio.');
         const out = await applyTracking(db, id, { status: b.status, at: b.occurredAt ? new Date(b.occurredAt) : new Date(), key: null, tracking: null, description: b.note ?? null }, { source: 'manual', actorId: auth.userId, requestKey: b.requestKey });
         await audit(db, { actorId: auth.userId, action: 'shipment.tracking', entity: 'shipment', entityId: id, after: { status: b.status, result: out }, ip: auth.ip });

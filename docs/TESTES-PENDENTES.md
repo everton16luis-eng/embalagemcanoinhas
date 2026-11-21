@@ -806,6 +806,20 @@ pequenos. Nada nesta fase movimenta estoque: anote o saldo do produto antes e co
   - cotações, etiquetas, custos, tarefas e avisos em 0;
   - dropshipping, remessas múltiplas e e-mail ao fornecedor `blocked`;
   - log da API sem erros.
+- **Defeitos achados pelo HTTPS em 21/11/2026** (Chrome, proprietário, só leitura). Corrigidos no local, aguardando
+  implantação:
+  - o card "Em transporte" respondia **500** (`view=tracking`): a consulta recebia um parâmetro que não usava. A tela
+    guardava o erro, e os cards seguintes (por exemplo "Rastreio parado") continuavam mostrando "Erro interno" mesmo com
+    resposta 200. Agora cada lista monta só os parâmetros que usa, e a tela descarta respostas e erros de um card
+    anterior;
+  - pedidos de **marketplace** com despacho anterior (por exemplo o nº 1419, Shopee) apareciam em "Rastreio parado",
+    em "Sem custo informado" e no relatório, e o painel "Frete" oferecia rastreio e custo. Agora o frete da loja é só a
+    remessa de entrega ou o despacho anterior de pedido da loja ou do balcão que não seja retirada. O marketplace fica
+    de fora das listas, do relatório e do painel, e a API recusa custo e rastreio (`NOT_CARRIER_SHIPMENT`);
+  - o despacho anterior de pedido da loja não aceitava custo (`LEGACY_SHIPMENT`) apesar de aparecer em "Sem custo
+    informado". Agora aceita.
+- **Conferido pelo HTTPS sem defeito:** a fila nas quatro situações, o relatório, a trava da etiqueta com os motivos e
+  o painel "Frete" sem botão de compra.
 
 No local:
 - suíte da API 495/495;

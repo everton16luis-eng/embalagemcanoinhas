@@ -730,6 +730,27 @@ describe('custos e relatório', () => {
     expect(await pgError(owner.query(`UPDATE shipment_freight_costs SET amount_cents = 1 WHERE shipment_id = $1`, [a.shipment]))).toBeTruthy();
     expect((await boss.get(`${F}/shipments?view=without_cost`)).json().items.some((i: any) => i.id === b.shipment)).toBe(true);
   });
+
+  it('todos os cards e abas da tela Fretes respondem, inclusive em cliques seguidos (com e sem remessa em transporte)', async () => {
+    const views = ['to_quote', 'quoted', 'labels', 'stale', 'without_cost', 'tracking'];
+    const check = async () => {
+      const all = await Promise.all([
+        ...views.map((v) => boss.get(`${F}/shipments?view=${v}&pageSize=50`)),
+        ...['open', 'dead', 'done', 'all'].map((st) => boss.get(`${F}/jobs?status=${st}&pageSize=30`)),
+        boss.get(`${F}/overview`),
+        boss.get(`${F}/report`),
+        boss.get(`${F}/settings`),
+      ]);
+      for (const r of all) expect(r.statusCode, r.body).toBe(200);
+      return all;
+    };
+    await check();
+    const o = await ready();
+    await boss.post(`${SH}/${o.shipment}/dispatch`, { version: (await boss.get(`${SH}/${o.shipment}`)).json().shipment.version, carrier: 'Outra', requestKey: key() });
+    const [, , , , , tracking] = await check();
+    expect(tracking!.json().items.some((i: any) => i.id === o.shipment)).toBe(true);
+    for (let i = 0; i < 3; i++) await check();
+  });
 });
 
 describe('Melhor Envio (contrato pelos exemplos da documentação oficial)', () => {
@@ -784,6 +805,34 @@ describe('segurança, compatibilidade e migração', () => {
     expect(f.quotes).toEqual([]);
     const rows = (await appRole.query('SELECT check_code, field, expected, found FROM stock_reconcile()')).rows.filter((r) => r.check_code !== 'run');
     expect(rows).toEqual([]);
+  });
+
+  it('pedido de marketplace (inclusive despacho anterior) fica fora do frete da loja: listas, relatório, painel, custo e rastreio', async () => {
+    const o = await ready();
+    await dispatch(o.shipment);
+    // Simula o pedido antigo da Shopee: remessa do despacho anterior, canal do marketplace.
+    await owner.query(`UPDATE orders SET channel = 'shopee' WHERE id = $1`, [o.orderId]);
+    await owner.query(`UPDATE shipments SET kind = 'legacy' WHERE id = $1`, [o.shipment]);
+    await owner.query(`UPDATE shipments SET shipped_at = now() - interval '10 days' WHERE id = $1`, [o.shipment]);
+    expect((await view(o.shipment)).shipment.storeCarrier).toBe(false);
+    for (const v of ['stale', 'without_cost', 'tracking']) {
+      const r = await boss.get(`${F}/shipments?view=${v}&pageSize=100`);
+      expect(r.statusCode, r.body).toBe(200);
+      expect(r.json().items.some((i: any) => i.id === o.shipment), v).toBe(false);
+    }
+    expect((await boss.get(`${F}/report`)).json().report.items.some((i: any) => i.shipmentId === o.shipment)).toBe(false);
+    const cost = await boss.post(`${F}/shipments/${o.shipment}/costs`, { kind: 'manual', amountCents: 1000, requestKey: key() });
+    expect(cost.json().error.code).toBe('NOT_CARRIER_SHIPMENT');
+    const track = await boss.post(`${F}/shipments/${o.shipment}/tracking`, { status: 'in_transit', requestKey: key() });
+    expect(track.json().error.code).toBe('NOT_CARRIER_SHIPMENT');
+    expect(await costs(o.shipment)).toEqual([]);
+    // O mesmo despacho anterior, de pedido da loja, continua com frete da loja.
+    await owner.query(`UPDATE orders SET channel = 'store' WHERE id = $1`, [o.orderId]);
+    expect((await view(o.shipment)).shipment.storeCarrier).toBe(true);
+    expect((await boss.get(`${F}/shipments?view=stale&pageSize=100`)).json().items.some((i: any) => i.id === o.shipment)).toBe(true);
+    const ok = await boss.post(`${F}/shipments/${o.shipment}/costs`, { kind: 'manual', amountCents: 1000, requestKey: key() });
+    expect(ok.statusCode, ok.body).toBe(200);
+    expect((await view(o.shipment)).costs.netCents).toBe(1000);
   });
 
   it('a aplicação não altera cotação, log nem histórico da etiqueta (imutáveis)', async () => {

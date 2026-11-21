@@ -4,7 +4,7 @@
 // despachadas sem custo, fila de integrações (com reprocessamento) e o relatório cobrado × cotado × pago.
 // A compra de etiqueta aparece sempre com o motivo do bloqueio; nada aqui compra.
 import Link from '@/components/painel-link';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { LABEL_STATUS } from '@/components/freight';
 import { ShipmentBadge } from '@/components/shipments';
 import { Guard, useMe } from '@/components/shell';
@@ -151,11 +151,17 @@ function Shipments({ view }: { view: string }) {
   const [rows, setRows] = useState<Row[] | null>(null);
   const [err, setErr] = useState('');
   useEffect(() => {
+    // Cliques seguidos nos cards: so a resposta do card atual vale; erro de um card nao fica preso nos outros.
+    let current = true;
     setRows(null);
+    setErr('');
     api<{ items: Row[] }>(`/admin/freight/shipments?view=${view}&pageSize=50`).then(
-      (r) => setRows(r.items),
-      (e) => setErr(e.message),
+      (r) => current && setRows(r.items),
+      (e) => current && setErr(e.message),
     );
+    return () => {
+      current = false;
+    };
   }, [view]);
   if (err) return <Notice tone="bad">{err}</Notice>;
   if (!rows) return <p className="text-sm text-ink-soft">Carregando…</p>;
@@ -196,15 +202,17 @@ function Jobs({ onChanged }: { onChanged: () => void }) {
   const [rows, setRows] = useState<Job[] | null>(null);
   const [msg, setMsg] = useState<{ tone: Tone; text: string } | null>(null);
   const [busy, setBusy] = useState('');
-  const load = useCallback(
-    () =>
-      api<{ items: Job[] }>(`/admin/freight/jobs?status=${status}&pageSize=30`).then(
-        (r) => setRows(r.items),
-        (e) => setMsg({ tone: 'bad', text: e.message }),
-      ),
-    [status],
-  );
+  const seq = useRef(0);
+  const load = useCallback(() => {
+    const n = ++seq.current;
+    return api<{ items: Job[] }>(`/admin/freight/jobs?status=${status}&pageSize=30`).then(
+      (r) => n === seq.current && setRows(r.items),
+      (e) => n === seq.current && setMsg({ tone: 'bad', text: e.message }),
+    );
+  }, [status]);
   useEffect(() => {
+    setRows(null);
+    setMsg(null);
     load();
   }, [load]);
   const retry = async (id: string) => {
@@ -279,11 +287,14 @@ function ReportPanel() {
   const [range, setRange] = useState({ from: monthStart(), to: today() });
   const [r, setR] = useState<Report | null>(null);
   const [err, setErr] = useState('');
+  const seq = useRef(0);
   const load = useCallback(() => {
+    const n = ++seq.current;
     setErr('');
+    if (!range.from || !range.to) return;
     api<{ report: Report }>(`/admin/freight/report?from=${range.from}&to=${range.to}`).then(
-      (x) => setR(x.report),
-      (e) => setErr(e.message),
+      (x) => n === seq.current && setR(x.report),
+      (e) => n === seq.current && setErr(e.message),
     );
   }, [range]);
   useEffect(() => {

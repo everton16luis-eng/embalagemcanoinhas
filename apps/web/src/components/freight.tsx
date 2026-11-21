@@ -90,6 +90,7 @@ export type Freight = {
     warehouseName: string | null;
     warehouseCep: string | null;
     toCep: string | null;
+    storeCarrier: boolean;
   };
   provider: { name: string; capabilities: Record<string, boolean> } | null;
   gate: { allowed: boolean; reasons: string[]; maxCents: number | null };
@@ -172,7 +173,8 @@ export function FreightPanel({ shipmentId, onChanged }: { shipmentId: string; on
   };
 
   if (!f) return msg ? <Notice tone={msg.tone}>{msg.text}</Notice> : null;
-  if (f.shipment.kind === 'pickup' || f.shipment.kind === 'marketplace') return null;
+  // Retirada e marketplace (inclusive pedido antigo de marketplace): frete, rastreio e custo nao sao da loja.
+  if (!f.shipment.storeCarrier) return null;
   const s = f.shipment;
   const packed = s.status === 'packed';
   const active = f.labels.find((l) => ACTIVE.includes(l.status)) ?? null;

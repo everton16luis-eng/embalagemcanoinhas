@@ -35,6 +35,10 @@ Esta fase não muda:
 
 ## Regras
 
+**Frete da loja:** é a remessa de entrega, ou o despacho anterior (`legacy`) de pedido da loja ou do balcão que não
+seja retirada. Retirada e pedidos de marketplace, inclusive os antigos, ficam fora das listas, do relatório, do painel
+"Frete" e das rotas de custo e rastreio.
+
 ### Cotação (D8-4)
 
 - Origem: o CEP do **depósito da remessa**. Destino: o CEP do pedido. Os volumes são os medidos na embalagem: peso

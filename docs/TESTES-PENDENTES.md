@@ -831,7 +831,14 @@ pequenos. Nada nesta fase movimenta estoque: anote o saldo do produto antes e co
     estorno de R$ 1,00 → R$ 19,40; os três lançamentos ficaram na lista;
   - **defeito:** o rastreio manual nessa remessa era recusado ("Remessa de pedido antigo: já foi despachada pelo fluxo
     anterior."), embora ela apareça em "Em transporte" e "Rastreio parado". Corrigido no local: o evento entra no
-    histórico com a nota "remessa do despacho anterior", e a situação segue o pedido, sem mudar o fluxo antigo;
+    histórico com a nota "remessa do despacho anterior", e a situação segue o pedido, sem mudar o fluxo antigo.
+    Corrigido em `d76ca4f`, implantado em 21/11/2026 (sem migração) e conferido no nº 1416:
+    - em trânsito, saiu para entrega, em trânsito de novo e falha na entrega entraram no histórico, na ordem, com a
+      nota, e a remessa continuou "despachada";
+    - a remessa saiu de "Rastreio parado" (de 5 para 4) e continua em "Em transporte";
+  - relatório depois dos testes: o nº 1416 aparece com cobrado R$ 10,00, pago R$ 20,40, estorno −R$ 1,00, líquido
+    R$ 19,40 e diferença −R$ 9,40; é a única remessa com custo conhecido (23 sem custo, fora da diferença). "Sem custo
+    informado" caiu de 84 para 83;
   - aviso falso do Melhor Envio, sem assinatura e com assinatura falsa: `404`, porque não há Melhor Envio configurado;
   - não testados: despacho com custo e entrega pela remessa (não há remessa de entrega nova embalada nem em transporte
     na VPS) e a página do cliente (precisa da conta do cliente).

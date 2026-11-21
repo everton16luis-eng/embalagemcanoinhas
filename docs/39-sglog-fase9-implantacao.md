@@ -4,14 +4,15 @@ Roteiro para levar a Fase 9 ([38-sglog-fase9.md](38-sglog-fase9.md)) à VPS de t
 Segue o roteiro da Fase 8 ([36-sglog-fase8-implantacao.md](36-sglog-fase8-implantacao.md)). A 0028 é compatível com o
 código anterior, inclusive na escrita: a API **não** precisa ficar parada durante a migração.
 
-**Não execute antes do merge e do push autorizados.** O hash final entra aqui nesse momento.
+**Publicado:** `main` em `b7f7749` (push autorizado em 21/11/2026). Na VPS, em uso: `d76ca4f`.
 
 - **Usuários:**
   - os comandos do projeto rodam como `loja`, na pasta `/srv/loja-embalagens`. Para entrar como esse usuário:
     `sudo -u loja -H bash`;
   - `systemctl` e `journalctl` rodam como root.
-- **Versão:** a `main` depois do avanço rápido para `sglog/fase9`, com o planejamento (`a09424b`), a 9a (`d454b30`) e
-  a 9b (`8bd11c7`). A 9a e a 9b vão juntas: a 0028 foi ampliada na 9b antes de qualquer implantação, e não há
+- **Versão:** `b7f7749`, a `main` depois do avanço rápido para `sglog/fase9`, com o planejamento (`a09424b`), a 9a
+  (`d454b30`), a 9b (`8bd11c7`), a documentação (`8a647da`) e a trava da reposição de troca (`b7f7749`: sem NF-e nem
+  despacho até a definição fiscal). A 9a e a 9b vão juntas: a 0028 foi ampliada na 9b antes de qualquer implantação, e não há
   implantação só da 9a.
 - **Migração:** só a `0028_sglog_devolucoes`. As migrações de `0020` a `0027` não mudaram.
 - **Dependências:** nenhum `package.json` mudou. **Não rode `npm ci`.**

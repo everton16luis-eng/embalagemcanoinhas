@@ -7,6 +7,164 @@ de testes antes do lançamento. Marque `[x]` quando for testado e anote a data.
 Legenda: **HTTPS** = precisa da API publicada com certificado · **Você** = depende de dado, conta ou decisão sua ·
 **Contador** = depende da validação dele.
 
+## Pendências abertas (consolidado em 21/11/2026)
+
+Situação geral, riscos, bloqueios por decisão e checklist de prontidão: [43-sglog-encerramento.md](43-sglog-encerramento.md).
+Esta lista junta só o que continua aberto. Os testes aprovados ficam no histórico por fase, mais abaixo, e não se
+repetem. Os itens do histórico marcados `[ ]` que aparecem aqui como concluídos ou cobertos não precisam ser refeitos.
+
+### Técnicas
+
+- [ ] **Limpeza da demonstração** (antes da operação). O `demo:reset` recusa rodar neste banco (Pix real aprovado e
+      conta do Mercado Livre conectada). Se rodasse, apagaria a linha única `logistics_settings` sem recriá-la. Decidir
+      entre banco novo ou limpeza seletiva e corrigir o reset antes de usá-lo. Ver o risco R2 do doc 43.
+- [ ] **Conferência C1–C21 depois da Fase 10**: rodar o bloco 5.1 do [doc 42](42-sglog-fase10-implantacao.md) como
+      `loja` e anotar o resultado (último registro: depois da Fase 9).
+- [ ] **Balcão:** registrar pagamento em dinheiro e na maquininha (necessidade confirmada em 18/11; funcionalidade
+      nova, fora do encerramento) e validar uma venda de cada.
+- [ ] **E-mails para clientes** (recuperação de senha do cliente, avisos de pedido): não existem.
+- [ ] **Entregabilidade do e-mail:** Hotmail recusa o IP (`550 5.7.1 S3150`); Gmail marca como spam. Só depois,
+      DMARC `p=quarantine`.
+- [ ] **Mercado Pago:**
+  - identificar no log o mecanismo que confirmou o Pix real (webhook ou reconsulta);
+  - acompanhar os HTTP 500 intermitentes na geração;
+  - anotar os domínios do SDK e fechar a CSP da loja.
+- [ ] **Importação de produtos:**
+  - telas no navegador;
+  - planilha perto de 5 MB pelo proxy;
+  - arquivo salvo no LibreOffice e no Google Planilhas;
+  - fotos em lote pelo SKU.
+- [ ] **Servidor:**
+  - teste de carga (`fumaca`, depois `inicial`);
+  - monitor externo;
+  - retenção de sessões e carrinhos;
+  - Lighthouse com o catálogo real.
+- [ ] **Manutenção:**
+  - `backups/sglog/` e 5 pastas de 14/11 com dono root fora da retenção;
+  - `loja-web` com status 143 ao parar;
+  - `DB_NAME_TEST` no `.env` do servidor;
+  - destino de `.env.antes-dominio` e `embalagemcanoinhas.inc.php,` (decisão sua; não apagar sem ela).
+- [ ] **Segurança:** SSH só com chave; repositório do GitHub privado (visibilidade não confirmada).
+- [ ] **Melhorias registradas** (não são defeitos):
+  - nome do produto no histórico de confirmação da compra;
+  - grupo "Sem fornecedor principal" nas requisições.
+
+### Configurações da empresa
+
+- [ ] CNPJ (ainda não existe), razão social, endereço e regime em Empresa; credenciamento na SEF-SC. Destrava a NF-e,
+      o documento ao fornecedor (Fase 7) e a Shopee.
+- [ ] Nome, logotipo e favicon, fotos, textos de trocas e privacidade, formas de entrega reais, CEP de origem e
+      serviços de transportadora; peso e medidas das variações.
+- [ ] Catálogo e estoque reais (inventário inicial), fornecedores reais; fornecedor principal das variantes com mais de
+      um (opcional).
+- [ ] Custos reais (Fase 10): taxas do Mercado Pago (Pix e cartão por parcelas) e dos marketplaces; custo das caixas.
+- [ ] Decisões de compras: limite de aprovação (D6-3), tolerância de preço (D6-12), quem recebe (D6-1); quem aprova
+      as solicitações de ajuste do Estoquista.
+- [ ] Decisão sobre a alocação automática (D4-2), depois do teste com pedido novo pago.
+- [ ] Equipe: usuários reais por função; MFA do gerente.
+- [ ] Sobras de teste (somem com a limpeza da demonstração; se não houver limpeza):
+  - cancelar o rascunho nº 85;
+  - decidir o aumento de preço da compra nº 79;
+  - dar baixa das 100 UN avariadas da compra nº 107.
+
+### Integrações externas
+
+- [ ] **Focus NFe:** conta, token de homologação, certificado A1, gatilho em `/api/v1/webhooks/fiscal` com
+      `X-Fiscal-Webhook-Token`.
+- [ ] **Mercado Pago:** confirmar quais credenciais estão no `.env` (teste ou produção) e o webhook de produção.
+- [ ] **Mercado Livre** (conta real conectada):
+  - conferir os anúncios vinculados e o saldo enviado (risco de saldo de demonstração);
+  - venda cancelada;
+  - aviso reenviado ou perdido;
+  - saldo no anúncio;
+  - renovação do token;
+  - campos reais do pedido.
+- [ ] **Shopee:** depende de CNPJ e loja de vendedor. Credenciais, URLs, push assinado, venda de teste,
+      cancelamento, saldo.
+- [ ] **Melhor Envio:** conta no sandbox, token, `MELHOR_ENVIO_USER_AGENT`, segredo do aviso; cotação real; formato da
+      assinatura (base64); renovação do token.
+- [ ] **WhatsApp Cloud API:**
+  - ativação (doc 12);
+  - 3 modelos aprovados;
+  - webhook;
+  - aviso de pedido com consentimento;
+  - janela de 24 h;
+  - `SAIR` e `PARAR NOTIFICAÇÕES`;
+  - campos reais do webhook.
+- [ ] **Opcionais:** bot de atendimento (chat de teste), Gemini (chave gratuita e testes de segurança da IA),
+      Typebot.
+
+### Validações fiscais e jurídicas
+
+- [ ] **Contador:**
+  - regras fiscais por operação;
+  - cadastro fiscal dos produtos (NCM, CEST, origem, CST/CSOSN);
+  - códigos de pagamento;
+  - IBS/CBS;
+  - rateio de frete;
+  - retirada sem endereço;
+  - política de emissão.
+- [ ] **NF-e em homologação:**
+  - autorizada (XML, DANFE, download pelo cliente);
+  - rejeição e reenvio;
+  - clique duplo;
+  - queda de rede;
+  - carta de correção;
+  - cancelamento;
+  - inutilização;
+  - aviso da Focus;
+  - XML real de nota de fornecedor.
+- [ ] **Contador:** conferir DANFE e XML; liberação de produção com o nome dele.
+- [ ] **Contador:** NF-e na entrega parcial (destrava remessas múltiplas); natureza e CFOP da devolução (consumidor e
+      PJ) e da reposição de troca (total zero); validação fiscal do dropshipping; alíquota estimada da Fase 10 (com
+      `fiscal.validate`).
+- [ ] **Você + Contador:** nota fiscal das vendas de marketplace (manual ou API de faturamento).
+- [ ] **Jurídico:** política de trocas e devoluções (prazos de referência), textos de privacidade.
+- [ ] **Depois da NF-e em homologação** (testes de fluxo travados pela nota):
+  - pedido novo pago com alocação do caso simples (Fase 4);
+  - separar, conferir, embalar, despachar e falta na expedição (Fase 5);
+  - encomenda vinculada e encerramento com falta (Fase 6);
+  - documento ao fornecedor nas versões 1 e 2 e "Preencher pela nota (XML)" (Fase 7);
+  - remessa embalada, despacho com e sem custo, entrega pela remessa (Fase 8);
+  - documento fiscal da devolução e troca (Fase 9).
+
+  Depois, o bloco 5.1 com C1–C24.
+
+### Testes que dependem de outras contas
+
+- [ ] **Perfis**, com login próprio de cada um, numa única sessão de testes (desativar os usuários no fim, sem
+      excluir):
+  - Gerente de logística, Comprador, Financeiro, Estoquista, Atendimento e Expedição;
+  - menus e recusas das Fases 1, 4, 5, 6, 7, 8, 9 e 10, conforme os roteiros de cada fase no histórico abaixo;
+  - em Usuários, as permissões novas aparecem.
+- [ ] **Dois usuários:**
+  - solicitação de ajuste: o Estoquista pede e o gerente com MFA aprova ou recusa; quem pediu não aprova (Fase 3);
+  - aprovação de compra por um segundo gerente com MFA e recusa sem MFA (Fase 6).
+- [ ] **Conta de cliente de teste:** página do pedido com o rastreio (Fase 8) e com a devolução, sem dados internos
+      (Fase 9).
+- [ ] **Mercado Livre, conta de teste:** venda nova paga entrando na alocação (Fase 4).
+- [ ] **Opcional:** painel e loja num celular de verdade.
+
+### Itens do histórico já cobertos ou obsoletos
+
+- Fase 1, painel a 375 px: coberto pelas telas de Estoque (Fase 3) e Abastecimento/Compras (Fase 7) a 375 px.
+- WhatsApp e transportadoras, "atualizar com as migrações 0013 a 0018": a produção já está na 0029.
+- Importação de produtos, "publicar": a 0019 foi aplicada em 15/11/2026.
+- Fase 7: as listas `[ ]` de validação foram feitas em 20/11/2026 (ver "Resultados pelo HTTPS"). Ficam abertos só os
+  itens acima: documento e envio, XML e perfis.
+- Fase 9: as listas `[ ]` de validação foram feitas em 21/11/2026 (ver os testes registrados na seção). Ficam abertos
+  só os itens acima: página do cliente, perfis, documento fiscal e troca.
+- Fase 10: menu, painel, margem, conferência, rentabilidade, custos logísticos e fornecedores validados em 21/11/2026,
+  antes e depois de `82deb8b`. Configuração, lançamento e planilha não foram testados no HTTPS, para não gravar custo
+  fictício em produção; estão cobertos pela suíte. Testar com valores reais quando forem informados.
+
+---
+
+# Histórico de validação por fase
+
+Registro dos testes, com datas e evidências. Os itens ainda abertos estão consolidados no topo.
+
+
 ## Infraestrutura (antes de tudo)
 
 - [x] **HTTPS** Domínio no ar com certificado Let's Encrypt por webroot (14/11/2026; vale até 12/02/2027,
@@ -593,7 +751,8 @@ Validação pelo painel HTTPS, depois da implantação:
 
 ## SGLog Fase 5 — remessas e expedição ([26-sglog-fase5.md](26-sglog-fase5.md))
 
-**Situação: implementada só no local, branch `sglog/fase5`. Não implantada.** O roteiro está em
+**Situação (atualizada em 21/11/2026): implantada na VPS** (a 0024 já estava aplicada antes da Fase 6); **sem
+validação pelo HTTPS registrada**, porque o despacho depende da NF-e. Texto original abaixo. O roteiro está em
 [27-sglog-fase5-implantacao.md](27-sglog-fase5-implantacao.md) e foi ensaiado no local; executar só depois do merge
 e do push autorizados. `ALLOCATION_AUTO` continua desligado. Remessas múltiplas nascem travadas. A trava da NF-e não
 muda: não alterar `invoice_status` de pedido na VPS.
@@ -1066,7 +1225,7 @@ Pendentes, fora do HTTPS de testes:
 
 ## SGLog Fase 10 — custos, margem de contribuição e gestão ([41-sglog-fase10.md](41-sglog-fase10.md))
 
-**Situação: implementada no local; não implantada.** Roteiro de implantação em
+**Situação (atualizada em 21/11/2026): implantada na VPS e validada** (`82deb8b`, migração 0029). Roteiro de implantação em
 [42-sglog-fase10-implantacao.md](42-sglog-fase10-implantacao.md).
 
 No local (21/11/2026):

@@ -945,8 +945,8 @@ Pendentes, fora do HTTPS de testes:
 
 ## SGLog Fase 9 — ocorrências, devoluções e logística reversa ([38-sglog-fase9.md](38-sglog-fase9.md))
 
-**Situação: implantada na VPS (`b7f7749`, migração 0028) e testada pelo HTTPS em 21/11/2026, com 3 defeitos
-corrigidos só no local (sem push).** Roteiro de implantação em
+**Situação: validada pelo HTTPS em 21/11/2026, com ressalvas.** Implantada na VPS (`b7f7749`, migração 0028); em
+execução `8c66097` (3 correções da validação). Roteiro de implantação em
 [39-sglog-fase9-implantacao.md](39-sglog-fase9-implantacao.md).
 
 Testes pelo HTTPS em 21/11/2026 (Chrome, proprietário), no pedido de demonstração nº 1428 (loja, entregue, nota "não
@@ -982,7 +982,13 @@ avariado 0, médio R$ 8,6175):
 - **Não testado pelo HTTPS:** a página do cliente (precisa da conta do cliente), as permissões por perfil, documento
   fiscal (não há pedido de teste com NF-e autorizada) e a troca (a emissão e o despacho da reposição seguem
   bloqueados).
-- **Falta:** o bloco 5.1 do doc 39 na VPS (C1–C21) depois destes testes.
+- **Correções implantadas** (`8c66097`, sem migração) e conferidas pelo HTTPS: a data de entrega do nº 1428 voltou
+  para 14/11/2026; o relatório mostra "Avariada 1 — R$ 8,62"; o histórico tem os rótulos (autorizada, voltando,
+  recebida, estorno da conferência, encerrada). A devolução nº 1 de teste guarda a data errada (21/11), gravada antes
+  da correção: só informativa, fica como está.
+- **Bloco 5.1 depois dos testes:** C1–C21 sem divergência (204 variantes); travas `blocked`; `segurados` e
+  `reposicoes` 0; `ocorrencias` 1, `devolucoes` 1, `reembolsos` 2, `devolucoes_fornecedor` 1, `eventos_internos` 9.
+  O `RESULTADO: PARAR` veio só da checagem de "nenhum dado da Fase 9", feita para logo após a implantação.
 
 No local (21/11/2026):
 - suíte da API 524/524; typecheck, build da API e `next build` do painel sem erro;

@@ -691,7 +691,45 @@ pagamento real.
 - **Pendente antes de testar o envio:**
   - razão social, CNPJ e endereço em Empresa, que estavam vazios;
   - ou o endereço do "Depósito principal".
-- **Reversão:** a 0026 ainda pode ser desfeita até o primeiro uso da Fase 7.
+- **Reversão:** com os testes de 20/11/2026 a Fase 7 passou a ser usada; a 0026 não se desfaz mais. Recuperação só
+  pelo backup.
+- **Fuso (20/11/2026):** o banco da VPS estava em UTC; a partir das 21h, "hoje" já era o dia seguinte. Correções:
+  - `ALTER DATABASE loja_prod SET timezone TO 'America/Sao_Paulo'`;
+  - fuso fixo nas conexões da API (`e057df4`).
+
+  O relógio do sistema continua em UTC, com NTP.
+- **Correção depois da implantação:** `3393f8a`. As datas vencidas das compras antigas apareciam em vermelho em "A
+  caminho".
+
+**Resultados pelo HTTPS em 20/11/2026** (Chrome, proprietário):
+- Compras antigas: as 6 aparecem como "Anterior ao acompanhamento", sem alerta e, depois de `3393f8a`, sem vermelho.
+- Telas a 375 px: Abastecimento, Requisições e início abrem sem rolagem lateral; o início mostra o resumo.
+- Documento sem CNPJ: o rascunho nº 106 lista razão social, CNPJ e endereço de entrega, e o envio fica bloqueado.
+- Confirmação na compra nº 82 (versão 1):
+  - BIC-32 confirmado em 25/11;
+  - FAL-20 parcial, 1 de 2 em 24/11, com o restante sem data e nada cancelado;
+  - topper reduzido, 1 de 2, com 1 cancelado.
+
+  Saldo, custo médio e movimentos dos 3 produtos ficaram iguais.
+- Acompanhamento na nº 82: contato registrado, retorno em 23/11.
+- Requisição nº 1:
+  1. criada e convertida no rascunho nº 108;
+  2. o rascunho foi cancelado e a requisição voltou a ficar aberta;
+  3. a requisição foi cancelada.
+
+  Eventos: criada → em compra → devolvida → cancelada.
+- Aumento de preço na compra nº 79: aumento de R$ 22,74 no FAL-15, com tolerância de 0%.
+  - A situação ficou "Aumento de preço aguardando aprovação" e o preço do item não mudou.
+  - O recebimento foi recusado (`CONFIRMATION_APPROVAL_PENDING`).
+  - **Pendente:** aprovar ou recusar, com MFA, na tela da compra nº 79. O proprietário aprova o próprio registro só
+    com justificativa. Até lá, a nº 79 não recebe.
+- Pendentes:
+  - documento e envio (versões 1 e 2), quando houver CNPJ;
+  - "Preencher pela nota (XML)";
+  - perfis de outros usuários.
+- Melhorias anotadas, não são defeitos:
+  - o histórico da confirmação mostra só a embalagem (por exemplo "Caixa com 12"), sem o produto;
+  - requisição de produto sem oferta marcada como principal aparece em "Sem fornecedor principal".
 
 Validação pelo painel HTTPS, depois da implantação. Use só compras de teste, do fornecedor de demonstração, com valores
 pequenos. Nada nesta fase movimenta estoque: anote o saldo do produto antes e confira que só o recebimento o muda.

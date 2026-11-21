@@ -16,9 +16,13 @@ const minus = (d: string, n: number) => new Date(Date.parse(`${d}T12:00:00Z`) - 
 const STORE_KEY = 'gestao-filtros';
 const defaults = (): Filters => ({ from: minus(today(), 29), to: today(), basis: 'paid', demo: 'include', channel: '' });
 
-/** Filtros da Gestao, lembrados na aba do navegador (conveniencia; falha sem prejuizo). */
+/**
+ * Filtros da Gestao, lembrados na aba do navegador (conveniencia; falha sem prejuizo). `ready` so fica true depois de
+ * ler o filtro guardado: buscar antes disso dispararia uma consulta com o padrao que podia chegar depois da certa.
+ */
 export function useFilters() {
   const [f, setF] = useState<Filters>(defaults);
+  const [ready, setReady] = useState(false);
   useEffect(() => {
     try {
       const s = sessionStorage.getItem(STORE_KEY);
@@ -26,6 +30,7 @@ export function useFilters() {
     } catch {
       /* sem armazenamento: usa o padrao */
     }
+    setReady(true);
   }, []);
   const set = useCallback((n: Filters) => {
     setF(n);
@@ -35,8 +40,14 @@ export function useFilters() {
       /* ignora */
     }
   }, []);
-  return [f, set] as const;
+  return [f, set, ready] as const;
 }
+
+/** Resposta de uma busca que ja foi substituida por outra (filtro mudou) e descartada. */
+const fresh = () => {
+  const s = { alive: true };
+  return [<T,>(fn: (v: T) => void) => (v: T) => s.alive && fn(v), () => void (s.alive = false)] as const;
+};
 export const qs = (f: Filters, extra: Record<string, string | number | undefined> = {}) => {
   const p = new URLSearchParams({ from: f.from, to: f.to, basis: f.basis, demo: f.demo });
   if (f.channel) p.set('channel', f.channel);
@@ -282,16 +293,19 @@ const days = (d: number | null) => (d === null ? '—' : `${d.toLocaleString('pt
 
 export function Dashboard() {
   const { can } = useMe();
-  const [f, setF] = useFilters();
+  const [f, setF, ready] = useFilters();
   const [s, setS] = useState<Summary | null>(null);
   const [ind, setInd] = useState<Indicators | null>(null);
   const [error, setError] = useState('');
   useEffect(() => {
+    if (!ready) return;
+    const [ok, stop] = fresh();
     setError('');
     setS(null);
-    api<Summary>(`/admin/management/summary?${qs(f)}`).then(setS, (e) => setError(e.message));
-    api<Indicators>(`/admin/management/indicators?${qs(f)}`).then(setInd, () => setInd(null));
-  }, [f]);
+    api<Summary>(`/admin/management/summary?${qs(f)}`).then(ok(setS), ok((e: Error) => setError(e.message)));
+    api<Indicators>(`/admin/management/indicators?${qs(f)}`).then(ok(setInd), ok(() => setInd(null)));
+    return stop;
+  }, [f, ready]);
   const t = s?.totals;
   const p = s?.previous.totals;
   // Card com componente desconhecido: valor parcial (o que falta nao entra como zero).
@@ -514,7 +528,7 @@ const DIM_TABS = [
 
 export function Profitability() {
   const { can } = useMe();
-  const [f, setF] = useFilters();
+  const [f, setF, ready] = useFilters();
   const [tab, setTab] = useState<string>('orders');
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState('');
@@ -526,10 +540,12 @@ export function Profitability() {
   const extra = tab === 'orders' ? { status, sort, dir } : { dim: tab, sort: sort === 'date' || sort === 'number' ? 'revenue' : sort, dir };
   const query = qs(f, extra);
   useEffect(() => {
-    if (!can('margins.view')) return;
+    if (!ready || !can('margins.view')) return;
+    const [ok, stop] = fresh();
     setError('');
-    api(`/admin/management/${path}?${query}&page=${page}&pageSize=30`).then(setData, (e) => setError(e.message));
-  }, [path, query, page, can]);
+    api<NonNullable<typeof data>>(`/admin/management/${path}?${query}&page=${page}&pageSize=30`).then(ok(setData), ok((e: Error) => setError(e.message)));
+    return stop;
+  }, [path, query, page, can, ready]);
   if (!can('margins.view')) return <Notice tone="neutral">Rentabilidade exige a permissão de consultar margens.</Notice>;
   const demoCount = data && tab === 'orders' ? (data.items as OrderRow[]).filter((i) => i.demo).length : 0;
   return (
@@ -665,15 +681,17 @@ const NAT: Record<string, { label: string; tone: 'good' | 'warn' | 'bad' | 'neut
 };
 export function LogisticsCosts() {
   const { can } = useMe();
-  const [f, setF] = useFilters();
+  const [f, setF, ready] = useFilters();
   const [d, setD] = useState<Logistics | null>(null);
   const [error, setError] = useState('');
   const allowed = can('costs.view') || can('margins.view');
   useEffect(() => {
-    if (!allowed) return;
+    if (!ready || !allowed) return;
+    const [ok, stop] = fresh();
     setError('');
-    api<Logistics>(`/admin/management/logistics?${qs(f)}`).then(setD, (e) => setError(e.message));
-  }, [f, allowed]);
+    api<Logistics>(`/admin/management/logistics?${qs(f)}`).then(ok(setD), ok((e: Error) => setError(e.message)));
+    return stop;
+  }, [f, allowed, ready]);
   if (!allowed) return <Notice tone="neutral">Custos logísticos exigem a permissão de consultar custos.</Notice>;
   return (
     <div className="space-y-4">
@@ -686,7 +704,7 @@ export function LogisticsCosts() {
         <>
           <Panel title="Componentes" description="Pedidos do período. Desconhecido fica sem valor e fora da soma.">
             {d.components.length === 0 ? (
-              <p className="text-sm text-ink-soft">Sem pedidos no período.</p>
+              <p className="text-sm text-ink-soft">Nenhum frete ou embalagem nos pedidos do período.</p>
             ) : (
               <ul className="divide-y divide-line text-sm" data-testid="logistics-components">
                 {d.components.map((c) => (
@@ -776,14 +794,17 @@ type SupplierRow = {
   supplierReturns: number;
 };
 export function SupplierPerformance() {
-  const [f, setF] = useFilters();
+  const [f, setF, ready] = useFilters();
   const [page, setPage] = useState(1);
   const [d, setD] = useState<{ items: SupplierRow[]; total: number; pageSize: number; notes: string[] } | null>(null);
   const [error, setError] = useState('');
   useEffect(() => {
+    if (!ready) return;
+    const [ok, stop] = fresh();
     setError('');
-    api(`/admin/management/suppliers?${qs(f)}&page=${page}&pageSize=30`).then(setD, (e) => setError(e.message));
-  }, [f, page]);
+    api<NonNullable<typeof d>>(`/admin/management/suppliers?${qs(f)}&page=${page}&pageSize=30`).then(ok(setD), ok((e: Error) => setError(e.message)));
+    return stop;
+  }, [f, page, ready]);
   const demo = d?.items.filter((i) => i.demo).length ?? 0;
   return (
     <div className="space-y-4">

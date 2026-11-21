@@ -579,8 +579,10 @@ export async function supplyOrders(db: Q, f: { warehouseId?: string | null; orde
   ).rows;
   const today = orders[0].today as string;
   const byOrder = new Map<string, SupplyItem[]>();
+  // Compra anterior ao acompanhamento (D7-8): sem alerta retroativo, nem no item (a caminho, detalhe logistico).
+  const tracked = new Set(orders.filter((o) => o.confirmation_status !== 'none').map((o) => o.id));
   for (const it of items) {
-    it.late = !!it.ref_date && it.ref_date < today;
+    it.late = tracked.has(it.order_id) && !!it.ref_date && it.ref_date < today;
     byOrder.set(it.order_id, [...(byOrder.get(it.order_id) ?? []), it]);
   }
   return orders.map((o) => {

@@ -90,7 +90,8 @@ const confirm = (id: string, body: Record<string, unknown>, c: Client = boss) =>
 const get = async (id: string) => (await boss.get(`${PO}/${id}`)).json().order;
 const setSettings = (approvalMinCents: number, priceTolerancePct: number, confirmationDays?: number) =>
   boss.put(`${PO}/settings`, { approvalMinCents, priceTolerancePct, ...(confirmationDays ? { confirmationDays } : {}) });
-const isoDay = (offset: number) => new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
+// Data no fuso do banco (America/Sao_Paulo): em UTC, depois das 21h ja seria o dia seguinte.
+const isoDay = (offset: number) => new Date(Date.now() + offset * 86_400_000).toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
 
 async function paidOrder(pack: Pack, packs: number) {
   const jar: Record<string, string> = {};
@@ -459,6 +460,8 @@ describe('prazos e situação do abastecimento (D7-5, D7-8)', () => {
     expect(ov.counts).toMatchObject({ confirmation_late: 1, delivery_late: 1, no_date: 1, untracked: 1, awaiting_confirmation: 0, delivery_expected: 0 });
     expect(ov.orders[0]).toMatchObject({ category: 'delivery_late' });
     expect(ov.orders.find((x: any) => x.id === old.id).category).toBe('untracked');
+    // Nem o item da compra antiga fica atrasado (a caminho, detalhe logistico).
+    expect(ov.orders.find((x: any) => x.id === old.id).items.map((i: any) => i.late)).toEqual([false]);
     const page = (await boss.get(`${SUP}/overview?warehouseId=${wh}&category=delivery_late&pageSize=1`)).json();
     expect(page).toMatchObject({ total: 1, pageSize: 1 });
     expect((await boss.get(`${SUP}/summary?warehouseId=${wh}`)).json().summary).toMatchObject({ confirmation_late: 1, delivery_late: 1 });

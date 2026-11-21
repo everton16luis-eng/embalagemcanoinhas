@@ -392,7 +392,7 @@ function Page() {
         <FiscalPanel v={v} onDone={apply} />
 
         {r.kind === 'exchange' && (
-          <Panel title="Troca: pedido de reposição" description="Pedido separado, sem cobrança, ligado a esta devolução. Segue alocação, NF-e e expedição como qualquer pedido; a NF-e não é emitida automaticamente.">
+          <Panel title="Troca: pedido de reposição" description="Pedido separado, sem cobrança, ligado a esta devolução. A mercadoria é reservada e pode ser alocada e separada; a emissão da NF-e e o despacho ficam bloqueados até a definição fiscal.">
             {v.replacement ? (
               <p className="text-sm" data-testid="replacement-link">
                 <Link href={`/painel/pedidos/${v.replacement.id}`} className="font-medium text-act hover:underline">

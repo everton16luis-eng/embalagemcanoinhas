@@ -383,7 +383,7 @@ function Detail() {
               <Link href={`/painel/logistica/devolucoes/${o.replacement_for_return_id}`} className="underline">
                 Ver a troca
               </Link>
-              . A NF-e não é emitida automaticamente: confira com o contador a natureza da operação antes de emitir. O despacho segue exigindo a NF-e autorizada.
+              . A emissão da NF-e e o despacho estão bloqueados até a definição fiscal (natureza da operação e CFOP com o contador).
             </Notice>
           )}
 

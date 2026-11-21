@@ -998,7 +998,8 @@ Validação pelo painel HTTPS, como proprietário, depois da implantação:
 - [ ] **Troca.** Numa devolução do tipo troca, "Criar pedido de reposição":
   - nasce um pedido novo de total R$ 0,00, ligado à devolução, sem pagamento novo;
   - criar de novo é recusado (uma reposição por troca);
-  - **não emita NF-e nem despache** a reposição de teste.
+  - a tela do pedido avisa que a emissão da NF-e e o despacho estão bloqueados até a definição fiscal. Não tente
+    emitir: a trava está no código e é coberta pela suíte.
 - [ ] **Devolução ao fornecedor.** "Nova devolução" com 1 unidade avariada:
   - o rascunho não muda o estoque;
   - "Confirmar envio" exige o documento e só então tira 1 do avariado;

@@ -304,8 +304,10 @@ export async function syncDocument(provider: FiscalProvider, docId: string, kind
  */
 export async function emitForOrder(provider: FiscalProvider | null, orderId: string, actorId: string | null, ip?: string) {
   const prep = await tx(actorId, async (db) => {
-    const locked = (await db.query('SELECT number FROM orders WHERE id = $1 FOR UPDATE', [orderId])).rows[0];
+    const locked = (await db.query('SELECT number, replacement_for_return_id FROM orders WHERE id = $1 FOR UPDATE', [orderId])).rows[0];
     if (!locked) throw notFound();
+    // Fase 9 (D9-4): reposicao de troca nao emite NF-e ate a definicao fiscal; trava aqui vale para a rota e para a rotina.
+    if (locked.replacement_for_return_id) throw new AppError(409, 'REPLACEMENT_FISCAL_BLOCKED', 'Pedido de reposição de troca: a emissão de NF-e está bloqueada até a definição fiscal (natureza da operação e CFOP com o contador).');
     const active = (await db.query<DocRow>(`SELECT id FROM fiscal_documents WHERE order_id = $1 AND purpose = 'sale' AND status IN ('pending', 'processing', 'authorized')`, [orderId])).rows[0];
     if (active) return { docId: active.id, created: false };
     const ctx = await emissionContext(db, provider, orderId);

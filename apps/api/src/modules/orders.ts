@@ -740,14 +740,15 @@ export async function adminOrderRoutes(app: FastifyInstance) {
       .parse(req.body);
     return tx(auth.userId, async (db) => {
       const o = (
-        await db.query<{ status: string; version: number; invoice_status: string; allocation_required: boolean; logistics_status: string | null }>(
-          'SELECT status, version, invoice_status, allocation_required, logistics_status FROM orders WHERE id = $1 FOR UPDATE',
+        await db.query<{ status: string; version: number; invoice_status: string; allocation_required: boolean; logistics_status: string | null; replacement_for_return_id: string | null }>(
+          'SELECT status, version, invoice_status, allocation_required, logistics_status, replacement_for_return_id FROM orders WHERE id = $1 FOR UPDATE',
           [id],
         )
       ).rows[0];
       if (!o) throw notFound();
       if (o.version !== b.version) throw new AppError(409, 'VERSION_CONFLICT', 'O pedido foi alterado por outra pessoa. Recarregue a página.');
       if (o.status !== 'ready') throw new AppError(409, 'INVALID_TRANSITION', 'Só pedidos separados (prontos) podem ser despachados.');
+      if (o.replacement_for_return_id) throw new AppError(409, 'REPLACEMENT_DISPATCH_BLOCKED', 'Pedido de reposição de troca: o despacho está bloqueado até a definição fiscal (natureza da operação e CFOP com o contador).');
       if (o.invoice_status !== 'authorized' && o.invoice_status !== 'not_required') {
         throw new AppError(409, 'INVOICE_REQUIRED', 'Emita e autorize a NF-e antes de despachar a mercadoria.');
       }

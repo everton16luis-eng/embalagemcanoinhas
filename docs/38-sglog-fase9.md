@@ -114,9 +114,11 @@ passa do prazo, mas **nenhum pedido é recusado por prazo**. A política é da l
     **sem cobrança nova** (nenhum pagamento é criado);
   - pacotes = quantidade devolvida ÷ unidades por pacote; quantidade quebrada é recusada (`REPLACEMENT_PACKS`);
   - não vale para marketplace (`MARKETPLACE_EXCHANGE`).
-- A reposição segue o fluxo normal: alocação manual, remessa única (a trava de remessas múltiplas continua), NF-e e
-  expedição pelas regras de sempre. Ela **fica fora da emissão automática de NF-e** e só despacha com a nota resolvida
-  pelo fluxo fiscal existente.
+- A reposição reserva a mercadoria e pode ser alocada e separada (remessa única: a trava de remessas múltiplas
+  continua). **A emissão da NF-e e o despacho ficam bloqueados até a definição fiscal**: a emissão (manual e pela
+  rotina) recusa com `REPLACEMENT_FISCAL_BLOCKED`, e o despacho (pela remessa e pelo pedido antigo) recusa com
+  `REPLACEMENT_DISPATCH_BLOCKED`, mesmo com nota "não exigida". Liberar exige mudança de código, depois da orientação
+  do contador.
 
 ### Devolução ao fornecedor (9b)
 - Permissão `purchases.manage`; ver: `purchases.view`, `returns.manage` ou `stock.view`.
@@ -178,9 +180,9 @@ Aditiva e compatível com o código anterior. Não edita as migrações 0020–0
 
 ## Riscos conhecidos
 
-- **Natureza fiscal da reposição.** O pedido de reposição tem total zero. A emissão manual da NF-e segue as regras
-  existentes, mas a natureza da operação (remessa em troca, CFOP) precisa da orientação do contador antes do uso real.
-  A tela avisa.
+- **Natureza fiscal da reposição.** O pedido de reposição tem total zero, e a emissão da NF-e e o despacho estão
+  bloqueados no código. A troca só se completa fisicamente depois que o contador definir a natureza da operação e o
+  CFOP e a trava for retirada. Até lá, a mercadoria da reposição fica reservada.
 - O pedido de reposição copia a forma de pagamento do original só como informação; nenhum pagamento é criado.
 - C18 depende de `payments.updated_at`: uma atualização posterior de um pagamento já devolvido antes da migração pode
   gerar um aviso a ser conferido.

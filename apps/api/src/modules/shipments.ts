@@ -48,6 +48,7 @@ type OrderRow = {
   channel: string;
   version: number;
   invoice_status: string;
+  replacement_for_return_id: string | null;
   logistics_status: string | null;
   logistics_version: number;
   allocation_required: boolean;
@@ -65,7 +66,7 @@ type ItemRow = {
   status: string;
 };
 
-const ORDER_COLS = `id, number, status, channel, version, invoice_status, logistics_status, logistics_version, allocation_required, shipping_snapshot->>'kind' AS ship_kind`;
+const ORDER_COLS = `id, number, status, channel, version, invoice_status, replacement_for_return_id, logistics_status, logistics_version, allocation_required, shipping_snapshot->>'kind' AS ship_kind`;
 const SHIP_COLS = 'id, order_id, seq, kind, status, warehouse_id, version';
 
 async function lockOrder(db: Db, id: string) {
@@ -903,6 +904,7 @@ export async function shipmentRoutes(app: FastifyInstance) {
         );
       }
       if (b.freightCostCents && label) throw new AppError(409, 'COST_FROM_LABEL', 'O custo desta remessa vem da etiqueta comprada pelo sistema.');
+      if (c.order.replacement_for_return_id) throw new AppError(409, 'REPLACEMENT_DISPATCH_BLOCKED', 'Pedido de reposição de troca: o despacho está bloqueado até a definição fiscal (natureza da operação e CFOP com o contador).');
       if (c.order.invoice_status !== 'authorized' && c.order.invoice_status !== 'not_required') {
         throw new AppError(409, 'INVOICE_REQUIRED', 'Emita e autorize a NF-e antes de despachar a mercadoria.');
       }

@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { config } from '../src/config.js';
 import { pool, tx } from '../src/db/pool.js';
+import { emitForOrder } from '../src/modules/fiscal.js';
 import { applyPayment } from '../src/modules/orders.js';
 import { FakeCarrier, setCarrierProvider } from '../src/lib/carriers.js';
 import { FakeProvider } from '../src/lib/payments.js';
@@ -296,6 +297,16 @@ describe('troca (D9-4)', () => {
     // Pedido antigo de despacho: NF-e pendente segura o despacho (regra de sempre).
     const staff = (await boss.get(`/api/v1/admin/orders/${ro.id}`)).json().order;
     expect(staff.replacement_for_return_id).toBe(r.return.id);
+    // Reposicao travada ate a definicao fiscal: nem NF-e (rota e rotina) nem despacho, mesmo com nota "nao exigida".
+    await expect(emitForOrder(null, ro.id, null)).rejects.toMatchObject({ code: 'REPLACEMENT_FISCAL_BLOCKED' });
+    expect((await owner.query('SELECT count(*)::int AS n FROM fiscal_documents WHERE order_id = $1', [ro.id])).rows[0].n).toBe(0);
+    await allocateOrder(boss, ro.id);
+    await owner.query(`UPDATE orders SET invoice_status = 'not_required' WHERE id = $1`, [ro.id]);
+    const rp = await packOrder(boss, ro.id);
+    const blocked = await boss.post(`${SH}/${rp.id}/dispatch`, { version: rp.version, requestKey: key(), carrier: 'X', trackingCode: `TR${uid()}` });
+    expect(blocked.statusCode).toBe(409);
+    expect(blocked.json().error.code).toBe('REPLACEMENT_DISPATCH_BLOCKED');
+    expect((await owner.query('SELECT status FROM shipments WHERE id = $1', [rp.id])).rows[0].status).toBe('packed');
     // Página do cliente do pedido original: situação da troca, sem notas internas.
     const token = (await owner.query('SELECT request_key FROM orders WHERE id = $1', [o.orderId])).rows[0];
     expect(token).toBeTruthy();
@@ -325,7 +336,7 @@ describe('devolução ao fornecedor (9b)', () => {
         [other],
       )
     ).rows[0];
-    const wrong = await boss.post(SR, { supplierId: sup, purchaseOrderId: po.id, reason: 'Defeito de fábrica', items: [{ variantId: p.variantId, bucket: 'on_hand', qty: '1' }], requestKey: key() });
+    const wrong = await boss.post(SR, { supplierId: sup, purchaseOrderId: po!.id, reason: 'Defeito de fábrica', items: [{ variantId: p.variantId, bucket: 'on_hand', qty: '1' }], requestKey: key() });
     expect(wrong.json().error.code).toBe('PURCHASE_NOT_FROM_SUPPLIER');
     const create = await boss.post(SR, {
       supplierId: sup,

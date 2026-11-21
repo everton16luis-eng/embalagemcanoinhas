@@ -319,11 +319,14 @@ describe('devolução ao fornecedor (9b)', () => {
     expect(b0).toMatchObject({ on_hand: '95.000', blocked: '5.000' });
     const sup = await newSupplier();
     const other = await newSupplier();
-    const po = (await owner.query<{ id: string }>(`INSERT INTO purchase_orders (supplier_id, created_by) VALUES ($1, (SELECT id FROM users LIMIT 1)) RETURNING id`, [other]).catch(() => ({ rows: [] as { id: string }[] }))).rows[0];
-    if (po) {
-      const wrong = await boss.post(SR, { supplierId: sup, purchaseOrderId: po.id, reason: 'Defeito de fábrica', items: [{ variantId: p.variantId, bucket: 'on_hand', qty: '1' }], requestKey: key() });
-      expect(wrong.json().error.code).toBe('PURCHASE_NOT_FROM_SUPPLIER');
-    }
+    const po = (
+      await owner.query<{ id: string }>(
+        `INSERT INTO purchase_orders (supplier_id, created_by, warehouse_id) VALUES ($1, (SELECT id FROM users LIMIT 1), (SELECT id FROM warehouses WHERE is_default)) RETURNING id`,
+        [other],
+      )
+    ).rows[0];
+    const wrong = await boss.post(SR, { supplierId: sup, purchaseOrderId: po.id, reason: 'Defeito de fábrica', items: [{ variantId: p.variantId, bucket: 'on_hand', qty: '1' }], requestKey: key() });
+    expect(wrong.json().error.code).toBe('PURCHASE_NOT_FROM_SUPPLIER');
     const create = await boss.post(SR, {
       supplierId: sup,
       reason: 'Defeito de fábrica',

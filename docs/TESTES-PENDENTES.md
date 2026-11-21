@@ -942,3 +942,81 @@ Pendentes, fora do HTTPS de testes:
 - [ ] **Decisão futura** Compra de etiqueta pelo sistema. Exige:
   - um provedor com idempotência ou busca pela nossa chave (o Melhor Envio não tem);
   - CNPJ e NF-e em produção, saldo, teste no sandbox, limite definido, MFA e a sua autorização expressa.
+
+## SGLog Fase 9 — ocorrências, devoluções e logística reversa ([38-sglog-fase9.md](38-sglog-fase9.md))
+
+**Situação: implementada no local, não implantada.** Branch `sglog/fase9` (`d454b30` 9a, `8bd11c7` 9b), migração
+0028. Roteiro de implantação em [39-sglog-fase9-implantacao.md](39-sglog-fase9-implantacao.md).
+
+No local (21/11/2026):
+- suíte da API 524/524; typecheck, build da API e `next build` do painel sem erro;
+- código anterior (`a09424b`) 498/498 com a 0028 aplicada (só a lista de limpeza dos testes ganhou as tabelas novas);
+- 0028 em up, down e up no banco de desenvolvimento: esquema idêntico, dados anteriores iguais, bloqueios em 1 ms e
+  C1–C21 sem divergência; com dados da Fase 9, a reversão é recusada sem mudar nada;
+- blocos da etapa 1 e 5.1 do doc 39 conferidos no banco de desenvolvimento (`RESULTADO: OK`);
+- e2e completo no desktop e a 375 px: 42 aprovados e 2 pulados (sem remessa em manuseio no banco de demonstração).
+
+**Regras para os testes pelo HTTPS:**
+- use só pedidos de demonstração ou de teste, já entregues;
+- **nenhum dinheiro é devolvido pelo sistema.** O reembolso é só registro: não faça reembolso real no Mercado Pago, no
+  Pix ou no marketplace para testar;
+- não altere `invoice_status` nem cancele NF-e. Na reposição da troca, **não emita NF-e nem despache**;
+- o MFA é digitado só por você;
+- depois de qualquer registro, a 0028 não pode mais ser revertida (a reversão recusa, sem perder nada).
+
+Validação pelo painel HTTPS, como proprietário, depois da implantação:
+
+- [ ] **Menus e listas vazias.** Logística → Ocorrências, Devoluções e Devol. ao fornecedor abrem sem "Erro interno".
+  Em Devoluções, as abas Quarentena, Reembolsos, Relatório e Política abrem; a Política diz que nenhum pedido é
+  recusado por prazo e mostra 7 e 90 dias. No celular, nada rola para o lado.
+- [ ] **Ocorrência manual.** Num pedido entregue de teste, "Abrir ocorrência" (por exemplo "Atraso", responsável
+  "Transportadora", segurando a conclusão):
+  - o pedido mostra a ocorrência, e a logística fica "segurado" (`on_hold`) em vez de concluir;
+  - "Em andamento" e depois "Resolver" com texto: o pedido volta a poder concluir;
+  - resolver com responsável "a definir" é recusado.
+- [ ] **Devolução parcial e limites.** No mesmo pedido, "Autorizar devolução" de parte de um item:
+  - a tabela mostra entregue e já devolvido; acima do limite, o botão não habilita e a API recusa;
+  - autorizar e marcar em trânsito **não mudam o estoque** (confira o saldo da variante em Estoque antes e depois).
+- [ ] **Recebimento e conferência.** Receba no depósito e confira, por exemplo, 1 boa, 1 em quarentena e 1 avariada
+  (com motivo):
+  - só agora o estoque muda: +1 livre, +1 bloqueado, +1 avariado na variante e no depósito;
+  - em Devoluções → Quarentena aparece a linha, com a idade;
+  - estorne a conferência da avariada com motivo: os movimentos inversos aparecem e o saldo volta;
+  - na Quarentena, "Liberar" a linha: o bloqueado vira livre.
+- [ ] **Custo histórico.** Em Estoque → movimentos da variante, a entrada da devolução usa o custo da venda (ou o
+  médio atual, se a venda não tinha custo).
+- [ ] **Reembolso (só registro).** No painel "Reembolsos" do pedido de teste:
+  - registre "Solicitado" de R$ 1,00, forma Pix, com justificativa: pede MFA;
+  - "Marcar realizado" exige a referência externa (use um texto de teste, por exemplo `TESTE-F9-1`);
+  - "Confirmar" muda para confirmado; o mesmo registro não duplica ao repetir o envio;
+  - um registro acima do total do pedido é recusado;
+  - o pagamento e a situação do pedido não mudam.
+- [ ] **Pedido de marketplace** (se houver um entregue de teste): o reembolso só aceita a forma "Marketplace".
+- [ ] **Documento fiscal.** Numa devolução de pedido **com NF-e autorizada** (se houver uma de teste): a devolução
+  aparece com pendência fiscal; registre o documento (chave de 44 dígitos e número) ou a dispensa justificada (pede
+  MFA). A NF-e de venda continua autorizada, e o `invoice_status` não muda. Sem pedido assim, marque como não testado.
+- [ ] **Troca.** Numa devolução do tipo troca, "Criar pedido de reposição":
+  - nasce um pedido novo de total R$ 0,00, ligado à devolução, sem pagamento novo;
+  - criar de novo é recusado (uma reposição por troca);
+  - **não emita NF-e nem despache** a reposição de teste.
+- [ ] **Devolução ao fornecedor.** "Nova devolução" com 1 unidade avariada:
+  - o rascunho não muda o estoque;
+  - "Confirmar envio" exige o documento e só então tira 1 do avariado;
+  - "Recusada (mercadoria voltou)" devolve a unidade ao avariado. Nenhum e-mail é enviado.
+- [ ] **Relatório.** Em Devoluções → Relatório do dia: as devoluções, as condições, a ocorrência, o reembolso e a
+  devolução ao fornecedor aparecem nas contagens.
+- [ ] **Página do cliente** (precisa da conta do cliente de teste): o pedido mostra a devolução com a situação e as
+  datas, **sem** depósito, valores de reembolso, notas internas ou nomes de funcionários.
+- [ ] **Permissões:**
+  - o perfil da logística vê Ocorrências e Devoluções, autoriza e confere, mas não registra reembolso;
+  - o perfil financeiro registra reembolso (com MFA), mas não confere devolução;
+  - em Usuários, aparecem as permissões novas de ocorrências, devoluções e reembolsos.
+- [ ] **Banco depois dos testes** (como `loja`, bloco 5.1 do doc 39):
+  - `RESULTADO: OK` (C1–C21 sem divergência);
+  - `reembolsos`, `devolucoes`, `ocorrencias` e `devolucoes_fornecedor` iguais ao que foi registrado;
+  - `etiqueta`, `dropshipping`, `remessas_multiplas` e `email_fornecedor` continuam `blocked`.
+
+Pendentes, fora do HTTPS de testes:
+- [ ] **Contador:** natureza da operação e CFOP do documento de devolução (consumidor e PJ) e da NF-e da reposição de
+  troca (total zero), antes do uso real.
+- [ ] **Você:** política de trocas e devoluções (prazos de referência) confirmada com o jurídico.

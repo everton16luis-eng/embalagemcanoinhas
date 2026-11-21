@@ -70,6 +70,7 @@ export const PERMISSION_LABELS: Record<string, string> = {
   'orders.view': 'Ver pedidos',
   'orders.manage': 'Gerenciar pedidos',
   'shipping.manage': 'Expedição',
+  'shipping.labels': 'Etiquetas de frete (compra, cancelamento)',
   'sales_desk.use': 'Central comercial',
   'marketplaces.manage': 'Marketplaces (Mercado Livre, Shopee)',
   'finance.view': 'Ver financeiro',

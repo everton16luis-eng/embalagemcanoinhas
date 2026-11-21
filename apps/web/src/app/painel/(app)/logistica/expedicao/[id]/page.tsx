@@ -3,13 +3,14 @@
 import Link from '@/components/painel-link';
 import { useParams } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { FreightPanel } from '@/components/freight';
 import { LogisticsBadge } from '@/components/logistics';
 import { SHIPMENT_KIND, SHIPMENT_STEPS, ShipmentBadge } from '@/components/shipments';
 import { Guard, useMe } from '@/components/shell';
 import { newKey } from '@/components/stock';
 import { Badge, Button, Field, Input, Notice, PageHeader, Panel, Textarea, type Tone } from '@/components/ui';
 import { api } from '@/lib/api';
-import { parseQty, qty, when } from '@/lib/format';
+import { parseMoney, parseQty, qty, when } from '@/lib/format';
 
 type Item = {
   id: string;
@@ -370,12 +371,12 @@ function PackForm({ s, busy, run }: { s: Shipment; busy: string; run: (what: str
 }
 
 function DispatchForm({ s, busy, run }: { s: Shipment; busy: string; run: (what: string, path: string, body: Record<string, unknown>, ok: string) => Promise<boolean> }) {
-  const [f, setF] = useState({ carrier: '', trackingCode: '', trackingUrl: '' });
+  const [f, setF] = useState({ carrier: '', trackingCode: '', trackingUrl: '', cost: '' });
   const pickup = s.kind === 'pickup';
   const marketplace = s.kind === 'marketplace';
   const invoice = invoiceOk(s.invoice_status);
   const analysis = s.logistics_status === 'analysis';
-  const body = { version: s.version, ...(f.carrier.trim() && !pickup && !marketplace ? { carrier: f.carrier.trim() } : {}), ...(f.trackingCode.trim() && !pickup ? { trackingCode: f.trackingCode.trim() } : {}), ...(f.trackingUrl.trim() && !pickup && !marketplace ? { trackingUrl: f.trackingUrl.trim() } : {}) };
+  const body = { version: s.version, ...(f.carrier.trim() && !pickup && !marketplace ? { carrier: f.carrier.trim() } : {}), ...(f.trackingCode.trim() && !pickup ? { trackingCode: f.trackingCode.trim() } : {}), ...(f.trackingUrl.trim() && !pickup && !marketplace ? { trackingUrl: f.trackingUrl.trim() } : {}), ...(f.cost.trim() && !pickup && !marketplace && parseMoney(f.cost) ? { freightCostCents: parseMoney(f.cost) } : {}) };
   return (
     <Panel title={pickup ? 'Entrega ao cliente' : 'Despacho'} description={pickup ? 'O cliente retira na loja: ao entregar, o estoque da remessa é baixado.' : 'Baixa do estoque só o que está nesta remessa.'}>
       {!invoice && (
@@ -393,6 +394,11 @@ function DispatchForm({ s, busy, run }: { s: Shipment; busy: string; run: (what:
           {!marketplace && <Field label="Transportadora ou entregador">{(fid) => <Input id={fid} value={f.carrier} onChange={(e) => setF({ ...f, carrier: e.target.value })} />}</Field>}
           <Field label={marketplace ? 'Código informado pelo marketplace' : 'Código de rastreio'}>{(fid) => <Input id={fid} value={f.trackingCode} onChange={(e) => setF({ ...f, trackingCode: e.target.value })} />}</Field>
           {!marketplace && <Field label="Link de rastreio">{(fid) => <Input id={fid} type="url" value={f.trackingUrl} onChange={(e) => setF({ ...f, trackingUrl: e.target.value })} />}</Field>}
+          {!marketplace && (
+            <Field label="Custo pago à transportadora (R$, opcional)" hint="Em branco fica como não informado, nunca como zero.">
+              {(fid) => <Input id={fid} inputMode="decimal" value={f.cost} onChange={(e) => setF({ ...f, cost: e.target.value })} />}
+            </Field>
+          )}
         </div>
       )}
       <Confirm
@@ -567,6 +573,9 @@ function ShipmentScreen() {
               </ul>
             )}
           </Panel>
+        )}
+        {['packed', 'shipped', 'in_transit', 'out_for_delivery', 'delivered'].includes(s.status) && s.kind !== 'pickup' && s.kind !== 'marketplace' && can('logistics.view') && (
+          <FreightPanel key={`${s.status}-${s.version}`} shipmentId={s.id} onChanged={load} />
         )}
         {s.status === 'packed' && can('shipping.manage') && <DispatchForm s={s} busy={busy} run={run} />}
         {['shipped', 'in_transit', 'out_for_delivery'].includes(s.status) && (

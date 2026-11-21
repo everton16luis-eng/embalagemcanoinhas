@@ -27,12 +27,37 @@ export type Order = {
   events: { status: string; note: string | null; created_at: string }[];
   shipment: { carrier: string | null; tracking_code: string | null; tracking_url: string | null; shipped_at: string | null; delivered_at: string | null } | null;
   // SGLog Fase 5: remessas (entrega parcial mostra cada uma com o seu rastreio).
-  shipments?: { id: string; seq: number; kind: string; status: string; carrier: string | null; tracking_code: string | null; tracking_url: string | null; shipped_at: string | null; delivered_at: string | null; items: { sku: string; productName: string; qty: string }[] }[];
+  shipments?: { id: string; seq: number; kind: string; status: string; carrier: string | null; tracking_code: string | null; tracking_url: string | null; shipped_at: string | null; delivered_at: string | null; items: { sku: string; productName: string; qty: string }[]; timeline?: { action: string; status: string; at: string }[] }[];
   invoice: { status: 'authorized' | 'canceled'; number: string; series: string; access_key: string; environment: string; files: string[] } | null;
 };
 type PayConfig = { enabled: boolean; provider: 'mercadopago' | 'fake' | null; publicKey: string | null };
 
 const SHIP_LABEL: Record<string, string> = { shipped: 'Enviada', in_transit: 'Em trânsito', out_for_delivery: 'Saiu para entrega', delivered: 'Entregue' };
+// SGLog Fase 8: historico de rastreio da remessa (sem nome de funcionario, sem observacao interna).
+const TIMELINE: Record<string, string> = {
+  dispatch: 'Enviada',
+  handover: 'Retirada',
+  deliver: 'Entregue',
+  track_posted: 'Postada na transportadora',
+  track_in_transit: 'Em trânsito',
+  track_out_for_delivery: 'Saiu para entrega',
+  track_delivered: 'Entregue',
+  track_delivery_failed: 'Tentativa de entrega sem sucesso',
+  track_returned: 'Em devolução ao remetente',
+};
+function Timeline({ items }: { items?: { action: string; at: string }[] }) {
+  const list = (items ?? []).filter((t) => TIMELINE[t.action]);
+  if (!list.length) return null;
+  return (
+    <ol className="mt-2 space-y-0.5 border-l border-g-line pl-3 text-xs" data-testid="tracking-timeline">
+      {list.map((t, i) => (
+        <li key={i}>
+          <b>{TIMELINE[t.action]}</b> <span className="text-g-faint">{dt.format(new Date(t.at))}</span>
+        </li>
+      ))}
+    </ol>
+  );
+}
 const dt = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Sao_Paulo' });
 const STEPS = [
   ['pending_payment', 'Pagamento'],
@@ -155,6 +180,7 @@ export function OrderView({ base, devToken }: { base: string; devToken?: string 
                       {s.carrier && ` · ${s.carrier}`}
                     </span>
                   )}
+                  <Timeline items={s.timeline} />
                 </li>
               ))}
           </ul>
@@ -171,6 +197,7 @@ export function OrderView({ base, devToken }: { base: string; devToken?: string 
             {o.shipment.carrier && ` · ${o.shipment.carrier}`}
           </p>
         )}
+        {(o.shipments ?? []).filter((s) => s.kind !== 'legacy').length <= 1 && <Timeline items={((o.shipments ?? []).find((s) => s.kind !== 'legacy') ?? o.shipments?.[0])?.timeline} />}
         {o.invoice && (
           <p className="mt-3 border border-g-line p-3 text-sm">
             <b>Nota fiscal nº {o.invoice.number}</b>

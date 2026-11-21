@@ -1,6 +1,6 @@
 'use client';
 
-import { Activity, ArrowLeftRight, BarChart3, Inbox, Blocks, Building, Mail, MessageCircle, TrendingUp, Boxes, PackageCheck, Hourglass, Building2, ClipboardCheck, ClipboardList, FileText, FolderTree, History, LogOut, MapPinned, Menu, Package, ReceiptText, RefreshCw, Route, Search, Settings, ShoppingCart, Store, Truck, UserRound, Users, Warehouse, X } from 'lucide-react';
+import { Activity, ArrowLeftRight, BarChart3, Inbox, Blocks, Building, Mail, MessageCircle, TrendingUp, Boxes, PackageCheck, Hourglass, Building2, ClipboardCheck, ClipboardList, FileText, FolderTree, History, LogOut, MapPinned, Menu, Package, ReceiptText, Receipt, RefreshCw, Route, Search, Settings, ShoppingCart, Store, Truck, UserRound, Users, Warehouse, X } from 'lucide-react';
 import Link from '@/components/painel-link';
 import { usePathname, useRouter } from 'next/navigation';
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
@@ -30,6 +30,7 @@ const NAV = [
   // SGLog Fase 4: alocacao dos pedidos pagos (deposito ou fornecedor).
   { href: '/painel/logistica/alocacao', label: 'Alocação', icon: Route, perm: 'logistics.view', group: 'Logística' },
   { href: '/painel/logistica/expedicao', label: 'Expedição', icon: PackageCheck, perm: 'logistics.view', group: 'Logística' },
+  { href: '/painel/logistica/fretes', label: 'Fretes', icon: Receipt, perm: 'logistics.view', group: 'Logística' },
   { href: '/painel/logistica/encomendas', label: 'Encomendas', icon: Hourglass, perm: 'logistics.view', group: 'Logística' },
   // SGLog Fase 7: abastecimento (compras sem confirmacao, atrasos, a caminho) e requisicoes internas de compra.
   { href: '/painel/logistica/abastecimento', label: 'Abastecimento', icon: Activity, perm: 'logistics.view|purchases.view', group: 'Logística' },

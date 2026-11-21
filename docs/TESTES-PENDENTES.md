@@ -792,8 +792,36 @@ pequenos. Nada nesta fase movimenta estoque: anote o saldo do produto antes e co
 
 ## SGLog Fase 8 — fretes, etiquetas, rastreio e custos ([35-sglog-fase8.md](35-sglog-fase8.md))
 
-**Situação: implantada na VPS em 21/11/2026 (`d58a3dd`, migração 0027).** Roteiro em
-[36-sglog-fase8-implantacao.md](36-sglog-fase8-implantacao.md).
+**Situação: validada funcionalmente, com ressalvas (21/11/2026).** Implantada na VPS em 21/11/2026 (`d58a3dd`,
+migração 0027); em execução `d76ca4f`. Roteiro em [36-sglog-fase8-implantacao.md](36-sglog-fase8-implantacao.md).
+
+Encerramento da fase:
+- **Validado:** na VPS, `d76ca4f` com a 0027, suíte da API 497/497 e reconciliação C1–C13 sem divergência. Pelo
+  HTTPS, foram validados:
+  - menu e trava da etiqueta;
+  - os seis cards e a fila;
+  - o relatório;
+  - custo, ajuste e estorno;
+  - rastreio manual do despacho anterior;
+  - aviso falso (`404` sem provedor);
+  - marketplace fora do frete da loja.
+- **Ressalvas** (não bloqueiam a fase e seguem abertas abaixo):
+  - não houve remessa de entrega nova na VPS. Por isso ficaram sem teste: o despacho com custo, a entrega pela
+    remessa e o painel de uma remessa embalada;
+  - a página do cliente não foi aberta (precisa da conta do cliente de teste);
+  - as permissões por perfil não foram conferidas pelo HTTPS;
+  - o Melhor Envio não está configurado (sem sandbox, token nem segredo do aviso). A assinatura em base64 segue sem
+    confirmação;
+  - **a compra real de etiqueta continua bloqueada**, e `SHIPPING_LABELS_ENABLED` continua desligado;
+  - alocação automática, dropshipping, remessas múltiplas e e-mail ao fornecedor continuam desligados ou bloqueados.
+- **Correção local depois da validação** (sem push nem implantação): no despacho anterior, a tela da remessa mostrava
+  "Marcar como entregue", mas a API recusa (`LEGACY_SHIPMENT`). Agora a tela segue a mesma regra: em vez do botão,
+  explica que a entrega é registrada na tela do pedido, com o link. Não mudaram as regras de entrega, as situações
+  nem os dados. Commit `127572f`.
+- **Commits locais sem push:**
+  - `fe927bf` (este documento: rastreio do despacho anterior validado);
+  - `127572f` (a correção acima);
+  - este encerramento.
 
 - **Antes da implantação:** 401 remessas, 10 em transporte e 5 eventos de remessa. O `.env` não tinha alocação
   automática, etiqueta ligada nem Melhor Envio. O backup foi verificado (4 arquivos com sha256 correto).
@@ -846,7 +874,7 @@ pequenos. Nada nesta fase movimenta estoque: anote o saldo do produto antes e co
   o painel "Frete" sem botão de compra.
 
 No local:
-- suíte da API 495/495;
+- suíte da API 495/495 (497 com `d76ca4f`; 498 com o teste da entrega do despacho anterior);
 - código anterior (`e057df4`) 471/471 com a 0027 aplicada;
 - 0027 em up, down e up;
 - telas a 375 px e no desktop.
@@ -856,12 +884,12 @@ Use só pedidos de teste, com NF-e já autorizada pelo fluxo normal: não altere
 
 Validação pelo painel HTTPS, como proprietário, depois da implantação:
 
-- [ ] **Menu e trava.** Abra Logística → Fretes:
+- [x] **Menu e trava.** Abra Logística → Fretes:
   - o topo mostra o transportador. Sem token do Melhor Envio, aparece "nenhum configurado (frete manual)";
   - aparece "Compra de etiqueta pelo sistema: bloqueada", com os motivos (servidor, regras do frete e limite não
     definido);
   - nenhum botão de compra.
-- [ ] **Listas e relatório:**
+- [x] **Listas e relatório:**
   - "Sem custo informado" lista as remessas despachadas nos últimos 90 dias;
   - o relatório do mês mostra o cobrado, e o pago "não informado" (nunca R$ 0,00) enquanto ninguém informar custo;
   - a tela não rola para o lado no celular.
@@ -875,20 +903,21 @@ Validação pelo painel HTTPS, como proprietário, depois da implantação:
   - o relatório conta a remessa na diferença cobrado − pago.
 - [ ] **Despacho sem custo.** Numa segunda remessa, despache sem o custo. Ela aparece em "Sem custo informado" e o pago
   fica "não informado". Depois, em "Custo pago à transportadora", registre o custo e confira a mudança.
-- [ ] **Ajuste e estorno.** Na primeira remessa:
+- [x] **Ajuste e estorno.** Na primeira remessa:
   - registre um ajuste de R$ 2,00 com motivo: o pago vira R$ 20,40;
   - registre um estorno de R$ 1,00 com motivo: o pago vira R$ 19,40;
   - os lançamentos anteriores continuam iguais (não há edição nem exclusão);
   - ajuste ou estorno sem motivo é recusado.
-- [ ] **Rastreio manual:**
+- [x] **Rastreio manual:**
   - na remessa despachada, registre "Em trânsito" e depois "Saiu para entrega": o histórico mostra os dois;
   - registre "Em trânsito" de novo: entra no histórico, mas a situação continua "Saiu para entrega" (sem voltar);
   - "Falha na entrega" só fica registrada, e a remessa continua em transporte (o tratamento é da Fase 9).
-- [ ] **Página do cliente.** Com a conta do cliente de teste, abra o pedido. O histórico de rastreio mostra enviada,
+- [ ] **Página do cliente** (ressalva: não testada). Com a conta do cliente de teste, abra o pedido. O histórico de rastreio mostra enviada,
   em trânsito e saiu para entrega, sem nome de funcionário nem observação interna.
-- [ ] **Entrega.** "Marcar como entregue" na remessa. O pedido fica entregue, como antes, e o histórico do cliente
+- [ ] **Entrega** (ressalva: falta remessa de entrega nova). "Marcar como entregue" na remessa de entrega. No
+  despacho anterior, o botão não aparece; a entrega é feita na tela do pedido. O pedido fica entregue, como antes, e o histórico do cliente
   mostra "Entregue".
-- [ ] **Aviso falso.** Do seu computador (não da VPS), envie um aviso sem assinatura:
+- [x] **Aviso falso.** Do seu computador (não da VPS), envie um aviso sem assinatura:
 
   ```powershell
   curl.exe -s -o NUL -w "%{http_code}" -X POST https://<domínio>/api/v1/webhooks/carriers/melhorenvio -H "content-type: application/json" -d '{\"event\":\"order.delivered\",\"data\":{\"id\":\"x\"}}'
@@ -900,7 +929,7 @@ Validação pelo painel HTTPS, como proprietário, depois da implantação:
   - o perfil da logística vê Fretes e registra custo e rastreio;
   - o perfil de expedição não tem "Etiquetas de frete";
   - em Usuários, a permissão nova aparece como "Etiquetas de frete (compra, cancelamento)".
-- [ ] **Fila.** Em Fretes → "Fila de integrações", "Com falha" fica vazia. Sem provedor, nenhuma tarefa é criada.
+- [x] **Fila.** Em Fretes → "Fila de integrações", "Com falha" fica vazia. Sem provedor, nenhuma tarefa é criada.
 - [ ] **Banco depois dos testes** (como `loja`, bloco 5.1 do doc 36):
   - `RESULTADO: OK`;
   - `etiquetas` 0 e `etiqueta` `blocked`;

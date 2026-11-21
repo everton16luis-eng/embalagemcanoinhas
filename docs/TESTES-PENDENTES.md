@@ -806,8 +806,8 @@ pequenos. Nada nesta fase movimenta estoque: anote o saldo do produto antes e co
   - cotações, etiquetas, custos, tarefas e avisos em 0;
   - dropshipping, remessas múltiplas e e-mail ao fornecedor `blocked`;
   - log da API sem erros.
-- **Defeitos achados pelo HTTPS em 21/11/2026** (Chrome, proprietário, só leitura). Corrigidos no local, aguardando
-  implantação:
+- **Defeitos achados pelo HTTPS em 21/11/2026** (Chrome, proprietário, só leitura). Corrigidos em `4b09c4d`, implantado
+  em 21/11/2026 (sem migração):
   - o card "Em transporte" respondia **500** (`view=tracking`): a consulta recebia um parâmetro que não usava. A tela
     guardava o erro, e os cards seguintes (por exemplo "Rastreio parado") continuavam mostrando "Erro interno" mesmo com
     resposta 200. Agora cada lista monta só os parâmetros que usa, e a tela descarta respostas e erros de um card
@@ -818,6 +818,13 @@ pequenos. Nada nesta fase movimenta estoque: anote o saldo do produto antes e co
     de fora das listas, do relatório e do painel, e a API recusa custo e rastreio (`NOT_CARRIER_SHIPMENT`);
   - o despacho anterior de pedido da loja não aceitava custo (`LEGACY_SHIPMENT`) apesar de aparecer em "Sem custo
     informado". Agora aceita.
+- **Depois de `4b09c4d`, pelo HTTPS (Chrome, só leitura):**
+  - cliques seguidos nos seis cards, em várias voltas: todas as listas responderam 200, inclusive "Em transporte",
+    sem "Erro interno"; a tela fica sempre com a lista do último card clicado;
+  - marketplace fora do frete da loja: "Rastreio parado" caiu de 10 para 5, "Sem custo informado" de 297 para 84, o
+    relatório ficou só com "Entrega própria" (24 remessas), e a remessa da Shopee nº 1419 não mostra mais o painel
+    "Frete";
+  - em janela estreita (767 px, menu recolhido), sem rolagem lateral.
 - **Conferido pelo HTTPS sem defeito:** a fila nas quatro situações, o relatório, a trava da etiqueta com os motivos e
   o painel "Frete" sem botão de compra.
 

@@ -595,7 +595,7 @@ describe('rastreio', () => {
     expect(ev.map((e) => e.action)).toEqual(['track_posted', 'track_out_for_delivery', 'track_in_transit', 'track_delivery_failed']);
     expect(ev[2]).toMatchObject({ from_status: 'out_for_delivery', to_status: 'out_for_delivery' });
     expect(ev[2].note).toMatch(/atrasado/);
-    expect(ev[3].note).toMatch(/Fase 9/);
+    expect(ev[3].note).toMatch(/ocorrência/);
     expect((await shipmentRow(o.shipment)).status).toBe('out_for_delivery');
     // Entregue: remessa e pedido.
     await owner.query('UPDATE shipments SET last_tracked_at = NULL WHERE id = $1', [o.shipment]);
@@ -603,7 +603,8 @@ describe('rastreio', () => {
     carrier.trackScript.set(ext, [...carrier.trackScript.get(ext)!, { status: 'delivered', at: t(6), key: 'fake:delivered', tracking: o.label.tracking_code }]);
     await tick();
     expect((await shipmentRow(o.shipment)).status).toBe('delivered');
-    expect((await owner.query('SELECT status, logistics_status FROM orders WHERE id = $1', [o.orderId])).rows[0]).toMatchObject({ status: 'delivered', logistics_status: 'completed' });
+    // Fase 9: a falha na entrega abriu ocorrencia que segura a conclusao ate alguem resolver.
+    expect((await owner.query('SELECT status, logistics_status FROM orders WHERE id = $1', [o.orderId])).rows[0]).toMatchObject({ status: 'delivered', logistics_status: 'on_hold' });
     // Pagina do cliente: linha do tempo sem notas nem nomes.
     const pub = (await o.s.get(`/api/v1/public/orders/${o.token}`)).json().order;
     const tl = pub.shipments[0].timeline;

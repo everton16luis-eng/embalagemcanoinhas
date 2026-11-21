@@ -35,6 +35,7 @@ import {
 } from '../lib/carriers.js';
 import { claimJobs, enqueueJob, finishJob, logCall, retryJob, safeError, type Job, type JobOutcome } from '../lib/integration-jobs.js';
 import { requireAnyPermission, requirePermission, type Auth } from './auth.js';
+import { trackingOccurrence } from '../lib/returns.js';
 import { lockShipment, projectOrder } from './shipments.js';
 
 export const QUOTE_TTL_MIN = 120;
@@ -333,15 +334,20 @@ export async function applyTracking(db: Db, shipmentId: string, ev: TrackEvent, 
   } else if (target) {
     notes.push(`evento atrasado ou repetido: a remessa já está ${STATUS_PT[cur] ?? cur}`);
   } else if (ev.status === 'delivery_failed' || ev.status === 'returned') {
-    notes.push('registrado para acompanhamento; o tratamento é feito na Fase 9');
+    notes.push('registrado para acompanhamento: abre ocorrência logística, sem mudar a remessa nem o estoque');
   }
   const at = ev.at.getTime() > Date.now() ? new Date() : ev.at;
   const ins = await db.query(
     `INSERT INTO shipment_events (shipment_id, from_status, to_status, action, source, provider_event_id, request_key, note, actor_id, occurred_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) ON CONFLICT (shipment_id, provider_event_id) DO NOTHING`,
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) ON CONFLICT (shipment_id, provider_event_id) DO NOTHING RETURNING id::text`,
     [s.id, cur, to, `track_${ev.status}`, src.source, ev.key, src.requestKey ?? null, notes.join('; ').slice(0, 500), src.actorId, at],
   );
   if (!ins.rowCount) return 'duplicate';
+  // Fase 9 (D9-11): falha na entrega ou devolucao ao remetente abre UMA ocorrencia por remessa e tipo; repetido,
+  // atrasado ou fora de ordem so entra no historico dela. Nada de estoque, reembolso ou NF-e.
+  if (ev.status === 'delivery_failed' || ev.status === 'returned') {
+    await trackingOccurrence(db, { orderId: order.id, shipmentId: s.id, status: ev.status, eventId: ins.rows[0].id, note: notes.join('; ') });
+  }
   await db.query(
     `UPDATE shipments SET tracking_status = CASE WHEN last_tracking_event_at IS NULL OR $2 >= last_tracking_event_at THEN $3 ELSE tracking_status END,
        last_tracking_event_at = greatest(coalesce(last_tracking_event_at, $2), $2) WHERE id = $1`,

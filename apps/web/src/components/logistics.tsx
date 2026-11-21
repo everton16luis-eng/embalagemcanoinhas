@@ -18,6 +18,7 @@ export const LOGISTICS_STATUS: Record<string, { label: string; tone: Tone }> = {
   partially_shipped: { label: 'Despachado em parte', tone: 'act' },
   shipped: { label: 'Despachado', tone: 'neutral' },
   partially_delivered: { label: 'Entregue em parte', tone: 'act' },
+  on_hold: { label: 'Com ocorrência', tone: 'bad' },
   completed: { label: 'Concluído', tone: 'neutral' },
   canceled: { label: 'Cancelado', tone: 'neutral' },
 };

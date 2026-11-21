@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { DOC_STATUS } from '@/components/fiscal';
 import { CHANNEL_LABEL, INVOICE_STATUS, METHOD_LABEL, ORDER_STATUS, PAYMENT_STATUS } from '@/components/orders';
 import { AllocationPanel, LogisticsBadge } from '@/components/logistics';
+import { OrderReturnsPanel } from '@/components/returns';
 import { OrderShipmentsPanel, type OrderShipment } from '@/components/shipments';
 import { Guard, useMe } from '@/components/shell';
 import { Badge, Button, Field, Input, Notice, PageHeader, Panel, Textarea } from '@/components/ui';
@@ -373,6 +374,8 @@ function Detail() {
           )}
 
           {can('logistics.view') && <OrderShipmentsPanel shipments={o.shipments ?? []} />}
+
+          {(can('occurrences.manage') || can('returns.manage') || can('returns.receive') || can('logistics.view')) && o.status !== 'pending_payment' && o.status !== 'canceled' && <OrderReturnsPanel orderId={o.id} onChange={load} />}
 
           {can('logistics.view') && (o.allocation_required || o.logistics_status) && <AllocationPanel orderId={o.id} onChange={load} />}
 

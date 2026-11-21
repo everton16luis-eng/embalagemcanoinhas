@@ -49,6 +49,8 @@ import { logisticsRoutes } from './modules/logistics.js';
 import { backorderRoutes } from './modules/backorders.js';
 import { shipmentRoutes } from './modules/shipments.js';
 import { carrierWebhookRoutes, freightRoutes } from './modules/freight.js';
+import { occurrenceRoutes } from './modules/occurrences.js';
+import { returnRoutes } from './modules/returns.js';
 import { supplierRoutes } from './modules/suppliers.js';
 import { userRoutes } from './modules/users.js';
 
@@ -193,6 +195,8 @@ export async function buildApp(opts: {
   await app.register(backorderRoutes, { prefix: '/api/v1/admin/backorders' });
   await app.register(shipmentRoutes, { prefix: '/api/v1/admin/shipments' });
   await app.register(freightRoutes, { prefix: '/api/v1/admin/freight' });
+  await app.register(occurrenceRoutes, { prefix: '/api/v1/admin/occurrences' });
+  await app.register(returnRoutes, { prefix: '/api/v1/admin/returns' });
   await app.register(transferRoutes, { prefix: '/api/v1/admin/stock-transfers' });
   await app.register(stockReportRoutes, { prefix: '/api/v1/admin/stock-reports' });
   await app.register(inventoryRoutes, { prefix: '/api/v1/admin/inventory-counts' });

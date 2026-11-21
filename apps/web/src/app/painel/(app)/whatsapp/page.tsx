@@ -249,6 +249,26 @@ function useVisualViewport() {
   return vv;
 }
 
+/** Repete a consulta enquanto a aba está visível; ao voltar para a aba, atualiza na hora. */
+function usePolling(fn: () => void, ms: number) {
+  const saved = useRef(fn);
+  useEffect(() => {
+    saved.current = fn;
+  }, [fn]);
+  useEffect(() => {
+    const tick = () => document.visibilityState === 'visible' && saved.current();
+    const id = window.setInterval(tick, ms);
+    document.addEventListener('visibilitychange', tick);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener('visibilitychange', tick);
+    };
+  }, [ms]);
+}
+
+/** Teclado físico: Enter envia. Em tela de toque, Enter continua quebrando linha (como no app do celular). */
+const enterSends = () => typeof window !== 'undefined' && !window.matchMedia('(pointer: coarse)').matches;
+
 function Avatar({ size }: { size: number }) {
   return (
     <span aria-hidden className="relative grid shrink-0 place-items-center overflow-hidden rounded-full bg-[#dfe5e7] text-white" style={{ width: size, height: size }}>
@@ -362,6 +382,14 @@ function ThreadView({ phone, name, onSent, onBack }: { phone: string; name: stri
     setError('');
     load();
   }, [load]);
+
+  // Novas mensagens e mudanças de status chegam sozinhas; erro de uma consulta em segundo plano não interrompe a tela.
+  usePolling(
+    useCallback(() => {
+      api<Thread>('/admin/whatsapp/conversations/view', { method: 'POST', body: { phone } }).then(setThread, () => {});
+    }, [phone]),
+    8000,
+  );
 
   // Abre já na mensagem mais recente, como no WhatsApp, e continua no fim quando o campo de resposta cresce.
   const stick = useRef(true);
@@ -502,6 +530,13 @@ function ThreadView({ phone, name, onSent, onBack }: { phone: string; name: stri
             maxLength={4096}
             value={text}
             onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key !== 'Enter' || e.shiftKey || e.nativeEvent.isComposing || !enterSends()) return;
+              e.preventDefault();
+              if (!busy && text.trim()) e.currentTarget.form?.requestSubmit();
+            }}
+            enterKeyHint="send"
+            title="Enter envia; Shift+Enter quebra a linha"
             placeholder="Digite uma mensagem"
             className="my-[5px] max-h-[7.5rem] min-h-[42px] min-w-0 flex-1 resize-none rounded-lg bg-white px-3 py-[10px] text-[15px] leading-[21px] text-[#111b21] [field-sizing:content] placeholder:text-[#667781] focus:outline-none focus-visible:ring-0"
           />
@@ -545,6 +580,37 @@ function Inbox() {
   useEffect(() => {
     load();
   }, [load]);
+  usePolling(
+    useCallback(() => {
+      api<{ conversations: Conversation[] }>('/admin/whatsapp/conversations').then((r) => setList(r.conversations), () => {});
+    }, []),
+    15000,
+  );
+
+  // Celular: abrir uma conversa vira um passo no histórico, então o voltar do navegador/Android volta para a lista.
+  const pushed = useRef(false);
+  const narrow = () => window.matchMedia('(max-width: 767.98px)').matches;
+  function choose(phone: string) {
+    if (narrow() && !pushed.current) {
+      window.history.pushState(null, '', '#conversa');
+      pushed.current = true;
+    }
+    setOpen(phone);
+  }
+  function back() {
+    if (pushed.current) window.history.back();
+    else setOpen(null);
+  }
+  useEffect(() => {
+    const onPop = () => {
+      if (pushed.current && window.location.hash !== '#conversa') {
+        pushed.current = false;
+        setOpen(null);
+      }
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
 
   async function refresh() {
     setReloading(true);
@@ -616,7 +682,7 @@ function Inbox() {
                   <li key={c.phone}>
                     <button
                       type="button"
-                      onClick={() => setOpen(c.phone)}
+                      onClick={() => choose(c.phone)}
                       aria-current={selected}
                       title={c.name ? phoneText(c.phone) : undefined}
                       className={`group flex h-[72px] w-full items-center gap-3 pl-3 text-left transition-colors focus-visible:-outline-offset-2 focus-visible:outline-2 focus-visible:outline-[#00a884] ${
@@ -668,7 +734,7 @@ function Inbox() {
         style={{ '--vv-top': `${vv?.top ?? 0}px`, '--vv-h': vv ? `${vv.height}px` : '100dvh' } as CSSProperties}
       >
         {open ? (
-          <ThreadView key={open} phone={open} name={current?.name ?? null} onSent={load} onBack={() => setOpen(null)} />
+          <ThreadView key={open} phone={open} name={current?.name ?? null} onSent={load} onBack={back} />
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-3 px-8 text-center">
             <MessageCircle size={72} strokeWidth={1} aria-hidden className="text-[#c4ccd0]" />

@@ -1,6 +1,6 @@
 'use client';
 
-import { Activity, ArrowLeftRight, BarChart3, Inbox, Blocks, Building, Mail, MessageCircle, TrendingUp, Boxes, PackageCheck, Hourglass, Building2, ClipboardCheck, ClipboardList, FileText, FolderTree, History, LogOut, MapPinned, Menu, Package, ReceiptText, Receipt, RefreshCw, Route, Search, Settings, ShoppingCart, Store, TriangleAlert, Truck, Undo2, UserRound, Users, Warehouse, X } from 'lucide-react';
+import { Activity, Calculator, ArrowLeftRight, BarChart3, Inbox, Blocks, Building, Mail, MessageCircle, TrendingUp, Boxes, PackageCheck, Hourglass, Building2, ClipboardCheck, ClipboardList, FileText, FolderTree, History, LogOut, MapPinned, Menu, Package, ReceiptText, Receipt, RefreshCw, Route, Search, Settings, ShoppingCart, Store, TriangleAlert, Truck, Undo2, UserRound, Users, Warehouse, X } from 'lucide-react';
 import Link from '@/components/painel-link';
 import { usePathname, useRouter } from 'next/navigation';
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
@@ -50,6 +50,7 @@ const NAV = [
   { href: '/painel/entregas', label: 'Formas de entrega', icon: MapPinned, perm: 'orders.view' },
   { href: '/painel/vendas', label: 'Vendas', icon: TrendingUp, perm: 'reports.view' },
   { href: '/painel/relatorios', label: 'Relatórios de estoque', icon: BarChart3, perm: 'reports.view' },
+  { href: '/painel/gestao/custos', label: 'Custos e margens', icon: Calculator, perm: 'costs.view|margins.view|costs.settings|costs.record|fiscal.validate', group: 'Gestão' },
   { href: '/painel/empresa', label: 'Empresa e fiscal', icon: Building2, perm: 'company.view' },
   { href: '/painel/loja', label: 'Marca da loja', icon: Store, perm: 'settings.manage' },
   { href: '/painel/usuarios', label: 'Usuários', icon: Users, perm: 'users.view' },

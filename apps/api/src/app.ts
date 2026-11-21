@@ -29,6 +29,7 @@ import { productImportRoutes } from './modules/product-imports.js';
 import { productRoutes } from './modules/products.js';
 import { inventoryRoutes } from './modules/inventory.js';
 import { marketplaceAdminRoutes, marketplaceWebhookRoutes } from './modules/marketplaces.js';
+import { costRoutes } from './modules/costs.js';
 import { salesReportRoutes } from './modules/sales-reports.js';
 import { whatsappAdminRoutes, whatsappWebhookRoutes } from './modules/whatsapp.js';
 import { botAdminRoutes, setAiProvider, setTypebotProvider } from './modules/bot.js';
@@ -227,6 +228,7 @@ export async function buildApp(opts: {
   await app.register(whatsappAdminRoutes, { prefix: '/api/v1/admin/whatsapp' });
   await app.register(botAdminRoutes, { prefix: '/api/v1/admin/whatsapp/bot' });
   await app.register(salesReportRoutes, { prefix: '/api/v1/admin/sales-reports' });
+  await app.register(costRoutes, { prefix: '/api/v1/admin/costs' });
   await app.register(marketplaceWebhookRoutes, { prefix: '/api/v1/webhooks/marketplaces' });
   await app.register(marketplaceAdminRoutes, { prefix: '/api/v1/admin/marketplaces' });
   await app.register(adminOrderRoutes, { prefix: '/api/v1/admin/orders' });

@@ -319,9 +319,11 @@ describe('papéis novos (menor privilégio)', () => {
     // Fase 7 (D7-6): logistica abre requisicao de compra (purchases.request); comprador e financeiro, nao.
     // Fase 8 (D8-7): logistica compra/cancela etiqueta (shipping.labels, com MFA; a compra real segue bloqueada pela trava).
     // Fase 9: logistica cuida de ocorrencias e devolucoes; financeiro registra reembolso (refunds.record, com MFA).
+    // Fase 10: financeiro ve custos, margens e o painel Gestao e lanca custos externos (costs.record, com MFA). Logistica
+    // e comprador sem acesso a margem.
     logistics: ['catalog.view', 'logistics.allocate', 'logistics.manage', 'logistics.view', 'occurrences.manage', 'orders.view', 'purchases.receive', 'purchases.request', 'purchases.view', 'returns.manage', 'returns.receive', 'shipping.labels', 'shipping.manage', 'shipping.pick', 'stock.adjust', 'stock.manage', 'stock.transfer', 'stock.view', 'suppliers.view'],
     buyer: ['catalog.view', 'logistics.view', 'purchases.manage', 'purchases.view', 'stock.view', 'suppliers.manage', 'suppliers.view'],
-    finance: ['orders.view', 'purchases.pay', 'purchases.view', 'refunds.record', 'reports.view', 'suppliers.view'],
+    finance: ['costs.record', 'costs.view', 'management.view', 'margins.view', 'orders.view', 'purchases.pay', 'purchases.view', 'refunds.record', 'reports.view', 'suppliers.view'],
   };
 
   it('o proprietário cria os três papéis; o gerente continua sem criar proprietário', async () => {

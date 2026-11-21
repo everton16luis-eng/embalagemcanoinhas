@@ -59,6 +59,15 @@ export const PERMISSIONS = [
   'returns.manage',
   'returns.receive',
   'refunds.record',
+  // SGLog Fase 10 (docs/41-sglog-fase10.md): consultar custos (CMV, frete, embalagem, taxas, perdas); consultar margens
+  // de contribuicao; consultar o painel Gestao e os relatorios gerenciais; alterar configuracoes financeiras (taxas,
+  // aliquotas estimadas, embalagem; MFA); registrar e estornar custos externos (MFA). Tributo estimado so vale validado
+  // por quem tem fiscal.validate (o contador).
+  'costs.view',
+  'margins.view',
+  'management.view',
+  'costs.settings',
+  'costs.record',
   'sales_desk.use',
   'marketplaces.manage',
   'finance.view',
@@ -77,7 +86,9 @@ export type Role = (typeof ROLES)[number];
 
 const ROLE_DEFAULTS: Record<Role, readonly Permission[]> = {
   owner: PERMISSIONS,
-  manager: ['users.view', 'audit.view', 'settings.manage', 'company.view', 'fiscal.view', 'catalog.view', 'catalog.manage', 'prices.manage', 'catalog.import', 'stock.view', 'stock.manage', 'stock.transfer', 'stock.adjust', 'purchases.view', 'purchases.manage', 'purchases.approve', 'purchases.receive', 'purchases.pay', 'purchases.request', 'suppliers.view', 'suppliers.manage', 'logistics.view', 'logistics.allocate', 'shipping.pick', 'logistics.manage', 'orders.view', 'orders.manage', 'shipping.manage', 'shipping.labels', 'occurrences.manage', 'returns.manage', 'returns.receive', 'refunds.record', 'sales_desk.use', 'marketplaces.manage', 'finance.view', 'reports.view', 'email.view'],
+  manager: ['users.view', 'audit.view', 'settings.manage', 'company.view', 'fiscal.view', 'catalog.view', 'catalog.manage', 'prices.manage', 'catalog.import', 'stock.view', 'stock.manage', 'stock.transfer', 'stock.adjust', 'purchases.view', 'purchases.manage', 'purchases.approve', 'purchases.receive', 'purchases.pay', 'purchases.request', 'suppliers.view', 'suppliers.manage', 'logistics.view', 'logistics.allocate', 'shipping.pick', 'logistics.manage', 'orders.view', 'orders.manage', 'shipping.manage', 'shipping.labels', 'occurrences.manage', 'returns.manage', 'returns.receive', 'refunds.record', 'sales_desk.use', 'marketplaces.manage', 'finance.view', 'reports.view', 'email.view',
+    // Fase 10: consulta custos, margens e o painel Gestao; nao altera configuracao financeira nem lanca custo.
+    'costs.view', 'margins.view', 'management.view'],
   // Fase 9: o atendimento abre e acompanha ocorrencias.
   sales: ['catalog.view', 'stock.view', 'logistics.view', 'orders.view', 'sales_desk.use', 'occurrences.manage'],
   // Estoquista ve fornecedores, mas nao muda custo nem cadastro (D2-4); concessao individual continua possivel.
@@ -98,11 +109,13 @@ const ROLE_DEFAULTS: Record<Role, readonly Permission[]> = {
   // Financeiro: pedidos, compras e relatorios de venda, so leitura. Sem logistics.view (D4-11). finance.view fica de fora: hoje so mostra custo
   // nas telas de estoque, que exigem stock.view.
   // Fase 9: registra o reembolso feito (MFA), sem mexer em devolucao fisica.
-  finance: ['orders.view', 'purchases.view', 'purchases.pay', 'suppliers.view', 'reports.view', 'refunds.record'],
+  // Fase 10: consulta custos, margens e o painel Gestao e lanca custos externos (MFA). Configuracao financeira fica com
+  // o proprietario (concessao individual possivel).
+  finance: ['orders.view', 'purchases.view', 'purchases.pay', 'suppliers.view', 'reports.view', 'refunds.record', 'costs.view', 'margins.view', 'management.view', 'costs.record'],
 };
 
 /** Permissoes que exigem verificacao em duas etapas ativa na conta. */
-export const MFA_REQUIRED: ReadonlySet<Permission> = new Set(['users.manage', 'settings.manage', 'company.manage', 'fiscal.manage', 'fiscal.validate', 'prices.manage', 'catalog.import', 'marketplaces.manage', 'email.manage', 'email.accounts', 'bot.manage', 'stock.adjust', 'purchases.approve', 'shipping.labels', 'refunds.record']);
+export const MFA_REQUIRED: ReadonlySet<Permission> = new Set(['users.manage', 'settings.manage', 'company.manage', 'fiscal.manage', 'fiscal.validate', 'prices.manage', 'catalog.import', 'marketplaces.manage', 'email.manage', 'email.accounts', 'bot.manage', 'stock.adjust', 'purchases.approve', 'shipping.labels', 'refunds.record', 'costs.settings', 'costs.record']);
 
 export const roleDefaults = (role: string) => new Set<Permission>(ROLE_DEFAULTS[role as Role] ?? []);
 
